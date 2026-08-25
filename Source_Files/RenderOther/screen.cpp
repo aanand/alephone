@@ -77,6 +77,10 @@
 #define MUST_RELOAD_VIEW_CONTEXT
 #endif
 
+#if defined(__MACH__) && defined(__APPLE__)
+#include "Rasterizer_Metal.h"
+#endif
+
 // Global variables
 static SDL_Surface *main_surface;	// Main (display) surface
 static SDL_Window *main_screen;
@@ -1063,7 +1067,12 @@ static void change_screen_mode(int width, int height, int depth, bool nogl, bool
 	}
 #endif
 	} // end if need_window
-	if (nogl || screen_mode.acceleration == _no_acceleration) {
+
+#if defined(__MACH__) && defined(__APPLE__)
+    Metal_InitializeForWindow(main_screen, vmode_width, vmode_height);
+#endif
+
+    if (nogl || screen_mode.acceleration == _no_acceleration) {
 		if (!main_render) {
 			main_render = SDL_CreateRenderer(main_screen, -1, 0);
 			SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
