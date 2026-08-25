@@ -8,10 +8,11 @@
 #ifndef Rasterizer_Metal_h
 #define Rasterizer_Metal_h
 
-extern bool Metal_InitializeForWindow(SDL_Window* window, int w, int h);
-extern bool Metal_Shutdown();
-extern void Metal_BeginFrame();
-extern void Metal_EndFrameAndPresent();
-extern void Metal_Resize(int w, int h);
+#if defined(__MACH__) && defined(__APPLE__)
+#define USE_METAL
+#endif
+
+extern bool Metal_InitializeForWindow(SDL_Window* window);
+extern bool Metal_DrawFrame();
 
 #endif /* Rasterizer_Metal_h */

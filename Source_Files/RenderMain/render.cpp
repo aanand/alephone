@@ -234,11 +234,17 @@ extern WindowPtr screen_window;
 #include "RenderPlaceObjs.h"
 #include "RenderRasterize.h"
 #include "Rasterizer_SW.h"
+
 #ifdef HAVE_OPENGL
 #include "Rasterizer_OGL.h"
 #include "RenderRasterize_Shader.h"
 #include "Rasterizer_Shader.h"
 #endif
+
+#if defined(__MACH__) && defined(__APPLE__)
+#include "Rasterizer_Metal.h"
+#endif
+
 #include "preferences.h"
 #include "screen.h"
 
@@ -451,7 +457,10 @@ void render_view(
 		
 		/* do something complicated and difficult to explain */
 		if (!view->overhead_map_active || map_is_translucent())
-		{			
+		{
+#ifdef USE_METAL
+            Metal_DrawFrame();
+#endif
 			// LP: now from the polygon-sorter class
 			/* sort the render tree (so we have a depth-ordering of polygons) and accumulate
 				clipping information for each polygon */

@@ -28,8 +28,24 @@
 
 MetalConfig *config;
 
-bool Metal_InitializeForWindow(SDL_Window* window, int w, int h) {
-    logWarning("Metal_InitializeForWindow(window, %d, %d)", w, h);
+void Metal_DrawSolidColor(MTLClearColor color) {
+    id<CAMetalDrawable> surface = [config.metalLayer nextDrawable];
+    
+    MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
+    pass.colorAttachments[0].clearColor = color;
+    pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    pass.colorAttachments[0].texture = surface.texture;
+
+    id<MTLCommandBuffer> buffer = [config.queue commandBuffer];
+    id<MTLRenderCommandEncoder> encoder = [buffer renderCommandEncoderWithDescriptor:pass];
+    [encoder endEncoding];
+    [buffer presentDrawable:surface];
+    [buffer commit];
+}
+
+bool Metal_InitializeForWindow(SDL_Window* window) {
+    logWarning("Metal_InitializeForWindow(window)");
 
     if (config) {
         return true;
@@ -40,24 +56,13 @@ bool Metal_InitializeForWindow(SDL_Window* window, int w, int h) {
     c.renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
     c.metalLayer = (__bridge CAMetalLayer*)SDL_RenderGetMetalLayer(c.renderer);
     c.queue = [c.metalLayer.device newCommandQueue];
-    
-    MTLClearColor color = MTLClearColorMake(1, 0, 0, 0.5);
-    
-    id<CAMetalDrawable> surface = [c.metalLayer nextDrawable];
-    
-    MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
-    pass.colorAttachments[0].clearColor = color;
-    pass.colorAttachments[0].loadAction = MTLLoadActionClear;
-    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
-    pass.colorAttachments[0].texture = surface.texture;
-
-    id<MTLCommandBuffer> buffer = [c.queue commandBuffer];
-    id<MTLRenderCommandEncoder> encoder = [buffer renderCommandEncoderWithDescriptor:pass];
-    [encoder endEncoding];
-    [buffer presentDrawable:surface];
-    [buffer commit];
-    
     config = c;
     
+    Metal_DrawSolidColor(MTLClearColorMake(1, 0, 0, 1));
+    
     return true;
+}
+
+void Metal_DrawFrame() {
+    Metal_DrawSolidColor(MTLClearColorMake(0, 0, 1, 1));
 }

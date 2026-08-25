@@ -1068,8 +1068,8 @@ static void change_screen_mode(int width, int height, int depth, bool nogl, bool
 #endif
 	} // end if need_window
 
-#if defined(__MACH__) && defined(__APPLE__)
-    Metal_InitializeForWindow(main_screen, vmode_width, vmode_height);
+#ifdef USE_METAL
+    Metal_InitializeForWindow(main_screen);
 #endif
 
     if (nogl || screen_mode.acceleration == _no_acceleration) {
