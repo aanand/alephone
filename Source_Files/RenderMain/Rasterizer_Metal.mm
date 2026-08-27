@@ -58,11 +58,9 @@ bool Metal_InitializeForWindow(SDL_Window* window) {
     c.queue = [c.metalLayer.device newCommandQueue];
     config = c;
     
-    Metal_DrawSolidColor(MTLClearColorMake(1, 0, 0, 1));
-    
     return true;
 }
 
-void Metal_DrawFrame() {
+void Metal_Begin() {
     Metal_DrawSolidColor(MTLClearColorMake(0, 0, 1, 1));
 }

@@ -296,10 +296,16 @@ static RenderPlaceObjsClass RenderPlaceObjs;		// Object-placement object
 static RenderRasterizerClass Render_Classic;		// Clipping and rasterization class
 
 static Rasterizer_SW_Class Rasterizer_SW;			// Software rasterizer
+
 #ifdef HAVE_OPENGL
 static Rasterizer_OGL_Class Rasterizer_OGL;			// OpenGL rasterizer
 static Rasterizer_Shader_Class Rasterizer_Shader;   // Shader rasterizer
 static RenderRasterize_Shader Render_Shader;       // Shader clipping and rasterization class
+#endif
+
+#ifdef PREFER_METAL
+static Rasterizer_Metal_Class Rasterizer_Metal;
+static RenderRasterize_Metal Render_Metal;
 #endif
 
 // In Marathon 1-style exploration missions, we check
@@ -364,7 +370,10 @@ void allocate_render_memory(
 	Render_Classic.RSPtr = Render_Shader.RSPtr = &RenderSortPoly;
 #else
 	Render_Classic.RSPtr = &RenderSortPoly;	
-#endif	
+#endif
+#ifdef PREFER_METAL
+	Render_Metal.RSPtr = &RenderSortPoly;
+#endif
 }
 
 /* just in case anyone was wondering, standard_screen_width will usually be the same as
@@ -458,9 +467,6 @@ void render_view(
 		/* do something complicated and difficult to explain */
 		if (!view->overhead_map_active || map_is_translucent())
 		{
-#ifdef USE_METAL
-            Metal_DrawFrame();
-#endif
 			// LP: now from the polygon-sorter class
 			/* sort the render tree (so we have a depth-ordering of polygons) and accumulate
 				clipping information for each polygon */
@@ -474,6 +480,10 @@ void render_view(
 			
 			// LP addition: set the current rasterizer to whichever is appropriate here
 			RasterizerClass *RasPtr;
+
+#ifdef PREFER_METAL
+			RasPtr = &Rasterizer_Metal;
+#else
 #ifdef HAVE_OPENGL
 			if (OGL_IsActive())
 				RasPtr = &Rasterizer_Shader;
@@ -486,6 +496,7 @@ void render_view(
 #ifdef HAVE_OPENGL
 			}
 #endif
+#endif
 			
 			// Set its view:
 			RasPtr->SetView(*view);
@@ -494,10 +505,14 @@ void render_view(
 			RasPtr->Begin();
 			
 			// LP: now from the clipping/rasterizer class
-#ifdef HAVE_OPENGL			
+#ifdef PREFER_METAL
+			RenderRasterizerClass *RenPtr = &Render_Metal;
+#else
+#ifdef HAVE_OPENGL
 			RenderRasterizerClass *RenPtr = (graphics_preferences->screen_mode.acceleration == _opengl_acceleration) ? &Render_Shader : &Render_Classic;
 #else
 			RenderRasterizerClass *RenPtr = &Render_Classic;
+#endif
 #endif
 			/* render the object list, back to front, doing clipping on each surface before passing
 				it to the texture-mapping code */

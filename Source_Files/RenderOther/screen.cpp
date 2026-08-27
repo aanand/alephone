@@ -87,6 +87,14 @@ static SDL_Window *main_screen;
 static SDL_Renderer *main_render;
 static SDL_Texture *main_texture;
 
+#ifdef PREFER_METAL
+static bool prefer_metal = true;
+#else
+static bool prefer_metal = false;
+#endif
+
+short current_screentype = _screentype_menu;
+
 // Rendering buffer for the main view, the overhead map, and the terminals.
 // The HUD has a separate buffer.
 // It is initialized to NULL so as to allow its initing to be lazy.
@@ -129,10 +137,23 @@ using namespace alephone;
 
 Screen Screen::m_instance;
 
+bool use_metal_for(short screentype) {
+	return prefer_metal && (screentype == _screentype_level);
+}
+
+void create_accelerated_rendering_context(SDL_Window *window, short screentype) {
+	if (use_metal_for(screentype)) {
+		logError("Initializing Metal");
+		Metal_InitializeForWindow(window);
+	} else {
+		logError("Initializing OpenGL");
+		SDL_GL_CreateContext(window);
+	}
+}
 
 // Prototypes
-static bool need_mode_change(int window_width, int window_height, int log_width, int log_height, int depth, bool nogl);
-static void change_screen_mode(int width, int height, int depth, bool nogl, bool force_menu, bool force_resize_hud = false);
+static bool need_mode_change(int window_width, int window_height, int log_width, int log_height, int depth, bool nogl, short screentype);
+static void change_screen_mode(int width, int height, int depth, short screentype, bool nogl, bool force_menu, bool force_resize_hud = false);
 static bool get_auto_resolution_size(short *w, short *h, struct screen_mode_data *mode);
 static void build_sdl_color_table(const color_table *color_table, SDL_Color *colors);
 static void reallocate_world_pixels(int width, int height);
@@ -742,7 +763,8 @@ void exit_screen(void)
 
 static bool need_mode_change(int window_width, int window_height,
 							 int log_width, int log_height,
-							 int depth, bool nogl)
+							 int depth, bool nogl,
+							 short screentype)
 {
 	// have we set up any window at all yet?
 	if (main_screen == NULL)
@@ -752,6 +774,11 @@ static bool need_mode_change(int window_width, int window_height,
 	bool current_high_dpi = (SDL_GetWindowFlags(main_screen) & SDL_WINDOW_ALLOW_HIGHDPI);
 	if (screen_mode.high_dpi != current_high_dpi) {
 		return true;
+	}
+	
+	// are we switching to/from Metal?
+	if (prefer_metal) {
+		return use_metal_for(current_screentype) != use_metal_for(screentype);
 	}
 	
 	// are we switching to/from OpenGL?
@@ -832,7 +859,7 @@ static int change_window_filter(void *ctx, SDL_Event *event)
 	return 1;
 }
 
-static void change_screen_mode(int width, int height, int depth, bool nogl, bool force_menu, bool force_resize_hud)
+static void change_screen_mode(int width, int height, int depth, short screentype, bool nogl, bool force_menu, bool force_resize_hud)
 {
 	int prev_width = 0;
 	int prev_height = 0;
@@ -889,7 +916,7 @@ static void change_screen_mode(int width, int height, int depth, bool nogl, bool
 		}
 	}
 	
-	if (need_mode_change(sdl_width, sdl_height, vmode_width, vmode_height, depth, nogl)) {
+	if (need_mode_change(sdl_width, sdl_height, vmode_width, vmode_height, depth, nogl, screentype)) {
 #ifdef HAVE_OPENGL
 	if (!nogl && screen_mode.acceleration != _no_acceleration) {
 		passed_shader = false;
@@ -964,11 +991,12 @@ static void change_screen_mode(int width, int height, int depth, bool nogl, bool
 		if (main_screen)
 			logWarning("Stencil buffer is not available");
 	}
-	if (main_screen != NULL && !nogl && screen_mode.acceleration == _opengl_acceleration)
+	if (main_screen != NULL && !nogl && screen_mode.acceleration == _opengl_acceleration && !use_metal_for(screentype))
 	{
 		// see if we can actually run shaders
 		if (!context_created) {
-			SDL_GL_CreateContext(main_screen);
+			logError("creating OpenGL context");
+			create_accelerated_rendering_context(main_screen, screentype);
 			context_created = true;
 		}
 #if defined (__WIN32__) && (HAVE_OPENGL)
@@ -1062,15 +1090,11 @@ static void change_screen_mode(int width, int height, int depth, bool nogl, bool
 	}
 #ifdef HAVE_OPENGL
 	if (!context_created && !nogl && screen_mode.acceleration != _no_acceleration) {
-		SDL_GL_CreateContext(main_screen);
+		create_accelerated_rendering_context(main_screen, screentype);
 		context_created = true;
 	}
 #endif
 	} // end if need_window
-
-#ifdef USE_METAL
-    Metal_InitializeForWindow(main_screen);
-#endif
 
     if (nogl || screen_mode.acceleration == _no_acceleration) {
 		if (!main_render) {
@@ -1137,6 +1161,8 @@ static void change_screen_mode(int width, int height, int depth, bool nogl, bool
 	{
 		L_Call_HUDResize();
 	}
+	
+	current_screentype = screentype;
 }
 
 bool get_auto_resolution_size(short *w, short *h, struct screen_mode_data *mode)
@@ -1183,7 +1209,7 @@ void change_screen_mode(struct screen_mode_data *mode, bool redraw, bool resize_
 		}
 		else
 			get_auto_resolution_size(&w, &h, mode);
-		change_screen_mode(w, h, mode->bit_depth, false, !in_game, resize_hud);
+		change_screen_mode(w, h, mode->bit_depth, current_screentype, false, !in_game, resize_hud);
 		clear_screen();
 		recenter_mouse();
 	}
@@ -1206,7 +1232,7 @@ void change_screen_mode(short screentype)
 		get_auto_resolution_size(&w, &h, mode);
 	
 	bool force_menu_size = (screentype == _screentype_menu || screentype == _screentype_chapter);
-	change_screen_mode(w, h, mode->bit_depth, false, force_menu_size);
+	change_screen_mode(w, h, mode->bit_depth, screentype, false, force_menu_size);
 	clear_screen();
 	recenter_mouse();
 
