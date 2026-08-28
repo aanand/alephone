@@ -46,15 +46,15 @@ simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
 	float fovRadians = fov * 8.0 * atan(1.0) / 360.0;
 	float ys = 1.0 / tanf(fovRadians * 0.5);
 	float xs = ys / aspectRatio;
-	float nz = 0.1;
+	float nz = 0.01;
 	
 	return simd_matrix((simd_float4){  xs, 0.0, 0.0, 0.0 },
 					   (simd_float4){ 0.0,  ys, 0.0, 0.0 },
-					   (simd_float4){ 0.0, 0.0, 1.0, 0.0 },
+					   (simd_float4){ 0.0, 0.0, 1.0, 1.0 },
 					   (simd_float4){ 0.0, 0.0, -nz, 0.0 });
 }
 
-simd_float3 viewToClipSpace(VertexFloat3 worldSpace, simd_float4x4 projection) {
+simd_float3 viewToClipSpace(VertexFloat3 worldSpace) {
 	VertexFloat3 clipSpace = worldSpace;
 
 	// scale down
@@ -64,12 +64,9 @@ simd_float3 viewToClipSpace(VertexFloat3 worldSpace, simd_float4x4 projection) {
 	clipSpace = simd_clamp(clipSpace, -1.0, 1.0);
 
 	// scale z down to [0, 1] (Metal differs from OpenGL here)
-	clipSpace.z = 0.5 + 0.25 * clipSpace.z;
+	clipSpace.z = 0.5 + 0.5 * clipSpace.z;
 	
-	simd_float4 homogenous = simd_make_float4(clipSpace, 1.0);
-	simd_float4 projected = simd_mul(projection, homogenous);
-
-	return projected.xyz;
+	return clipSpace;
 }
 
 API_AVAILABLE(macos(26.0))
@@ -225,17 +222,15 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (void) addQuadWithVertices:(simd_long3 *)vertices {
-	simd_float4x4 projection = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
-
 	NSLog(@"input quad: %@", [[Quad alloc] initWithV0:simd_make_float3(vertices[0].x, vertices[0].y, vertices[0].z)
 												   v1:simd_make_float3(vertices[1].x, vertices[1].y, vertices[1].z)
 												   v2:simd_make_float3(vertices[2].x, vertices[2].y, vertices[2].z)
 												   v3:simd_make_float3(vertices[3].x, vertices[3].y, vertices[3].z)]);
 	
-	[quads addObject:[[Quad alloc] initWithV0:viewToClipSpace(simd_make_float3(vertices[0].x, vertices[0].y, vertices[0].z), projection)
-										   v1:viewToClipSpace(simd_make_float3(vertices[1].x, vertices[1].y, vertices[1].z), projection)
-										   v2:viewToClipSpace(simd_make_float3(vertices[2].x, vertices[2].y, vertices[2].z), projection)
-										   v3:viewToClipSpace(simd_make_float3(vertices[3].x, vertices[3].y, vertices[3].z), projection)]];
+	[quads addObject:[[Quad alloc] initWithV0:viewToClipSpace(simd_make_float3(vertices[0].x, vertices[0].y, vertices[0].z))
+										   v1:viewToClipSpace(simd_make_float3(vertices[1].x, vertices[1].y, vertices[1].z))
+										   v2:viewToClipSpace(simd_make_float3(vertices[2].x, vertices[2].y, vertices[2].z))
+										   v3:viewToClipSpace(simd_make_float3(vertices[3].x, vertices[3].y, vertices[3].z))]];
 }
 
 - (void)loadQuads {

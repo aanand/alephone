@@ -19,7 +19,7 @@ vertex RasterizerData
 quadShader(uint vertexID [[vertex_id]],
 		   constant QuadData *quadData [[buffer(0)]],
 		   constant float2 *viewportSize [[buffer(1)]],
-		   constant float4x4 *perspectiveProjection [[buffer(2)]]) {
+		   constant float4x4 &perspectiveProjection [[buffer(2)]]) {
 
 	RasterizerData out;
 
@@ -59,10 +59,10 @@ quadShader(uint vertexID [[vertex_id]],
 	}
 	
 	float4 result = float4(position, 1.0);
-//	result = (*perspectiveProjection) * result;
+	result = perspectiveProjection * result;
 
 	out.position = result;
-	out.color = clamp(result, 0.0, 1.0);
+	out.color = float4(1-result.z, 1-result.z, 1-result.z, 1.0);
 	
 	return out;
 }
