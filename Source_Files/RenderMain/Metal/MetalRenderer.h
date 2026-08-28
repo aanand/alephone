@@ -24,6 +24,7 @@ API_AVAILABLE(macos(26.0))
 
 - (void) begin;
 - (void) addQuadWithVertices:(simd_long3*)vertices;
+- (void) addPolygonWithVertices:(simd_long3*)vertices count:(int)vertexCount;
 - (void) end;
 
 @end

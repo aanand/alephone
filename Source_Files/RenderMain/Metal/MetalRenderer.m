@@ -42,6 +42,42 @@
 
 @end
 
+@interface Poly : NSObject
+@property (readonly, nonatomic) simd_float3 *vertices;
+@property (readonly, nonatomic) int vertexCount;
+- (Poly *) initWithVertices:(simd_float3*)vertices count:(int)vertexCount;
+@end
+
+@implementation Poly
+
+- (Poly *) initWithVertices:(simd_float3 *)vertices count:(int)vertexCount {
+	self = [super init];
+	if (self) {
+		_vertices = vertices;
+		_vertexCount = vertexCount;
+	}
+	return self;
+}
+
+- (NSString *) description {
+	NSMutableString *string = [NSMutableString stringWithFormat:@"Poly(%d){", self.vertexCount];
+	
+	for (int i=0; i<self.vertexCount; i++) {
+		simd_float3 vertex = self.vertices[i];
+		[string appendString:[NSString stringWithFormat:@"float3(%f,%f,%f)", vertex.x, vertex.y, vertex.z]];
+		
+		if (i < self.vertexCount - 1) {
+			[string appendString:@","];
+		}
+	}
+	
+	[string appendString:@"}"];
+	
+	return string;
+}
+
+@end
+
 // Assumes fov is the horizontal FOV, not the traditional vertical one
 simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
 	float fovRadians = fov * 8.0 * atan(1.0) / 360.0;
@@ -57,8 +93,8 @@ simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
 
 // Aleph One hands us camera-relative quad vertices whose dimensions seem to lie in the [-2000, 2000] range or so.
 // Scaling them down doesn't affect their eventual position on the screen, but does stop them getting excised from Metal's clip-space range.
-simd_float3 scaleToViewSpace(VertexFloat3 worldSpace) {
-	return worldSpace * (1.0/2000.0);
+simd_float3 scaleToViewSpace(simd_long3 worldSpace) {
+	return simd_make_float3(worldSpace.x, worldSpace.y, worldSpace.z) / 2000.0;
 }
 
 API_AVAILABLE(macos(26.0))
@@ -74,6 +110,8 @@ API_AVAILABLE(macos(26.0))
 	
 	simd_uint2 viewportSize;
 	float fov;
+	simd_int3 origin;
+
 	uint64_t frameNumber;
 	
 	// Metal pipeline insternals
@@ -90,13 +128,16 @@ API_AVAILABLE(macos(26.0))
 
 	// Shader inputs
 	
-	id<MTLBuffer> quadsVertexBuffer;
+//	id<MTLBuffer> quadsVertexBuffer;
+	id<MTLBuffer> trianglesVertexBuffer;
+
 	id<MTLBuffer> viewportSizeBuffer;
 	id<MTLBuffer> perspectiveProjectionBuffer;
 
 	// Short-lived variables, created per frame
 
 	NSMutableArray<Quad*> *quads;
+	NSMutableArray<Poly*> *polygons;
 }
 
 - (MetalRenderer *) initializeWithWindow:(SDL_Window *)sdlWindow width:(int)width height:(int)height {
@@ -187,7 +228,7 @@ API_AVAILABLE(macos(26.0))
 - (MTL4RenderPipelineDescriptor *) configureRenderPipeline:(MTLPixelFormat) colorPixelFormat {
 	MTL4LibraryFunctionDescriptor *vertexFunction = [MTL4LibraryFunctionDescriptor new];
 	vertexFunction.library = defaultLibrary;
-	vertexFunction.name = @"quadShader";
+	vertexFunction.name = @"vertexShader";
 	
 	MTL4LibraryFunctionDescriptor *fragmentFunction = [MTL4LibraryFunctionDescriptor new];
 	fragmentFunction.library = defaultLibrary;
@@ -209,40 +250,98 @@ API_AVAILABLE(macos(26.0))
 - (void) begin {
 	frameNumber += 1;
 	quads = [[NSMutableArray alloc] init];
+	polygons = [[NSMutableArray alloc] init];
 }
 
 - (void) addQuadWithVertices:(simd_long3 *)vertices {
-	[quads addObject:[[Quad alloc] initWithV0:scaleToViewSpace(simd_make_float3(vertices[0].x, vertices[0].y, vertices[0].z))
-										   v1:scaleToViewSpace(simd_make_float3(vertices[1].x, vertices[1].y, vertices[1].z))
-										   v2:scaleToViewSpace(simd_make_float3(vertices[2].x, vertices[2].y, vertices[2].z))
-										   v3:scaleToViewSpace(simd_make_float3(vertices[3].x, vertices[3].y, vertices[3].z))]];
+	[quads addObject:[[Quad alloc] initWithV0:scaleToViewSpace(vertices[0])
+										   v1:scaleToViewSpace(vertices[1])
+										   v2:scaleToViewSpace(vertices[2])
+										   v3:scaleToViewSpace(vertices[3])]];
 }
 
-- (void)loadQuads {
-	QuadData quadArray[quads.count];
-	for (int i = 0; i < quads.count; i++) {
-		Quad *q = [quads objectAtIndex:i];
-		quadArray[i].v0 = q.v0;
-		quadArray[i].v1 = q.v1;
-		quadArray[i].v2 = q.v2;
-		quadArray[i].v3 = q.v3;
+- (void) addPolygonWithVertices:(simd_long3 *)vertices count:(int)vertexCount {
+	simd_float3 *scaledVertices = (simd_float3*) malloc(sizeof(simd_float3) * vertexCount);
+	
+	for (int i=0; i<vertexCount; i++) {
+		scaledVertices[i] = scaleToViewSpace(vertices[i]);
 	}
 	
-	id<MTLBuffer> newBuffer = [device newBufferWithLength:(sizeof(QuadData) * quads.count)
-													   options:MTLResourceStorageModeShared];
-	memcpy(newBuffer.contents, quadArray, sizeof(QuadData) * quads.count);
+	Poly *polygon = [[Poly alloc] initWithVertices:scaledVertices count:vertexCount];
+	[polygons addObject:polygon];
+}
+
+- (int)loadVariableSizeBuffers {
+//	QuadData quadArray[quads.count];
+//	for (int i = 0; i < quads.count; i++) {
+//		Quad *q = [quads objectAtIndex:i];
+//		quadArray[i].v0 = q.v0;
+//		quadArray[i].v1 = q.v1;
+//		quadArray[i].v2 = q.v2;
+//		quadArray[i].v3 = q.v3;
+//	}
+//	
+//	id<MTLBuffer> newBuffer = [device newBufferWithLength:(sizeof(QuadData) * quads.count)
+//												  options:MTLResourceStorageModeShared];
+//	memcpy(newBuffer.contents, quadArray, sizeof(QuadData) * quads.count);
+//	
+//	if (quadsVertexBuffer) {
+//		[residencySet removeAllocation:quadsVertexBuffer];
+//	}
+//	[residencySet addAllocation:newBuffer];
+//	[residencySet commit];
+//	
+//	quadsVertexBuffer = newBuffer;
 	
-	if (quadsVertexBuffer) {
-		[residencySet removeAllocation:quadsVertexBuffer];
+//	NSLog(@"%@", polygons);
+	
+	int numTriangles = 0;
+	for (int i=0; i<polygons.count; i++) {
+		Poly *poly = [polygons objectAtIndex:i];
+		numTriangles += poly.vertexCount - 2;
+	}
+	
+//	NSLog(@"numTriangles = %d", numTriangles);
+	
+	uint numVertices = numTriangles * 3;
+	uint vertexBufferSize = sizeof(simd_float3) * numVertices;
+//	NSLog(@"vertexBufferSize = %u", vertexBufferSize);
+
+	simd_float3 *allVertices = malloc(vertexBufferSize);
+
+	int vertexIndex = 0;
+	for (int i=0; i<polygons.count; i++) {
+		Poly *poly = [polygons objectAtIndex:i];
+		for (int j = 0; j < poly.vertexCount-2; j++) {
+			allVertices[vertexIndex]   = poly.vertices[0];
+			allVertices[vertexIndex+1] = poly.vertices[j+1];
+			allVertices[vertexIndex+2] = poly.vertices[j+2];
+			vertexIndex += 3;
+		}
+	}
+	
+	for (int v=0; v<(numTriangles*3); v++) {
+		simd_float3 vertex = allVertices[v];
+		NSLog(@"%f, %f, %f", vertex.x, vertex.y, vertex.z);
+	}
+	
+	id<MTLBuffer> newBuffer = [device newBufferWithLength:vertexBufferSize
+													   options:MTLResourceStorageModeShared];
+	memcpy(newBuffer.contents, allVertices, vertexBufferSize);
+	
+	if (trianglesVertexBuffer) {
+		[residencySet removeAllocation:trianglesVertexBuffer];
 	}
 	[residencySet addAllocation:newBuffer];
 	[residencySet commit];
 
-	quadsVertexBuffer = newBuffer;
+	trianglesVertexBuffer = newBuffer;
+	
+	return numVertices;
 }
 
 - (void) end {
-	[self loadQuads];
+	int numVertices = [self loadVariableSizeBuffers];
 
 	memcpy(viewportSizeBuffer.contents, &viewportSize, sizeof(viewportSize));
 
@@ -276,12 +375,15 @@ API_AVAILABLE(macos(26.0))
 	viewPort.height = (double)viewportSize.y;
 	[renderPassEncoder setViewport:viewPort];
 	
-	[argumentTable setAddress:quadsVertexBuffer.gpuAddress atIndex:0];
+	NSLog(@"numVertices = %d", numVertices);
+	
+	[argumentTable setAddress:trianglesVertexBuffer.gpuAddress atIndex:0];
 	[argumentTable setAddress:viewportSizeBuffer.gpuAddress atIndex:1];
 	[argumentTable setAddress:perspectiveProjectionBuffer.gpuAddress atIndex:2];
 	[renderPassEncoder setArgumentTable:argumentTable atStages:MTLRenderStageVertex];
-	[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:(6 * quads.count)]; // 2 triangles per quad * 3 vertices per triangle
+//	[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:(6 * quads.count)]; // 2 triangles per quad * 3 vertices per triangle
 //	[renderPassEncoder drawPrimitives:MTLPrimitiveTypeLine vertexStart:0 vertexCount:(2 * quads.count)]; // 2 line points per quad
+	[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:numVertices];
 
 	[renderPassEncoder endEncoding];
 	[commandBuffer endCommandBuffer];

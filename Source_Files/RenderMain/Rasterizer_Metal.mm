@@ -65,9 +65,26 @@ void Rasterizer_Metal_Class::End() {
 	}
 }
 
-void RenderRasterize_Metal::render_node_side(
-							  clipping_window_data *window, vertical_surface_data *surface,
-							  bool void_present, RenderStep renderStep) {
+void RenderRasterize_Metal::render_node_floor_or_ceiling(clipping_window_data *window, polygon_data *polygon, horizontal_surface_data *surface,
+														 bool void_present, bool ceil, RenderStep renderStep)
+{
+	simd_long3 *vertices = (simd_long3*)malloc(sizeof(simd_long3) * polygon->vertex_count);
+
+	for (int i=0; i < polygon->vertex_count; i++) {
+		endpoint_data *data = get_endpoint_data(polygon->endpoint_indexes[i]);
+		vertices[i] = simd_make_long3(data->transformed.y, surface->height - view->origin.z, data->transformed.x);
+	}
+	
+	if (@available(macOS 26.0, *)) {
+		if (renderer) {
+			[renderer addPolygonWithVertices:vertices count:polygon->vertex_count];
+		}
+	}
+}
+
+void RenderRasterize_Metal::render_node_side(clipping_window_data *window, vertical_surface_data *surface,
+											 bool void_present, RenderStep renderStep)
+{
 	simd_long3 vertices[4];
 	
 	// surface->pN.i maps to viewspace Z (near to far)

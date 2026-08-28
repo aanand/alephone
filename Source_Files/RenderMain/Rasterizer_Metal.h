@@ -25,6 +25,10 @@ class Rasterizer_Metal_Class : public RasterizerClass {
 
 class RenderRasterize_Metal : public RenderRasterizerClass {
 protected:
+	void render_node_floor_or_ceiling(
+		clipping_window_data *window, polygon_data *polygon, horizontal_surface_data *surface,
+		bool void_present, bool ceil, RenderStep renderStep) override;
+
 	void render_node_side(
 		  clipping_window_data *window, vertical_surface_data *surface,
 		  bool void_present, RenderStep renderStep) override;
