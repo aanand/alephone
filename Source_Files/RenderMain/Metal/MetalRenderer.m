@@ -18,30 +18,6 @@
 #include "MetalRenderer.h"
 
 
-@interface Quad : NSObject
-@property (readonly, nonatomic) simd_float3 v0, v1, v2, v3;
-- (Quad *) initWithV0:(simd_float3)v0 v1:(simd_float3)v1 v2:(simd_float3)v2 v3:(simd_float3)v3;
-@end
-
-@implementation Quad
-
-- (Quad *) initWithV0:(simd_float3)v0 v1:(simd_float3)v1 v2:(simd_float3)v2 v3:(simd_float3)v3 {
-	self = [super init];
-	if (self) {
-		_v0 = v0;
-		_v1 = v1;
-		_v2 = v2;
-		_v3 = v3;
-	}
-	return self;
-}
-
-- (NSString *) description {
-	return [NSString stringWithFormat:@"Quad{float3(%f,%f,%f),float3(%f,%f,%f),float3(%f,%f,%f),float3(%f,%f,%f)}", _v0.x, _v0.y, _v0.z, _v1.x, _v1.y, _v1.z, _v2.x, _v2.y, _v2.z, _v3.x, _v3.y, _v3.z];
-}
-
-@end
-
 @interface Poly : NSObject
 @property (readonly, nonatomic) simd_float3 *vertices;
 @property (readonly, nonatomic) int vertexCount;
@@ -128,7 +104,6 @@ API_AVAILABLE(macos(26.0))
 
 	// Shader inputs
 	
-//	id<MTLBuffer> quadsVertexBuffer;
 	id<MTLBuffer> trianglesVertexBuffer;
 
 	id<MTLBuffer> viewportSizeBuffer;
@@ -136,7 +111,6 @@ API_AVAILABLE(macos(26.0))
 
 	// Short-lived variables, created per frame
 
-	NSMutableArray<Quad*> *quads;
 	NSMutableArray<Poly*> *polygons;
 }
 
@@ -249,15 +223,7 @@ API_AVAILABLE(macos(26.0))
 
 - (void) begin {
 	frameNumber += 1;
-	quads = [[NSMutableArray alloc] init];
 	polygons = [[NSMutableArray alloc] init];
-}
-
-- (void) addQuadWithVertices:(simd_long3 *)vertices {
-	[quads addObject:[[Quad alloc] initWithV0:scaleToViewSpace(vertices[0])
-										   v1:scaleToViewSpace(vertices[1])
-										   v2:scaleToViewSpace(vertices[2])
-										   v3:scaleToViewSpace(vertices[3])]];
 }
 
 - (void) addPolygonWithVertices:(simd_long3 *)vertices count:(int)vertexCount {
@@ -272,40 +238,14 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (int)loadVariableSizeBuffers {
-//	QuadData quadArray[quads.count];
-//	for (int i = 0; i < quads.count; i++) {
-//		Quad *q = [quads objectAtIndex:i];
-//		quadArray[i].v0 = q.v0;
-//		quadArray[i].v1 = q.v1;
-//		quadArray[i].v2 = q.v2;
-//		quadArray[i].v3 = q.v3;
-//	}
-//	
-//	id<MTLBuffer> newBuffer = [device newBufferWithLength:(sizeof(QuadData) * quads.count)
-//												  options:MTLResourceStorageModeShared];
-//	memcpy(newBuffer.contents, quadArray, sizeof(QuadData) * quads.count);
-//	
-//	if (quadsVertexBuffer) {
-//		[residencySet removeAllocation:quadsVertexBuffer];
-//	}
-//	[residencySet addAllocation:newBuffer];
-//	[residencySet commit];
-//	
-//	quadsVertexBuffer = newBuffer;
-	
-//	NSLog(@"%@", polygons);
-	
 	int numTriangles = 0;
 	for (int i=0; i<polygons.count; i++) {
 		Poly *poly = [polygons objectAtIndex:i];
 		numTriangles += poly.vertexCount - 2;
 	}
-	
-//	NSLog(@"numTriangles = %d", numTriangles);
-	
+		
 	uint numVertices = numTriangles * 3;
 	uint vertexBufferSize = sizeof(simd_float3) * numVertices;
-//	NSLog(@"vertexBufferSize = %u", vertexBufferSize);
 
 	simd_float3 *allVertices = malloc(vertexBufferSize);
 
@@ -318,11 +258,6 @@ API_AVAILABLE(macos(26.0))
 			allVertices[vertexIndex+2] = poly.vertices[j+2];
 			vertexIndex += 3;
 		}
-	}
-	
-	for (int v=0; v<(numTriangles*3); v++) {
-		simd_float3 vertex = allVertices[v];
-		NSLog(@"%f, %f, %f", vertex.x, vertex.y, vertex.z);
 	}
 	
 	id<MTLBuffer> newBuffer = [device newBufferWithLength:vertexBufferSize
@@ -375,14 +310,10 @@ API_AVAILABLE(macos(26.0))
 	viewPort.height = (double)viewportSize.y;
 	[renderPassEncoder setViewport:viewPort];
 	
-	NSLog(@"numVertices = %d", numVertices);
-	
 	[argumentTable setAddress:trianglesVertexBuffer.gpuAddress atIndex:0];
 	[argumentTable setAddress:viewportSizeBuffer.gpuAddress atIndex:1];
 	[argumentTable setAddress:perspectiveProjectionBuffer.gpuAddress atIndex:2];
 	[renderPassEncoder setArgumentTable:argumentTable atStages:MTLRenderStageVertex];
-//	[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:(6 * quads.count)]; // 2 triangles per quad * 3 vertices per triangle
-//	[renderPassEncoder drawPrimitives:MTLPrimitiveTypeLine vertexStart:0 vertexCount:(2 * quads.count)]; // 2 line points per quad
 	[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:numVertices];
 
 	[renderPassEncoder endEncoding];

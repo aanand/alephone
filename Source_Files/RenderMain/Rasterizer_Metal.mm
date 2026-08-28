@@ -101,7 +101,7 @@ void RenderRasterize_Metal::render_node_side(clipping_window_data *window, verti
 	
 	if (@available(macOS 26.0, *)) {
 		if (renderer) {
-			[renderer addQuadWithVertices:vertices];
+			[renderer addPolygonWithVertices:vertices count:4];
 		}
 	}
 }
