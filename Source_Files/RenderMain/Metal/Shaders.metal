@@ -27,11 +27,6 @@ quadShader(uint vertexID [[vertex_id]],
 	uint abcdef = vertexID % 6;    // which point of the 6 we need to draw, from 0..5
 	
 	QuadData quad = quadData[quadIndex];
-//	QuadData quad;
-//	quad.v0 = float3(-0.5, -0.5, 0);
-//	quad.v1 = float3(-0.5, +0.5, 0);
-//	quad.v2 = float3(+0.5, +0.5, 0);
-//	quad.v3 = float3(+0.5, -0.5, 0);
 	
 	float3 position;
 
@@ -62,7 +57,7 @@ quadShader(uint vertexID [[vertex_id]],
 	result = perspectiveProjection * result;
 
 	out.position = result;
-	out.color = float4(1-result.z, 1-result.z, 1-result.z, 1.0);
+	out.color = float4(clamp(float3(1, 1, 1) - result.zzz * 0.1, 0.0, 1.0), 1.0);
 	
 	return out;
 }

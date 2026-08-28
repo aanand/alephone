@@ -42,10 +42,11 @@
 
 @end
 
+// Assumes fov is the horizontal FOV, not the traditional vertical one
 simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
 	float fovRadians = fov * 8.0 * atan(1.0) / 360.0;
-	float ys = 1.0 / tanf(fovRadians * 0.5);
-	float xs = ys / aspectRatio;
+	float xs = 1.0 / tanf(fovRadians * 0.5);
+	float ys = xs * aspectRatio;
 	float nz = 0.01;
 	
 	return simd_matrix((simd_float4){  xs, 0.0, 0.0, 0.0 },
@@ -54,19 +55,10 @@ simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
 					   (simd_float4){ 0.0, 0.0, -nz, 0.0 });
 }
 
-simd_float3 viewToClipSpace(VertexFloat3 worldSpace) {
-	VertexFloat3 clipSpace = worldSpace;
-
-	// scale down
-	clipSpace *= (1.0/8192.0);
-	
-	// clamp to [-1, 1]
-	clipSpace = simd_clamp(clipSpace, -1.0, 1.0);
-
-	// scale z down to [0, 1] (Metal differs from OpenGL here)
-	clipSpace.z = 0.5 + 0.5 * clipSpace.z;
-	
-	return clipSpace;
+// Aleph One hands us camera-relative quad vertices whose dimensions seem to lie in the [-2000, 2000] range or so.
+// Scaling them down doesn't affect their eventual position on the screen, but does stop them getting excised from Metal's clip-space range.
+simd_float3 scaleToViewSpace(VertexFloat3 worldSpace) {
+	return worldSpace * (1.0/2000.0);
 }
 
 API_AVAILABLE(macos(26.0))
@@ -113,7 +105,6 @@ API_AVAILABLE(macos(26.0))
 	
 	fov = 90.0;
 	viewportSize = simd_make_uint2(width, height) * ((uint) NSScreen.mainScreen.backingScaleFactor);
-	NSLog(@"viewportSize = %d, %d", viewportSize.x, viewportSize.y);
 	frameNumber = 0;
 	
 	metalLayer = (__bridge CAMetalLayer*)SDL_RenderGetMetalLayer(renderer);
@@ -212,7 +203,6 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (void) updateViewWithFOV:(float)newFOV {
-	NSLog(@"setting fov: %f", newFOV);
 	fov = newFOV;
 }
 
@@ -222,20 +212,13 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (void) addQuadWithVertices:(simd_long3 *)vertices {
-	NSLog(@"input quad: %@", [[Quad alloc] initWithV0:simd_make_float3(vertices[0].x, vertices[0].y, vertices[0].z)
-												   v1:simd_make_float3(vertices[1].x, vertices[1].y, vertices[1].z)
-												   v2:simd_make_float3(vertices[2].x, vertices[2].y, vertices[2].z)
-												   v3:simd_make_float3(vertices[3].x, vertices[3].y, vertices[3].z)]);
-	
-	[quads addObject:[[Quad alloc] initWithV0:viewToClipSpace(simd_make_float3(vertices[0].x, vertices[0].y, vertices[0].z))
-										   v1:viewToClipSpace(simd_make_float3(vertices[1].x, vertices[1].y, vertices[1].z))
-										   v2:viewToClipSpace(simd_make_float3(vertices[2].x, vertices[2].y, vertices[2].z))
-										   v3:viewToClipSpace(simd_make_float3(vertices[3].x, vertices[3].y, vertices[3].z))]];
+	[quads addObject:[[Quad alloc] initWithV0:scaleToViewSpace(simd_make_float3(vertices[0].x, vertices[0].y, vertices[0].z))
+										   v1:scaleToViewSpace(simd_make_float3(vertices[1].x, vertices[1].y, vertices[1].z))
+										   v2:scaleToViewSpace(simd_make_float3(vertices[2].x, vertices[2].y, vertices[2].z))
+										   v3:scaleToViewSpace(simd_make_float3(vertices[3].x, vertices[3].y, vertices[3].z))]];
 }
 
 - (void)loadQuads {
-	NSLog(@"quads = %@", quads);
-	
 	QuadData quadArray[quads.count];
 	for (int i = 0; i < quads.count; i++) {
 		Quad *q = [quads objectAtIndex:i];
