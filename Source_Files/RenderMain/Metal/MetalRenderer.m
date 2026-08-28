@@ -45,7 +45,8 @@ API_AVAILABLE(macos(26.0))
 	window = sdlWindow;
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
 	
-	viewportSize = simd_make_uint2(width, height);
+	viewportSize = simd_make_uint2(width, height) * ((uint) NSScreen.mainScreen.backingScaleFactor);
+	NSLog(@"viewportSize = %d, %d", viewportSize.x, viewportSize.y);
 	frameNumber = 0;
 	
 	metalLayer = (__bridge CAMetalLayer*)SDL_RenderGetMetalLayer(renderer);
