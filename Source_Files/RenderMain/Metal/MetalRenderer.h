@@ -9,6 +9,7 @@
 #define MetalRenderer_h
 
 #import <Foundation/NSObject.h>
+#include <simd/simd.h>
 
 #include <SDL2/SDL.h>
 
@@ -19,7 +20,9 @@ API_AVAILABLE(macos(26.0))
 								 width:(int)width
 								height:(int)height;
 
-- (void) drawFrame;
+- (void) begin;
+- (void) addQuadWithVertices:(simd_long3*)vertices;
+- (void) end;
 
 @end
 

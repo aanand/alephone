@@ -16,15 +16,17 @@
 #include "RenderRasterize.h"
 
 extern bool Metal_InitializeForWindow(SDL_Window* window, int width, int height);
-extern void Metal_Begin();
 
 class Rasterizer_Metal_Class : public RasterizerClass {
-	void Begin() {
-		Metal_Begin();
-	}
+	void Begin();
+	void End();
 };
 
 class RenderRasterize_Metal : public RenderRasterizerClass {
+protected:
+	void render_node_side(
+		  clipping_window_data *window, vertical_surface_data *surface,
+		  bool void_present, RenderStep renderStep) override;
 };
 
 #endif /* Rasterizer_Metal_h */

@@ -17,6 +17,47 @@
 #include "VertexTypes.h"
 #include "MetalRenderer.h"
 
+
+@interface Quad : NSObject
+@property (readonly, nonatomic) simd_float3 v0, v1, v2, v3;
+- (Quad *) initWithV0:(simd_float3)v0 v1:(simd_float3)v1 v2:(simd_float3)v2 v3:(simd_float3)v3;
+@end
+
+@implementation Quad
+
+- (Quad *) initWithV0:(simd_float3)v0 v1:(simd_float3)v1 v2:(simd_float3)v2 v3:(simd_float3)v3 {
+	self = [super init];
+	if (self) {
+		_v0 = v0;
+		_v1 = v1;
+		_v2 = v2;
+		_v3 = v3;
+	}
+	return self;
+}
+
+- (NSString *) description {
+	return [NSString stringWithFormat:@"Quad{float3(%f,%f,%f),float3(%f,%f,%f),float3(%f,%f,%f),float3(%f,%f,%f)}", _v0.x, _v0.y, _v0.z, _v1.x, _v1.y, _v1.z, _v2.x, _v2.y, _v2.z, _v3.x, _v3.y, _v3.z];
+}
+
+@end
+
+simd_float3 worldToClipSpace(VertexFloat3 vertex) {
+	// swap Y and Z - in world space, X and Y are east-west and north-south
+	VertexFloat3 clipSpace = vertex.xzy;
+	
+	// scale down
+	clipSpace *= (1.0/8192.0);
+	
+	// clamp to [-1, 1]
+	clipSpace = simd_clamp(clipSpace, -1.0, 1.0);
+
+	// scale z down to [0, 1] (Metal differs from OpenGL here)
+	clipSpace.z = 0.5 + 0.5 * clipSpace.z;
+
+	return clipSpace;
+}
+
 API_AVAILABLE(macos(26.0))
 @implementation MetalRenderer
 {
@@ -34,11 +75,16 @@ API_AVAILABLE(macos(26.0))
 	id<MTL4ArgumentTable> argumentTable;
 	id<MTLResidencySet> residencySet;
 	id<MTL4CommandAllocator> commandAllocator;
-	id<MTLBuffer> triangleVertexBuffer;
-	id<MTLBuffer> viewportSizeBuffer;
 	id<MTLSharedEvent> sharedEvent;
-	
 	id<MTLRenderPipelineState> renderPipelineState;
+
+	// Shader inputs
+	
+	id<MTLBuffer> quadsVertexBuffer;
+
+	// Short-lived variables, created per frame
+
+	NSMutableArray<Quad*> *quads;
 }
 
 - (MetalRenderer *) initializeWithWindow:(SDL_Window *)sdlWindow width:(int)width height:(int)height {
@@ -57,17 +103,10 @@ API_AVAILABLE(macos(26.0))
 	commandBuffer = [device newCommandBuffer];
 	defaultLibrary = [device newDefaultLibrary];
 
-	triangleVertexBuffer = [device newBufferWithLength:sizeof(TriangleData)
-											   options:MTLResourceStorageModeShared];
-	if (!triangleVertexBuffer) {
-		NSLog(@"Couldn't create triangle vertex buffer");
-		return nil;
-	}
-	
 	NSError *error;
 	
 	MTL4ArgumentTableDescriptor *argumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
-	argumentTableDescriptor.maxBufferBindCount = 2;
+	argumentTableDescriptor.maxBufferBindCount = 1;
 	argumentTable = [device newArgumentTableWithDescriptor:argumentTableDescriptor
 													 error:&error];
 	
@@ -86,9 +125,6 @@ API_AVAILABLE(macos(26.0))
 	
 	commandAllocator = [device newCommandAllocator];
 	
-	viewportSizeBuffer = [device newBufferWithLength:sizeof(viewportSize)
-											 options:MTLResourceStorageModeShared];
-
 	renderPipelineState = [self compileRenderPipeline:metalLayer.pixelFormat];
 	if (!renderPipelineState) {
 		return nil;
@@ -97,9 +133,6 @@ API_AVAILABLE(macos(26.0))
 	sharedEvent = [device newSharedEvent];
 	sharedEvent.signaledValue = frameNumber;
 	
-	[residencySet addAllocation:viewportSizeBuffer];
-	[residencySet addAllocation:triangleVertexBuffer];
-	[residencySet commit];
 	[commandQueue addResidencySet:residencySet];
 	[commandQueue addResidencySet:metalLayer.residencySet];
 	
@@ -132,7 +165,7 @@ API_AVAILABLE(macos(26.0))
 - (MTL4RenderPipelineDescriptor *) configureRenderPipeline:(MTLPixelFormat) colorPixelFormat {
 	MTL4LibraryFunctionDescriptor *vertexFunction = [MTL4LibraryFunctionDescriptor new];
 	vertexFunction.library = defaultLibrary;
-	vertexFunction.name = @"vertexShader";
+	vertexFunction.name = @"quadShader";
 	
 	MTL4LibraryFunctionDescriptor *fragmentFunction = [MTL4LibraryFunctionDescriptor new];
 	fragmentFunction.library = defaultLibrary;
@@ -147,23 +180,60 @@ API_AVAILABLE(macos(26.0))
 	return descriptor;
 }
 
-- (void) drawFrame {
+- (void) begin {
 	frameNumber += 1;
+	quads = [[NSMutableArray alloc] init];
+}
+
+- (void) addQuadWithVertices:(simd_long3 *)vertices {
+	[quads addObject:[[Quad alloc] initWithV0:worldToClipSpace(simd_make_float3(vertices[0].x, vertices[0].y, vertices[0].z))
+										   v1:worldToClipSpace(simd_make_float3(vertices[1].x, vertices[1].y, vertices[1].z))
+										   v2:worldToClipSpace(simd_make_float3(vertices[2].x, vertices[2].y, vertices[2].z))
+										   v3:worldToClipSpace(simd_make_float3(vertices[3].x, vertices[3].y, vertices[3].z))]];
+}
+
+- (void)loadQuads {
+	NSLog(@"quads = %@", quads);
 	
+	QuadData quadArray[quads.count];
+	for (int i = 0; i < quads.count; i++) {
+		Quad *q = [quads objectAtIndex:i];
+		quadArray[i].v0 = q.v0;
+		quadArray[i].v1 = q.v1;
+		quadArray[i].v2 = q.v2;
+		quadArray[i].v3 = q.v3;
+	}
+	
+	id<MTLBuffer> newBuffer = [device newBufferWithLength:(sizeof(QuadData) * quads.count)
+													   options:MTLResourceStorageModeShared];
+	memcpy(newBuffer.contents, quadArray, sizeof(QuadData) * quads.count);
+	
+	if (quadsVertexBuffer) {
+		[residencySet removeAllocation:quadsVertexBuffer];
+	}
+	[residencySet addAllocation:newBuffer];
+	[residencySet commit];
+
+	quadsVertexBuffer = newBuffer;
+}
+
+- (void) end {
+	[self loadQuads];
+
 	NSString *label = [NSString stringWithFormat:@"Frame %llu", frameNumber];
-
-	id<CAMetalDrawable> drawable = [metalLayer nextDrawable];
-
+	
+	id<CAMetalDrawable> currentDrawable = [metalLayer nextDrawable];
+	
 	[commandBuffer beginCommandBufferWithAllocator:commandAllocator];
 	commandBuffer.label = label;
 	
-	id<MTL4RenderCommandEncoder> renderPassEncoder;
 	MTL4RenderPassDescriptor *configuration = [MTL4RenderPassDescriptor new];
-	configuration.colorAttachments[0].texture = drawable.texture;
+	configuration.colorAttachments[0].texture = currentDrawable.texture;
 	configuration.colorAttachments[0].loadAction = MTLLoadActionClear;
 	configuration.colorAttachments[0].storeAction = MTLStoreActionStore;
-
-	renderPassEncoder = [commandBuffer renderCommandEncoderWithDescriptor:configuration];
+	
+	id<MTL4RenderCommandEncoder> renderPassEncoder = [commandBuffer renderCommandEncoderWithDescriptor:configuration];
+	if (!renderPassEncoder) return;
 	renderPassEncoder.label = label;
 	
 	[renderPassEncoder setRenderPipelineState:renderPipelineState];
@@ -175,85 +245,19 @@ API_AVAILABLE(macos(26.0))
 	viewPort.zfar = 1.0;
 	viewPort.width = (double)viewportSize.x;
 	viewPort.height = (double)viewportSize.y;
-
 	[renderPassEncoder setViewport:viewPort];
 	
-	const short radius = 350;
-	const short angle = frameNumber % 360;
-	
-	TriangleData triangleData;
-	triangleRedGreenBlue(radius, angle, &triangleData);
-	memcpy(triangleVertexBuffer.contents, &triangleData, sizeof(TriangleData));
-	memcpy(viewportSizeBuffer.contents, &viewportSize, sizeof(viewportSize));
-	
-	[argumentTable setAddress:triangleVertexBuffer.gpuAddress atIndex:0];
-	[argumentTable setAddress:viewportSizeBuffer.gpuAddress atIndex:1];
+	[argumentTable setAddress:quadsVertexBuffer.gpuAddress atIndex:0];
 	[renderPassEncoder setArgumentTable:argumentTable atStages:MTLRenderStageVertex];
-	[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+	[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:(6 * quads.count)]; // 2 triangles per quad * 3 vertices per triangle
+
 	[renderPassEncoder endEncoding];
 	[commandBuffer endCommandBuffer];
 	
-	[commandQueue waitForDrawable:drawable];
+	[commandQueue waitForDrawable:currentDrawable];
 	[commandQueue commit:&commandBuffer count:1];
-	[commandQueue signalDrawable:drawable];
-	[drawable present];
-}
-
-/// A four-component red color.
-const simd_float4 red = { 1.0, 0.0, 0.0, 1.0 };
-
-/// A four-component green color.
-const simd_float4 green = { 0.0, 1.0, 0.0, 1.0 };
-
-/// A four-component blue color.
-const simd_float4 blue = { 0.0, 0.0, 1.0, 1.0 };
-
-void triangleRedGreenBlue(float radius,
-						  float rotationInDegrees,
-						  TriangleData *triangleData)
-{
-	/// An angle, in radians, that's equal to the rotation.
-	const float angle0 = (float)rotationInDegrees * M_PI / 180.0f;
-
-	/// An angle, in radians, one-third of a circle more than the previous angle.
-	///
-	/// This is the equivalent of adding 120° to the first angle.
-	const float angle1 = angle0 + (2.0f * M_PI  / 3.0f);
-
-	/// An angle, in radians, one-third of a circle more than the previous angle.
-	///
-	/// This is the equivalent of adding 240° to the first angle.
-	const float angle2 = angle0 + (4.0f * M_PI  / 3.0f);
-
-	/// The position of the triangle's first vertex.
-	simd_float2 position0 = {
-		radius * cosf(angle0),
-		radius * sinf(angle0)
-	};
-
-	/// The position of the triangle's second vertex.
-	simd_float2 position1 = {
-		radius * cosf(angle1),
-		radius * sinf(angle1)
-	};
-
-	/// The position of the triangle's third vertex.
-	simd_float2 position2 = {
-		radius * cosf(angle2),
-		radius * sinf(angle2)
-	};
-
-	// The triangle's red, bottom-right vertex.
-	triangleData->vertex0.color = red;
-	triangleData->vertex0.position = position0;
-
-	// The triangle's green, bottom-left vertex.
-	triangleData->vertex1.color = green;
-	triangleData->vertex1.position = position1;
-
-	// The triangle's blue, top-center vertex.
-	triangleData->vertex2.color = blue;
-	triangleData->vertex2.position = position2;
+	[commandQueue signalDrawable:currentDrawable];
+	[currentDrawable present];
 }
 
 @end

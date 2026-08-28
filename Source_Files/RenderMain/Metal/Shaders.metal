@@ -16,19 +16,48 @@ struct RasterizerData {
 };
 
 vertex RasterizerData
-vertexShader(uint vertexID [[vertex_id]],
-			 constant VertexData *vertexData [[buffer(0)]],
-			 constant uint2 *viewportSizePointer [[buffer(1)]]) {
+quadShader(uint vertexID [[vertex_id]],
+		   constant QuadData *quadData [[buffer(0)]]) {
+
 	RasterizerData out;
 
-	float2 pixelSpacePosition = vertexData[vertexID].position.xy;
-	float2 viewportSize = float2(*viewportSizePointer);
+	uint quadIndex = vertexID / 6; // index into quadData
+	uint abcdef = vertexID % 6;    // which point of the 6 we need to draw, from 0..5
 	
-	out.position.xy = pixelSpacePosition / (viewportSize/2.0);
-	out.position.z = 0.0;
-	out.position.w = 1.0;
+	QuadData quad = quadData[quadIndex];
+//	QuadData quad;
+//	quad.v0 = float3(-0.5, -0.5, 0);
+//	quad.v1 = float3(-0.5, +0.5, 0);
+//	quad.v2 = float3(+0.5, +0.5, 0);
+//	quad.v3 = float3(+0.5, -0.5, 0);
 	
-	out.color = vertexData[vertexID].color;
+	float3 position;
+
+	switch (abcdef) {
+		// Top triangle is v0, v1, v2
+		case 0:
+			position = quad.v0;
+			break;
+		case 1:
+			position = quad.v1;
+			break;
+		case 2:
+			position = quad.v2;
+			break;
+		// Bottom triangle is v0, v2, v3
+		case 3:
+			position = quad.v0;
+			break;
+		case 4:
+			position = quad.v2;
+			break;
+		case 5:
+			position = quad.v3;
+			break;
+	}
+
+	out.position = float4(position.xyz, 1.0);
+	out.color = float4(1.0, 0.0, 0.0, 1.0);
 	
 	return out;
 }
