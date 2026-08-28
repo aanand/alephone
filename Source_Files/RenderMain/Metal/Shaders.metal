@@ -17,7 +17,9 @@ struct RasterizerData {
 
 vertex RasterizerData
 quadShader(uint vertexID [[vertex_id]],
-		   constant QuadData *quadData [[buffer(0)]]) {
+		   constant QuadData *quadData [[buffer(0)]],
+		   constant float2 *viewportSize [[buffer(1)]],
+		   constant float4x4 *perspectiveProjection [[buffer(2)]]) {
 
 	RasterizerData out;
 
@@ -55,9 +57,30 @@ quadShader(uint vertexID [[vertex_id]],
 			position = quad.v3;
 			break;
 	}
+	
+	float4 result = float4(position, 1.0);
+//	result = (*perspectiveProjection) * result;
 
-	out.position = float4(position.xyz, 1.0);
-	out.color = float4(1.0, 0.0, 0.0, 1.0);
+	out.position = result;
+	out.color = clamp(result, 0.0, 1.0);
+	
+	return out;
+}
+
+vertex RasterizerData
+mapShader(uint vertexID [[vertex_id]],
+		  constant QuadData *quadData [[buffer(0)]],
+		  constant float2 *viewportSize [[buffer(1)]],
+		  constant float4x4 *perspectiveProjection [[buffer(2)]]) {
+	
+	RasterizerData out;
+
+	uint quadIndex = vertexID / 2; // index into quadData
+	uint pointIndex = vertexID % 2; // 0 = start, 1 = end
+	float3 position = pointIndex == 0 ? quadData[quadIndex].v0 : quadData[quadIndex].v1;
+
+	out.position = float4(position.xz, 0.0, 1.0);
+	out.color = float4(normalize(position.xyz) * 0.5 + 0.5, 1.0);
 	
 	return out;
 }

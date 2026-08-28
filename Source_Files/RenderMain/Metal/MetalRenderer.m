@@ -42,10 +42,21 @@
 
 @end
 
-simd_float3 worldToClipSpace(VertexFloat3 vertex) {
-	// swap Y and Z - in world space, X and Y are east-west and north-south
-	VertexFloat3 clipSpace = vertex.xzy;
+simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
+	float fovRadians = fov * 8.0 * atan(1.0) / 360.0;
+	float ys = 1.0 / tanf(fovRadians * 0.5);
+	float xs = ys / aspectRatio;
+	float nz = 0.1;
 	
+	return simd_matrix((simd_float4){  xs, 0.0, 0.0, 0.0 },
+					   (simd_float4){ 0.0,  ys, 0.0, 0.0 },
+					   (simd_float4){ 0.0, 0.0, 1.0, 0.0 },
+					   (simd_float4){ 0.0, 0.0, -nz, 0.0 });
+}
+
+simd_float3 viewToClipSpace(VertexFloat3 worldSpace, simd_float4x4 projection) {
+	VertexFloat3 clipSpace = worldSpace;
+
 	// scale down
 	clipSpace *= (1.0/8192.0);
 	
@@ -53,20 +64,30 @@ simd_float3 worldToClipSpace(VertexFloat3 vertex) {
 	clipSpace = simd_clamp(clipSpace, -1.0, 1.0);
 
 	// scale z down to [0, 1] (Metal differs from OpenGL here)
-	clipSpace.z = 0.5 + 0.5 * clipSpace.z;
+	clipSpace.z = 0.5 + 0.25 * clipSpace.z;
+	
+	simd_float4 homogenous = simd_make_float4(clipSpace, 1.0);
+	simd_float4 projected = simd_mul(projection, homogenous);
 
-	return clipSpace;
+	return projected.xyz;
 }
 
 API_AVAILABLE(macos(26.0))
 @implementation MetalRenderer
 {
+	// External dependencies
+
 	SDL_Window *window;
 	SDL_Renderer *renderer;
 	CAMetalLayer *metalLayer;
+
+	// Variables
 	
 	simd_uint2 viewportSize;
+	float fov;
 	uint64_t frameNumber;
+	
+	// Metal pipeline insternals
 	
 	id<MTLDevice> device;
 	id<MTL4CommandQueue> commandQueue;
@@ -81,6 +102,8 @@ API_AVAILABLE(macos(26.0))
 	// Shader inputs
 	
 	id<MTLBuffer> quadsVertexBuffer;
+	id<MTLBuffer> viewportSizeBuffer;
+	id<MTLBuffer> perspectiveProjectionBuffer;
 
 	// Short-lived variables, created per frame
 
@@ -91,6 +114,7 @@ API_AVAILABLE(macos(26.0))
 	window = sdlWindow;
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
 	
+	fov = 90.0;
 	viewportSize = simd_make_uint2(width, height) * ((uint) NSScreen.mainScreen.backingScaleFactor);
 	NSLog(@"viewportSize = %d, %d", viewportSize.x, viewportSize.y);
 	frameNumber = 0;
@@ -106,7 +130,7 @@ API_AVAILABLE(macos(26.0))
 	NSError *error;
 	
 	MTL4ArgumentTableDescriptor *argumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
-	argumentTableDescriptor.maxBufferBindCount = 1;
+	argumentTableDescriptor.maxBufferBindCount = 3;
 	argumentTable = [device newArgumentTableWithDescriptor:argumentTableDescriptor
 													 error:&error];
 	
@@ -123,6 +147,8 @@ API_AVAILABLE(macos(26.0))
 		return nil;
 	}
 	
+	[self setupConstantSizeBuffers];
+	
 	commandAllocator = [device newCommandAllocator];
 	
 	renderPipelineState = [self compileRenderPipeline:metalLayer.pixelFormat];
@@ -137,6 +163,14 @@ API_AVAILABLE(macos(26.0))
 	[commandQueue addResidencySet:metalLayer.residencySet];
 	
 	return self;
+}
+
+- (void) setupConstantSizeBuffers {
+	viewportSizeBuffer = [device newBufferWithLength:sizeof(viewportSize) options:MTLResourceStorageModeShared];
+	[residencySet addAllocation:viewportSizeBuffer];
+	
+	perspectiveProjectionBuffer = [device newBufferWithLength:sizeof(simd_float4x4) options:MTLResourceStorageModeShared];
+	[residencySet addAllocation:perspectiveProjectionBuffer];
 }
 
 - (id<MTLRenderPipelineState>) compileRenderPipeline:(MTLPixelFormat) colorPixelFormat {
@@ -180,16 +214,28 @@ API_AVAILABLE(macos(26.0))
 	return descriptor;
 }
 
+- (void) updateViewWithFOV:(float)newFOV {
+	NSLog(@"setting fov: %f", newFOV);
+	fov = newFOV;
+}
+
 - (void) begin {
 	frameNumber += 1;
 	quads = [[NSMutableArray alloc] init];
 }
 
 - (void) addQuadWithVertices:(simd_long3 *)vertices {
-	[quads addObject:[[Quad alloc] initWithV0:worldToClipSpace(simd_make_float3(vertices[0].x, vertices[0].y, vertices[0].z))
-										   v1:worldToClipSpace(simd_make_float3(vertices[1].x, vertices[1].y, vertices[1].z))
-										   v2:worldToClipSpace(simd_make_float3(vertices[2].x, vertices[2].y, vertices[2].z))
-										   v3:worldToClipSpace(simd_make_float3(vertices[3].x, vertices[3].y, vertices[3].z))]];
+	simd_float4x4 projection = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
+
+	NSLog(@"input quad: %@", [[Quad alloc] initWithV0:simd_make_float3(vertices[0].x, vertices[0].y, vertices[0].z)
+												   v1:simd_make_float3(vertices[1].x, vertices[1].y, vertices[1].z)
+												   v2:simd_make_float3(vertices[2].x, vertices[2].y, vertices[2].z)
+												   v3:simd_make_float3(vertices[3].x, vertices[3].y, vertices[3].z)]);
+	
+	[quads addObject:[[Quad alloc] initWithV0:viewToClipSpace(simd_make_float3(vertices[0].x, vertices[0].y, vertices[0].z), projection)
+										   v1:viewToClipSpace(simd_make_float3(vertices[1].x, vertices[1].y, vertices[1].z), projection)
+										   v2:viewToClipSpace(simd_make_float3(vertices[2].x, vertices[2].y, vertices[2].z), projection)
+										   v3:viewToClipSpace(simd_make_float3(vertices[3].x, vertices[3].y, vertices[3].z), projection)]];
 }
 
 - (void)loadQuads {
@@ -220,6 +266,11 @@ API_AVAILABLE(macos(26.0))
 - (void) end {
 	[self loadQuads];
 
+	memcpy(viewportSizeBuffer.contents, &viewportSize, sizeof(viewportSize));
+
+	simd_float4x4 projection = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
+	memcpy(perspectiveProjectionBuffer.contents, &projection, sizeof(simd_float4x4));
+
 	NSString *label = [NSString stringWithFormat:@"Frame %llu", frameNumber];
 	
 	id<CAMetalDrawable> currentDrawable = [metalLayer nextDrawable];
@@ -248,8 +299,11 @@ API_AVAILABLE(macos(26.0))
 	[renderPassEncoder setViewport:viewPort];
 	
 	[argumentTable setAddress:quadsVertexBuffer.gpuAddress atIndex:0];
+	[argumentTable setAddress:viewportSizeBuffer.gpuAddress atIndex:1];
+	[argumentTable setAddress:perspectiveProjectionBuffer.gpuAddress atIndex:2];
 	[renderPassEncoder setArgumentTable:argumentTable atStages:MTLRenderStageVertex];
 	[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:(6 * quads.count)]; // 2 triangles per quad * 3 vertices per triangle
+//	[renderPassEncoder drawPrimitives:MTLPrimitiveTypeLine vertexStart:0 vertexCount:(2 * quads.count)]; // 2 line points per quad
 
 	[renderPassEncoder endEncoding];
 	[commandBuffer endCommandBuffer];

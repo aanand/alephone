@@ -20,6 +20,8 @@ API_AVAILABLE(macos(26.0))
 								 width:(int)width
 								height:(int)height;
 
+- (void) updateViewWithFOV:(float)fov;
+
 - (void) begin;
 - (void) addQuadWithVertices:(simd_long3*)vertices;
 - (void) end;

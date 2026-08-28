@@ -18,6 +18,7 @@
 extern bool Metal_InitializeForWindow(SDL_Window* window, int width, int height);
 
 class Rasterizer_Metal_Class : public RasterizerClass {
+	void SetView(view_data &View);
 	void Begin();
 	void End();
 };

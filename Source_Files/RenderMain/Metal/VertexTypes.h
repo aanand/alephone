@@ -9,11 +9,13 @@
 #define VertexTypes_h
 
 #ifdef __METAL_VERSION__
+typedef uint2 VertexUint2;
 typedef float2 VertexFloat2;
 typedef float3 VertexFloat3;
 typedef float4 VertexFloat4;
 #else
 #import <simd/simd.h>
+typedef simd_uint2 VertexUint2;
 typedef simd_float2 VertexFloat2;
 typedef simd_float3 VertexFloat3;
 typedef simd_float4 VertexFloat4;

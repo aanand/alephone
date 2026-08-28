@@ -41,6 +41,14 @@ bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
 	return false;
 }
 
+void Rasterizer_Metal_Class::SetView(view_data &View) {
+	if (@available(macOS 26.0, *)) {
+		if (renderer) {
+			[renderer updateViewWithFOV:View.field_of_view];
+		}
+	}
+}
+
 void Rasterizer_Metal_Class::Begin() {
 	if (@available(macOS 26.0, *)) {
 		if (renderer) {
@@ -62,10 +70,14 @@ void RenderRasterize_Metal::render_node_side(
 							  bool void_present, RenderStep renderStep) {
 	simd_long3 vertices[4];
 	
-	vertices[0] = simd_make_long3(surface->p0.i, surface->p0.j, surface->h0);
-	vertices[1] = simd_make_long3(surface->p1.i, surface->p1.j, surface->h0);
-	vertices[2] = simd_make_long3(surface->p1.i, surface->p1.j, surface->h1);
-	vertices[3] = simd_make_long3(surface->p0.i, surface->p0.j, surface->h1);
+	// surface->pN.i maps to viewspace Z
+	// surface->pN.j maps to viewspace X
+	// surface->hN   maps to viewspace Y
+	
+	vertices[0] = simd_make_long3(surface->p0.j, surface->h1, surface->p0.i);
+	vertices[1] = simd_make_long3(surface->p1.j, surface->h1, surface->p1.i);
+	vertices[2] = simd_make_long3(surface->p1.j, surface->h0, surface->p1.i);
+	vertices[3] = simd_make_long3(surface->p0.j, surface->h0, surface->p0.i);
 	
 	if (@available(macOS 26.0, *)) {
 		if (renderer) {
