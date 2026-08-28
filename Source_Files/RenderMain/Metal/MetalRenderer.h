@@ -8,6 +8,8 @@
 #ifndef MetalRenderer_h
 #define MetalRenderer_h
 
+#import <Foundation/NSObject.h>
+
 #include <SDL2/SDL.h>
 
 API_AVAILABLE(macos(26.0))

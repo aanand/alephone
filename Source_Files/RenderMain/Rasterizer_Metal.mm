@@ -8,10 +8,9 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_syswm.h>
 
-#include <Cocoa/Cocoa.h>
-
-#include "MetalRenderer.h"
 #include "Logging.h"
+
+#include "Metal/MetalRenderer.h"
 
 API_AVAILABLE(macos(26.0))
 MetalRenderer *renderer;
@@ -26,16 +25,16 @@ bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
 		
 		MetalRenderer *r = [[MetalRenderer alloc] initializeWithWindow:window width:width height:height];
 		if (!r) {
-			NSLog(@"Failed to initialize MetalRenderer");
+			logWarning("Failed to initialize MetalRenderer");
 			return false;
 		}
 		renderer = r;
 
-		NSLog(@"Initialized MetalRenderer: %@", renderer);
+		logWarning("Initialized MetalRenderer");
 		return true;
 	}
 
-	NSLog(@"Metal 4 not supported");
+	logWarning("Metal 4 not supported");
 	return false;
 }
 
