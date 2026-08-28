@@ -70,14 +70,17 @@ void RenderRasterize_Metal::render_node_side(
 							  bool void_present, RenderStep renderStep) {
 	simd_long3 vertices[4];
 	
-	// surface->pN.i maps to viewspace Z
-	// surface->pN.j maps to viewspace X
-	// surface->hN   maps to viewspace Y
+	// surface->pN.i maps to viewspace Z (near to far)
+	// surface->pN.j maps to viewspace X (left to right)
+	// surface->hN   maps to viewspace Y (low to high)
 	
-	vertices[0] = simd_make_long3(surface->p0.j, surface->h1, surface->p0.i);
-	vertices[1] = simd_make_long3(surface->p1.j, surface->h1, surface->p1.i);
-	vertices[2] = simd_make_long3(surface->p1.j, surface->h0, surface->p1.i);
-	vertices[3] = simd_make_long3(surface->p0.j, surface->h0, surface->p0.i);
+	long bottom = surface->h0;
+	long top = MIN(surface->h1, surface->hmax);
+	
+	vertices[0] = simd_make_long3(surface->p0.j, top,    surface->p0.i);
+	vertices[1] = simd_make_long3(surface->p1.j, top,    surface->p1.i);
+	vertices[2] = simd_make_long3(surface->p1.j, bottom, surface->p1.i);
+	vertices[3] = simd_make_long3(surface->p0.j, bottom, surface->p0.i);
 	
 	if (@available(macOS 26.0, *)) {
 		if (renderer) {
