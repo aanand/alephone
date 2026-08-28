@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 54;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -1938,6 +1938,10 @@
 		F5CFAD430200FA6B01D80110 /* SaveIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = SaveIcon.icns; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		E25D2B2F3041280B001A6224 /* Metal */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Metal; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
 /* Begin PBXFrameworksBuildPhase section */
 		4F13316B2F37392600B981C2 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
@@ -2723,6 +2727,7 @@
 		4F5568822F3940D400C9207C /* RenderMain */ = {
 			isa = PBXGroup;
 			children = (
+				E25D2B2F3041280B001A6224 /* Metal */,
 				4F5568492F3940D400C9207C /* Shaders */,
 				4F55684A2F3940D400C9207C /* AnimatedTextures.h */,
 				4F55684B2F3940D400C9207C /* AnimatedTextures.cpp */,
@@ -3732,6 +3737,9 @@
 			);
 			dependencies = (
 			);
+			fileSystemSynchronizedGroups = (
+				E25D2B2F3041280B001A6224 /* Metal */,
+			);
 			name = libalephonesteam;
 			packageProductDependencies = (
 			);
@@ -3750,6 +3758,9 @@
 			buildRules = (
 			);
 			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				E25D2B2F3041280B001A6224 /* Metal */,
 			);
 			name = libalephone;
 			packageProductDependencies = (

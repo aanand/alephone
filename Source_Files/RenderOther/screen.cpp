@@ -141,10 +141,10 @@ bool use_metal_for(short screentype) {
 	return prefer_metal && (screentype == _screentype_level);
 }
 
-void create_accelerated_rendering_context(SDL_Window *window, short screentype) {
+void create_accelerated_rendering_context(SDL_Window *window, short screentype, int width, int height) {
 	if (use_metal_for(screentype)) {
 		logError("Initializing Metal");
-		Metal_InitializeForWindow(window);
+		Metal_InitializeForWindow(window, width, height);
 	} else {
 		logError("Initializing OpenGL");
 		SDL_GL_CreateContext(window);
@@ -996,7 +996,7 @@ static void change_screen_mode(int width, int height, int depth, short screentyp
 		// see if we can actually run shaders
 		if (!context_created) {
 			logError("creating OpenGL context");
-			create_accelerated_rendering_context(main_screen, screentype);
+			create_accelerated_rendering_context(main_screen, screentype, width, height);
 			context_created = true;
 		}
 #if defined (__WIN32__) && (HAVE_OPENGL)
@@ -1090,7 +1090,7 @@ static void change_screen_mode(int width, int height, int depth, short screentyp
 	}
 #ifdef HAVE_OPENGL
 	if (!context_created && !nogl && screen_mode.acceleration != _no_acceleration) {
-		create_accelerated_rendering_context(main_screen, screentype);
+		create_accelerated_rendering_context(main_screen, screentype, width, height);
 		context_created = true;
 	}
 #endif

@@ -15,9 +15,8 @@
 #include "Rasterizer.h"
 #include "RenderRasterize.h"
 
-extern bool Metal_InitializeForWindow(SDL_Window* window);
-
-bool Metal_Begin();
+extern bool Metal_InitializeForWindow(SDL_Window* window, int width, int height);
+extern void Metal_Begin();
 
 class Rasterizer_Metal_Class : public RasterizerClass {
 	void Begin() {
