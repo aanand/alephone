@@ -17,13 +17,13 @@ typedef simd_float2 VertexFloat2;
 typedef simd_float4 VertexFloat4;
 #endif
 
-struct VertexData {
+typedef struct {
 	VertexFloat2 position;
 	VertexFloat4 color;
-};
+} VertexData;
 
-struct TriangleData {
+typedef struct {
 	VertexData vertex0, vertex1, vertex2;
-};
+} TriangleData;
 
 #endif /* VertexTypes_h */
