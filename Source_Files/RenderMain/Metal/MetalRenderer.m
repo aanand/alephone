@@ -192,11 +192,18 @@ API_AVAILABLE(macos(26.0))
 	
 	// Triangle fan: draw 0-1-2, 0-2-3, 0-3-4, etc
 	for (int j = 0; j < vertexCount-2; j++) {
-		[triangleVertexData appendBytes:vertices     length:sizeof(simd_float3)];
-		[triangleVertexData appendBytes:vertices+j+1 length:sizeof(simd_float3)];
-		[triangleVertexData appendBytes:vertices+j+2 length:sizeof(simd_float3)];
+		[self addVertex:vertices];
+		[self addVertex:vertices+j+1];
+		[self addVertex:vertices+j+2];
 		numTriangleVertices += 3;
 	}
+}
+
+- (void) addVertex:(simd_float3*)position {
+	Vertex vertex;
+	vertex.position = *position;
+	vertex.textureCoordinate = simd_make_float2(0.0, 0.0);
+	[triangleVertexData appendBytes:&vertex length:sizeof(Vertex)];
 }
 
 - (void) loadVariableSizeBuffers {

@@ -8,21 +8,11 @@
 #ifndef VertexTypes_h
 #define VertexTypes_h
 
-#ifdef __METAL_VERSION__
-typedef uint2 VertexUint2;
-typedef float2 VertexFloat2;
-typedef float3 VertexFloat3;
-typedef float4 VertexFloat4;
-#else
-#import <simd/simd.h>
-typedef simd_uint2 VertexUint2;
-typedef simd_float2 VertexFloat2;
-typedef simd_float3 VertexFloat3;
-typedef simd_float4 VertexFloat4;
-#endif
+#include <simd/simd.h>
 
 typedef struct {
-	VertexFloat3 v0, v1, v2, v3;
-} QuadData;
+	vector_float3 position;
+	vector_float2 textureCoordinate;
+} Vertex;
 
 #endif /* VertexTypes_h */
