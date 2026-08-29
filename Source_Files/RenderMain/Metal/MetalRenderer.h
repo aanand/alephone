@@ -23,7 +23,7 @@ API_AVAILABLE(macos(26.0))
 - (void) updateViewWithFOV:(float)fov;
 
 - (void) begin;
-- (void) addPolygonWithVertices:(simd_long3*)vertices count:(int)vertexCount;
+- (void) addPolygonWithVertices:(simd_float3*)vertices count:(int)vertexCount;
 - (void) end;
 
 @end

@@ -69,8 +69,8 @@ simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
 
 // Aleph One hands us camera-relative quad vertices whose dimensions seem to lie in the [-2000, 2000] range or so.
 // Scaling them down doesn't affect their eventual position on the screen, but does stop them getting excised from Metal's clip-space range.
-simd_float3 scaleToViewSpace(simd_long3 worldSpace) {
-	return simd_make_float3(worldSpace.x, worldSpace.y, worldSpace.z) / 2000.0;
+simd_float3 scaleToViewSpace(simd_float3 worldSpace) {
+	return worldSpace / 2000.0;
 }
 
 API_AVAILABLE(macos(26.0))
@@ -226,7 +226,7 @@ API_AVAILABLE(macos(26.0))
 	polygons = [[NSMutableArray alloc] init];
 }
 
-- (void) addPolygonWithVertices:(simd_long3 *)vertices count:(int)vertexCount {
+- (void) addPolygonWithVertices:(simd_float3 *)vertices count:(int)vertexCount {
 	simd_float3 *scaledVertices = (simd_float3*) malloc(sizeof(simd_float3) * vertexCount);
 	
 	for (int i=0; i<vertexCount; i++) {
