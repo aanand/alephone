@@ -14,6 +14,7 @@
 #include "Logging.h"
 
 #include "Metal/MetalRenderer.h"
+#include "Metal/VertexTypes.h"
 
 #include <simd/simd.h>
 
@@ -76,11 +77,14 @@ simd_float3 scaleToViewSpace(simd_float3 worldSpace) {
 void RenderRasterize_Metal::render_node_floor_or_ceiling(clipping_window_data *window, polygon_data *polygon, horizontal_surface_data *surface,
 														 bool void_present, bool ceil, RenderStep renderStep)
 {
-	auto vertices = std::vector<simd_float3>(polygon->vertex_count);
+	auto vertices = std::vector<Vertex>(polygon->vertex_count);
 
 	for (int i=0; i < polygon->vertex_count; i++) {
 		endpoint_data *data = get_endpoint_data(polygon->endpoint_indexes[i]);
-		vertices[i] = scaleToViewSpace(simd_make_float3(data->transformed.y, surface->height - view->origin.z, data->transformed.x));
+		vertices[i] = Vertex{
+			scaleToViewSpace(simd_make_float3(data->transformed.y, surface->height - view->origin.z, data->transformed.x)),
+			simd_make_float2(0, 0)
+		};
 	}
 	
 	if (@available(macOS 26.0, *)) {
@@ -100,11 +104,23 @@ void RenderRasterize_Metal::render_node_side(clipping_window_data *window, verti
 	long bottom = surface->h0;
 	long top = MIN(surface->h1, surface->hmax);
 	
-	simd_float3 vertices[] = {
-		scaleToViewSpace(simd_make_float3(surface->p0.j, top,    surface->p0.i)),
-		scaleToViewSpace(simd_make_float3(surface->p1.j, top,    surface->p1.i)),
-		scaleToViewSpace(simd_make_float3(surface->p1.j, bottom, surface->p1.i)),
-		scaleToViewSpace(simd_make_float3(surface->p0.j, bottom, surface->p0.i))
+	Vertex vertices[] = {
+		Vertex{
+			scaleToViewSpace(simd_make_float3(surface->p0.j, top,    surface->p0.i)),
+			simd_make_float2(0, 0)
+		},
+		Vertex{
+			scaleToViewSpace(simd_make_float3(surface->p1.j, top,    surface->p1.i)),
+			simd_make_float2(0, 0)
+		},
+		Vertex{
+			scaleToViewSpace(simd_make_float3(surface->p1.j, bottom, surface->p1.i)),
+			simd_make_float2(0, 0)
+		},
+		Vertex{
+			scaleToViewSpace(simd_make_float3(surface->p0.j, bottom, surface->p0.i)),
+			simd_make_float2(0, 0)
+		}
 	};
 
 	if (@available(macOS 26.0, *)) {

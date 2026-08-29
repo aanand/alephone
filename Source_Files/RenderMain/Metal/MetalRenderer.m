@@ -187,7 +187,7 @@ API_AVAILABLE(macos(26.0))
 	triangleVertexData = [NSMutableData data];
 }
 
-- (void) addPolygonWithVertices:(simd_float3 *)vertices count:(int)vertexCount {
+- (void) addPolygonWithVertices:(Vertex *)vertices count:(int)vertexCount {
 	assert(vertexCount > 2);
 	
 	// Triangle fan: draw 0-1-2, 0-2-3, 0-3-4, etc
@@ -199,11 +199,8 @@ API_AVAILABLE(macos(26.0))
 	}
 }
 
-- (void) addVertex:(simd_float3*)position {
-	Vertex vertex;
-	vertex.position = *position;
-	vertex.textureCoordinate = simd_make_float2(0.0, 0.0);
-	[triangleVertexData appendBytes:&vertex length:sizeof(Vertex)];
+- (void) addVertex:(Vertex*)vertex {
+	[triangleVertexData appendBytes:vertex length:sizeof(Vertex)];
 }
 
 - (void) loadVariableSizeBuffers {

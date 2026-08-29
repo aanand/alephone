@@ -13,6 +13,8 @@
 
 #include <SDL2/SDL.h>
 
+#include "Metal/VertexTypes.h"
+
 API_AVAILABLE(macos(26.0))
 @interface MetalRenderer : NSObject
 
@@ -23,7 +25,7 @@ API_AVAILABLE(macos(26.0))
 - (void) updateViewWithFOV:(float)fov;
 
 - (void) begin;
-- (void) addPolygonWithVertices:(simd_float3*)vertices count:(int)vertexCount;
+- (void) addPolygonWithVertices:(Vertex *)vertices count:(int)vertexCount;
 - (void) end;
 
 @end
