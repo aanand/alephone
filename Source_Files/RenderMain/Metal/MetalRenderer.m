@@ -18,42 +18,6 @@
 #include "MetalRenderer.h"
 
 
-@interface Poly : NSObject
-@property (readonly, nonatomic) simd_float3 *vertices;
-@property (readonly, nonatomic) int vertexCount;
-- (Poly *) initWithVertices:(simd_float3*)vertices count:(int)vertexCount;
-@end
-
-@implementation Poly
-
-- (Poly *) initWithVertices:(simd_float3 *)vertices count:(int)vertexCount {
-	self = [super init];
-	if (self) {
-		_vertices = vertices;
-		_vertexCount = vertexCount;
-	}
-	return self;
-}
-
-- (NSString *) description {
-	NSMutableString *string = [NSMutableString stringWithFormat:@"Poly(%d){", self.vertexCount];
-	
-	for (int i=0; i<self.vertexCount; i++) {
-		simd_float3 vertex = self.vertices[i];
-		[string appendString:[NSString stringWithFormat:@"float3(%f,%f,%f)", vertex.x, vertex.y, vertex.z]];
-		
-		if (i < self.vertexCount - 1) {
-			[string appendString:@","];
-		}
-	}
-	
-	[string appendString:@"}"];
-	
-	return string;
-}
-
-@end
-
 // Assumes fov is the horizontal FOV, not the traditional vertical one
 simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
 	float fovRadians = fov * 8.0 * atan(1.0) / 360.0;
@@ -65,12 +29,6 @@ simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
 					   (simd_float4){ 0.0,  ys, 0.0, 0.0 },
 					   (simd_float4){ 0.0, 0.0, 1.0, 1.0 },
 					   (simd_float4){ 0.0, 0.0, -nz, 0.0 });
-}
-
-// Aleph One hands us camera-relative quad vertices whose dimensions seem to lie in the [-2000, 2000] range or so.
-// Scaling them down doesn't affect their eventual position on the screen, but does stop them getting excised from Metal's clip-space range.
-simd_float3 scaleToViewSpace(simd_float3 worldSpace) {
-	return worldSpace / 2000.0;
 }
 
 API_AVAILABLE(macos(26.0))
@@ -111,7 +69,8 @@ API_AVAILABLE(macos(26.0))
 
 	// Short-lived variables, created per frame
 
-	NSMutableArray<Poly*> *polygons;
+	int numTriangleVertices;
+	NSMutableData *triangleVertexData;
 }
 
 - (MetalRenderer *) initializeWithWindow:(SDL_Window *)sdlWindow width:(int)width height:(int)height {
@@ -223,46 +182,27 @@ API_AVAILABLE(macos(26.0))
 
 - (void) begin {
 	frameNumber += 1;
-	polygons = [[NSMutableArray alloc] init];
+	
+	numTriangleVertices = 0;
+	triangleVertexData = [NSMutableData data];
 }
 
 - (void) addPolygonWithVertices:(simd_float3 *)vertices count:(int)vertexCount {
-	simd_float3 *scaledVertices = (simd_float3*) malloc(sizeof(simd_float3) * vertexCount);
+	assert(vertexCount > 2);
 	
-	for (int i=0; i<vertexCount; i++) {
-		scaledVertices[i] = scaleToViewSpace(vertices[i]);
+	// Triangle fan: draw 0-1-2, 0-2-3, 0-3-4, etc
+	for (int j = 0; j < vertexCount-2; j++) {
+		[triangleVertexData appendBytes:vertices     length:sizeof(simd_float3)];
+		[triangleVertexData appendBytes:vertices+j+1 length:sizeof(simd_float3)];
+		[triangleVertexData appendBytes:vertices+j+2 length:sizeof(simd_float3)];
+		numTriangleVertices += 3;
 	}
-	
-	Poly *polygon = [[Poly alloc] initWithVertices:scaledVertices count:vertexCount];
-	[polygons addObject:polygon];
 }
 
-- (int)loadVariableSizeBuffers {
-	int numTriangles = 0;
-	for (int i=0; i<polygons.count; i++) {
-		Poly *poly = [polygons objectAtIndex:i];
-		numTriangles += poly.vertexCount - 2;
-	}
-		
-	uint numVertices = numTriangles * 3;
-	uint vertexBufferSize = sizeof(simd_float3) * numVertices;
-
-	simd_float3 *allVertices = malloc(vertexBufferSize);
-
-	int vertexIndex = 0;
-	for (int i=0; i<polygons.count; i++) {
-		Poly *poly = [polygons objectAtIndex:i];
-		for (int j = 0; j < poly.vertexCount-2; j++) {
-			allVertices[vertexIndex]   = poly.vertices[0];
-			allVertices[vertexIndex+1] = poly.vertices[j+1];
-			allVertices[vertexIndex+2] = poly.vertices[j+2];
-			vertexIndex += 3;
-		}
-	}
-	
-	id<MTLBuffer> newBuffer = [device newBufferWithLength:vertexBufferSize
-													   options:MTLResourceStorageModeShared];
-	memcpy(newBuffer.contents, allVertices, vertexBufferSize);
+- (void) loadVariableSizeBuffers {
+	id<MTLBuffer> newBuffer = [device newBufferWithBytes:triangleVertexData.bytes
+												  length:triangleVertexData.length
+												 options:MTLResourceStorageModeShared];
 	
 	if (trianglesVertexBuffer) {
 		[residencySet removeAllocation:trianglesVertexBuffer];
@@ -271,12 +211,10 @@ API_AVAILABLE(macos(26.0))
 	[residencySet commit];
 
 	trianglesVertexBuffer = newBuffer;
-	
-	return numVertices;
 }
 
 - (void) end {
-	int numVertices = [self loadVariableSizeBuffers];
+	[self loadVariableSizeBuffers];
 
 	memcpy(viewportSizeBuffer.contents, &viewportSize, sizeof(viewportSize));
 
@@ -314,7 +252,7 @@ API_AVAILABLE(macos(26.0))
 	[argumentTable setAddress:viewportSizeBuffer.gpuAddress atIndex:1];
 	[argumentTable setAddress:perspectiveProjectionBuffer.gpuAddress atIndex:2];
 	[renderPassEncoder setArgumentTable:argumentTable atStages:MTLRenderStageVertex];
-	[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:numVertices];
+	[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:numTriangleVertices];
 
 	[renderPassEncoder endEncoding];
 	[commandBuffer endCommandBuffer];

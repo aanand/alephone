@@ -8,6 +8,8 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_syswm.h>
 
+#include <vector>
+
 #include "Rasterizer_Metal.h"
 #include "Logging.h"
 
@@ -65,19 +67,25 @@ void Rasterizer_Metal_Class::End() {
 	}
 }
 
+// Aleph One hands us camera-relative quad vertices whose dimensions seem to lie in the [-2000, 2000] range or so.
+// Scaling them down doesn't affect their eventual position on the screen, but does stop them getting excised from Metal's clip-space range.
+simd_float3 scaleToViewSpace(simd_float3 worldSpace) {
+	return worldSpace / 2000.0;
+}
+
 void RenderRasterize_Metal::render_node_floor_or_ceiling(clipping_window_data *window, polygon_data *polygon, horizontal_surface_data *surface,
 														 bool void_present, bool ceil, RenderStep renderStep)
 {
-	simd_float3 *vertices = (simd_float3*)malloc(sizeof(simd_float3) * polygon->vertex_count);
+	auto vertices = std::vector<simd_float3>(polygon->vertex_count);
 
 	for (int i=0; i < polygon->vertex_count; i++) {
 		endpoint_data *data = get_endpoint_data(polygon->endpoint_indexes[i]);
-		vertices[i] = simd_make_float3(data->transformed.y, surface->height - view->origin.z, data->transformed.x);
+		vertices[i] = scaleToViewSpace(simd_make_float3(data->transformed.y, surface->height - view->origin.z, data->transformed.x));
 	}
 	
 	if (@available(macOS 26.0, *)) {
 		if (renderer) {
-			[renderer addPolygonWithVertices:vertices count:polygon->vertex_count];
+			[renderer addPolygonWithVertices:vertices.data() count:polygon->vertex_count];
 		}
 	}
 }
@@ -93,10 +101,10 @@ void RenderRasterize_Metal::render_node_side(clipping_window_data *window, verti
 	long top = MIN(surface->h1, surface->hmax);
 	
 	simd_float3 vertices[] = {
-		simd_make_float3(surface->p0.j, top,    surface->p0.i),
-		simd_make_float3(surface->p1.j, top,    surface->p1.i),
-		simd_make_float3(surface->p1.j, bottom, surface->p1.i),
-		simd_make_float3(surface->p0.j, bottom, surface->p0.i)
+		scaleToViewSpace(simd_make_float3(surface->p0.j, top,    surface->p0.i)),
+		scaleToViewSpace(simd_make_float3(surface->p1.j, top,    surface->p1.i)),
+		scaleToViewSpace(simd_make_float3(surface->p1.j, bottom, surface->p1.i)),
+		scaleToViewSpace(simd_make_float3(surface->p0.j, bottom, surface->p0.i))
 	};
 
 	if (@available(macOS 26.0, *)) {
