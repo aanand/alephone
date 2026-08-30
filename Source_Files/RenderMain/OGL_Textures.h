@@ -261,6 +261,10 @@ public:
 	GLdouble U_Scale, V_Scale, U_Offset, V_Offset;
 	
 	// What to render:
+
+	const ImageDescriptor* GetNormal();
+	const ImageDescriptor* GetGlowing();
+	const ImageDescriptor* GetBump();
 	
 	// Always call this one and call it first; safe to allocate texture ID's in it
 	void RenderNormal();

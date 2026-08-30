@@ -1412,6 +1412,10 @@ void TextureManager::PlaceTexture(const ImageDescriptor *Image, bool normal_map)
 
 // What to render:
 
+const ImageDescriptor* TextureManager::GetNormal() { return NormalImage.get(); }
+const ImageDescriptor* TextureManager::GetGlowing() { return GlowImage.get(); }
+const ImageDescriptor* TextureManager::GetBump() { return OffsetImage.get(); }
+
 // Always call this one and call it first; safe to allocate texture ID's in it
 void TextureManager::RenderNormal()
 {
