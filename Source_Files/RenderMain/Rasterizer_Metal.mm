@@ -92,7 +92,7 @@ TextureManager* GetTextureManager(shape_descriptor ShapeDesc) {
 	return TMgr;
 }
 
-NSNumber* LoadWallTexture(vertical_surface_data *surface, simd_float3 *worldPositions, simd_float2 *textureCoordinates) {
+NSNumber* LoadWallTexture(vertical_surface_data *surface, simd_float3 *viewSpacePositions, simd_float2 *textureCoordinates) {
 	shape_descriptor shape = surface->texture_definition->texture;
 	NSNumber* textureID = @(shape);
 
@@ -110,6 +110,7 @@ NSNumber* LoadWallTexture(vertical_surface_data *surface, simd_float3 *worldPosi
 		}
 	}
 	
+	// Pulled out of RenderRasterize_Shader::render_node_side()
 	uint16 div;
 	switch (surface->transfer_mode) {
 		case _xfer_2x:
@@ -131,17 +132,11 @@ NSNumber* LoadWallTexture(vertical_surface_data *surface, simd_float3 *worldPosi
 	for (int i = 0; i < 4; i++) {
 		world_distance p2 = (i == 1 || i == 2) ? surface->length : 0;
 		
-		textureCoordinates[i] = simd_make_float2((tOffset - worldPositions[i].y) / static_cast<float>(div),
+		textureCoordinates[i] = simd_make_float2((tOffset - viewSpacePositions[i].y) / static_cast<float>(div),
 												 (x0 + p2) / static_cast<float>(div));
 	}
 
 	return textureID;
-}
-
-// Aleph One hands us camera-relative quad vertices whose dimensions seem to lie in the [-2000, 2000] range or so.
-// Scaling them down doesn't affect their eventual position on the screen, but does stop them getting excised from Metal's clip-space range.
-simd_float3 scaleToViewSpace(simd_float3 worldSpace) {
-	return worldSpace / 2000.0;
 }
 
 void RenderRasterize_Metal::render_node_floor_or_ceiling(clipping_window_data *window, polygon_data *polygon, horizontal_surface_data *surface,
@@ -174,7 +169,7 @@ void RenderRasterize_Metal::render_node_side(clipping_window_data *window, verti
 	long bottom = surface->h0;
 	long top = MIN(surface->h1, surface->hmax);
 	
-	simd_float3 worldPositions[] = {
+	simd_float3 viewSpacePositions[] = {
 		simd_make_float3(surface->p0.j, top,    surface->p0.i),
 		simd_make_float3(surface->p1.j, top,    surface->p1.i),
 		simd_make_float3(surface->p1.j, bottom, surface->p1.i),
@@ -182,13 +177,13 @@ void RenderRasterize_Metal::render_node_side(clipping_window_data *window, verti
 	};
 	
 	simd_float2 textureCoordinates[4];
-	NSNumber *textureID = LoadWallTexture(surface, worldPositions, textureCoordinates);
+	NSNumber *textureID = LoadWallTexture(surface, viewSpacePositions, textureCoordinates);
 	
 	Vertex vertices[] = {
-		{ worldPositions[0], textureCoordinates[0] },
-		{ worldPositions[1], textureCoordinates[1] },
-		{ worldPositions[2], textureCoordinates[2] },
-		{ worldPositions[3], textureCoordinates[3] },
+		{ viewSpacePositions[0], textureCoordinates[0] },
+		{ viewSpacePositions[1], textureCoordinates[1] },
+		{ viewSpacePositions[2], textureCoordinates[2] },
+		{ viewSpacePositions[3], textureCoordinates[3] },
 	};
 
 	if (@available(macOS 26.0, *)) {
