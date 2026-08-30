@@ -106,12 +106,7 @@ int GetTextureScale(short transfer_mode, int tile_ratio) {
 	}
 }
 
-NSNumber* LoadWallTexture(vertical_surface_data *surface, simd_float3 *viewSpacePositions, simd_float2 *textureCoordinates) {
-	shape_descriptor shape = surface->texture_definition->texture;
-	NSNumber* textureID = @(shape);
-
-	TextureManager *TMgr = GetTextureManager(shape);
-
+void LoadTextureIntoRenderer(NSNumber *textureID, TextureManager *TMgr) {
 	if (@available(macOS 26.0, *)) {
 		if (![renderer hasTextureWithID:textureID]) {
 			const ImageDescriptor *image = TMgr->GetNormal();
@@ -123,6 +118,14 @@ NSNumber* LoadWallTexture(vertical_surface_data *surface, simd_float3 *viewSpace
 			[renderer addTextureWithID:textureID image:metalImage];
 		}
 	}
+}
+
+NSNumber* LoadWallTexture(vertical_surface_data *surface, simd_float3 *viewSpacePositions, simd_float2 *textureCoordinates) {
+	shape_descriptor shape = surface->texture_definition->texture;
+	NSNumber* textureID = @(shape);
+
+	TextureManager *TMgr = GetTextureManager(shape);
+	LoadTextureIntoRenderer(textureID, TMgr);
 	
 	// Pulled out of RenderRasterize_Shader::render_node_side()
 	int div = GetTextureScale(surface->transfer_mode, TMgr->TileRatio());
@@ -142,24 +145,50 @@ NSNumber* LoadWallTexture(vertical_surface_data *surface, simd_float3 *viewSpace
 	return textureID;
 }
 
+NSNumber* LoadFloorOrCeilingTexture(horizontal_surface_data *surface, polygon_data *polygon, std::vector<simd_float2> &textureCoordinates) {
+	shape_descriptor shape = surface->texture;
+	NSNumber *textureID = @(shape);
+	
+	TextureManager *TMgr = GetTextureManager(shape);
+	LoadTextureIntoRenderer(textureID, TMgr);
+	
+	float scale = (float) GetTextureScale(surface->transfer_mode, TMgr->TileRatio());
+	
+	// Pulled out of RenderRasterize_Shader::render_node_floor_or_ceiling()
+	for (int i = 0; i < polygon->vertex_count; i++) {
+		// For some reason, doing the reverse-order iteration for ceilings (like RenderRasterize_Shader) gets a wrong-looking result, and going forwards in both cases looks right.
+		world_point2d vertex = get_endpoint_data(polygon->endpoint_indexes[i])->vertex;
+		textureCoordinates[i] = simd_make_float2((vertex.x + surface->origin.x) / scale,
+												 (vertex.y + surface->origin.y) / scale);
+	}
+	
+	return textureID;
+}
+
 void RenderRasterize_Metal::render_node_floor_or_ceiling(clipping_window_data *window, polygon_data *polygon, horizontal_surface_data *surface,
 														 bool void_present, bool ceil, RenderStep renderStep)
 {
-//	auto vertices = std::vector<Vertex>(polygon->vertex_count);
-//
-//	for (int i=0; i < polygon->vertex_count; i++) {
-//		endpoint_data *data = get_endpoint_data(polygon->endpoint_indexes[i]);
-//		vertices[i] = Vertex{
-//			scaleToViewSpace(simd_make_float3(data->transformed.y, surface->height - view->origin.z, data->transformed.x)),
-//			simd_make_float2(0, 0)
-//		};
-//	}
-//	
-//	if (@available(macOS 26.0, *)) {
-//		if (renderer) {
-//			[renderer addPolygonWithVertices:vertices.data() count:polygon->vertex_count];
-//		}
-//	}
+	auto viewSpacePositions = std::vector<simd_float3>(polygon->vertex_count);
+
+	for (int i=0; i < polygon->vertex_count; i++) {
+		endpoint_data *data = get_endpoint_data(polygon->endpoint_indexes[i]);
+		viewSpacePositions[i] = simd_make_float3(data->transformed.y, surface->height - view->origin.z, data->transformed.x);
+	}
+	
+	auto textureCoordinates = std::vector<simd_float2>(polygon->vertex_count);
+	NSNumber* textureID = LoadFloorOrCeilingTexture(surface, polygon, textureCoordinates);
+	
+	auto vertices = std::vector<Vertex>(polygon->vertex_count);
+	
+	for (int i=0; i < polygon->vertex_count; i++) {
+		vertices[i] = Vertex{ viewSpacePositions[i], textureCoordinates[i] };
+	}
+	
+	if (@available(macOS 26.0, *)) {
+		if (renderer) {
+			[renderer addPolygonWithVertices:vertices.data() count:polygon->vertex_count textureID:textureID];
+		}
+	}
 }
 
 void RenderRasterize_Metal::render_node_side(clipping_window_data *window, vertical_surface_data *surface,
