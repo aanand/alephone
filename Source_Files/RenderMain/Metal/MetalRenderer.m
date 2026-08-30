@@ -30,6 +30,31 @@
 
 @end
 
+@interface Triangle : NSObject
+
+@property (nonatomic, readonly) Vertex v0;
+@property (nonatomic, readonly) Vertex v1;
+@property (nonatomic, readonly) Vertex v2;
+@property (nonatomic, readonly) NSNumber* textureID;
+
+- (Triangle *) initWithV0:(Vertex)v0 v1:(Vertex)v1 v2:(Vertex)v2 textureID:(NSNumber*)textureID;
+
+@end
+
+@implementation Triangle
+
+- (Triangle *) initWithV0:(Vertex)v0 v1:(Vertex)v1 v2:(Vertex)v2 textureID:(NSNumber *)textureID {
+	if (self = [super init]) {
+		_v0 = v0;
+		_v1 = v1;
+		_v2 = v2;
+		_textureID = textureID;
+	}
+	return self;
+}
+
+@end
+
 // Assumes fov is the horizontal FOV, not the traditional vertical one
 simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
 	float fovRadians = fov * 8.0 * atan(1.0) / 360.0;
@@ -75,17 +100,16 @@ API_AVAILABLE(macos(26.0))
 
 	// Shader inputs
 	
-	id<MTLBuffer> trianglesVertexBuffer;
+	id<MTLBuffer> triangleBuffer;
 
 	id<MTLBuffer> viewportSizeBuffer;
 	id<MTLBuffer> perspectiveProjectionBuffer;
 
-	id<MTLTexture> singleLoadedTexture;
+	NSMutableDictionary<NSNumber *, id<MTLTexture>> *textures;
 
 	// Short-lived variables, created per frame
 
-	int numTriangleVertices;
-	NSMutableData *triangleVertexData;
+	NSMutableArray<Triangle *> *triangles;
 }
 
 - (MetalRenderer *) initializeWithWindow:(SDL_Window *)sdlWindow width:(int)width height:(int)height {
@@ -131,6 +155,8 @@ API_AVAILABLE(macos(26.0))
 	}
 	
 	[self setupConstantSizeBuffers];
+	
+	textures = [NSMutableDictionary dictionary];
 	
 	commandAllocator = [device newCommandAllocator];
 	
@@ -204,49 +230,30 @@ API_AVAILABLE(macos(26.0))
 - (void) begin {
 	frameNumber += 1;
 	
-	numTriangleVertices = 0;
-	triangleVertexData = [NSMutableData data];
+	triangles = [NSMutableArray array];
 }
 
-- (void) addPolygonWithVertices:(Vertex *)vertices count:(NSUInteger)vertexCount {
+- (void) addPolygonWithVertices:(Vertex *)vertices count:(NSUInteger)vertexCount textureID:(NSNumber*)textureID {
 	assert(vertexCount > 2);
 	
 	// Triangle fan: draw 0-1-2, 0-2-3, 0-3-4, etc
 	for (int j = 0; j < vertexCount-2; j++) {
-		[self addVertex:vertices];
-		[self addVertex:vertices+j+1];
-		[self addVertex:vertices+j+2];
-		numTriangleVertices += 3;
+		[triangles addObject:[[Triangle alloc] initWithV0:*(vertices)
+													   v1:*(vertices+j+1)
+													   v2:*(vertices+j+2)
+												textureID:textureID]];
 	}
 }
 
-- (void) addPolygonWithVertices:(Vertex *)vertices count:(NSUInteger)vertexCount textureID:(NSUInteger)textureID {
-	[self addPolygonWithVertices:vertices count:vertexCount];
+- (void) addPolygonWithVertices:(Vertex *)vertices count:(NSUInteger)vertexCount {
+	[self addPolygonWithVertices:vertices count:vertexCount textureID:0];
 }
 
-- (void) addVertex:(Vertex*)vertex {
-	[triangleVertexData appendBytes:vertex length:sizeof(Vertex)];
+- (bool) hasTextureWithID:(NSNumber*)textureID {
+	return [textures objectForKey:textureID] != nil;
 }
 
-- (void) loadVariableSizeBuffers {
-	id<MTLBuffer> newBuffer = [device newBufferWithBytes:triangleVertexData.bytes
-												  length:triangleVertexData.length
-												 options:MTLResourceStorageModeShared];
-	
-	if (trianglesVertexBuffer) {
-		[residencySet removeAllocation:trianglesVertexBuffer];
-	}
-	[residencySet addAllocation:newBuffer];
-	[residencySet commit];
-
-	trianglesVertexBuffer = newBuffer;
-}
-
-- (bool) hasTextureWithID:(NSUInteger)textureID {
-	return !!singleLoadedTexture;
-}
-
-- (void) addTextureWithID:(NSUInteger)textureID image:(MetalImage *)image {
+- (void) addTextureWithID:(NSNumber*)textureID image:(MetalImage *)image {
 	MTLTextureDescriptor *descriptor = [[MTLTextureDescriptor alloc] init];
 	descriptor.pixelFormat = MTLPixelFormatBGRA8Unorm;
 	descriptor.width = image.width;
@@ -263,13 +270,11 @@ API_AVAILABLE(macos(26.0))
 				 withBytes:image.data.bytes
 			   bytesPerRow:sizeof(uint32) * image.width];
 	
-	singleLoadedTexture = texture;
-	[residencySet addAllocation:singleLoadedTexture];
+	[textures setObject:texture forKey:textureID];
+	[residencySet addAllocation:texture];
 }
 
 - (void) end {
-	[self loadVariableSizeBuffers];
-
 	memcpy(viewportSizeBuffer.contents, &viewportSize, sizeof(viewportSize));
 
 	simd_float4x4 projection = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
@@ -287,12 +292,6 @@ API_AVAILABLE(macos(26.0))
 	configuration.colorAttachments[0].loadAction = MTLLoadActionClear;
 	configuration.colorAttachments[0].storeAction = MTLStoreActionStore;
 	
-	id<MTL4RenderCommandEncoder> renderPassEncoder = [commandBuffer renderCommandEncoderWithDescriptor:configuration];
-	if (!renderPassEncoder) return;
-	renderPassEncoder.label = label;
-	
-	[renderPassEncoder setRenderPipelineState:renderPipelineState];
-	
 	MTLViewport viewPort;
 	viewPort.originX = 0.0;
 	viewPort.originY = 0.0;
@@ -300,17 +299,44 @@ API_AVAILABLE(macos(26.0))
 	viewPort.zfar = 1.0;
 	viewPort.width = (double)viewportSize.x;
 	viewPort.height = (double)viewportSize.y;
+
+	NSMutableArray<id<MTLBuffer>> *vertexBuffers = [NSMutableArray array];
+	
+	id<MTL4RenderCommandEncoder> renderPassEncoder = [commandBuffer renderCommandEncoderWithDescriptor:configuration];
+	if (!renderPassEncoder) return;
+	renderPassEncoder.label = label;
+	
+	[renderPassEncoder setRenderPipelineState:renderPipelineState];
 	[renderPassEncoder setViewport:viewPort];
 	
-	[vertexArgumentTable setAddress:trianglesVertexBuffer.gpuAddress atIndex:0];
 	[vertexArgumentTable setAddress:viewportSizeBuffer.gpuAddress atIndex:1];
 	[vertexArgumentTable setAddress:perspectiveProjectionBuffer.gpuAddress atIndex:2];
-	[renderPassEncoder setArgumentTable:vertexArgumentTable atStages:MTLRenderStageVertex];
 
-	[fragmentArgumentTable setTexture:singleLoadedTexture.gpuResourceID atIndex:0];
-	[renderPassEncoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
+	for (int i = 0; i < triangles.count; i++) {
+		Triangle *triangle = [triangles objectAtIndex:i];
 
-	[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:numTriangleVertices];
+		NSMutableData *vertexData = [NSMutableData data];
+		Vertex vertex;
+		vertex = triangle.v0; [vertexData appendBytes:&vertex length:sizeof(Vertex)];
+		vertex = triangle.v1; [vertexData appendBytes:&vertex length:sizeof(Vertex)];
+		vertex = triangle.v2; [vertexData appendBytes:&vertex length:sizeof(Vertex)];
+
+		id<MTLBuffer> vertexBuffer = [device newBufferWithBytes:vertexData.bytes
+														 length:vertexData.length
+														options:MTLResourceStorageModeShared];
+		[residencySet addAllocation:vertexBuffer];
+		[vertexBuffers addObject:vertexBuffer];
+		
+		[vertexArgumentTable setAddress:vertexBuffer.gpuAddress atIndex:0];
+		[renderPassEncoder setArgumentTable:vertexArgumentTable atStages:MTLRenderStageVertex];
+
+		id<MTLTexture> texture = [textures objectForKey:triangle.textureID];
+		[fragmentArgumentTable setTexture:texture.gpuResourceID atIndex:0];
+		[renderPassEncoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
+		
+		[residencySet commit];
+		[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+	}
 
 	[renderPassEncoder endEncoding];
 	[commandBuffer endCommandBuffer];
@@ -319,6 +345,11 @@ API_AVAILABLE(macos(26.0))
 	[commandQueue commit:&commandBuffer count:1];
 	[commandQueue signalDrawable:currentDrawable];
 	[currentDrawable present];
+	
+	for (int i = 0; i < vertexBuffers.count; i++) {
+		[residencySet removeAllocation:[vertexBuffers objectAtIndex:i]];
+	}
+	[residencySet commit];
 }
 
 @end

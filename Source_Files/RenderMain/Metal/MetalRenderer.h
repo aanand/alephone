@@ -37,10 +37,10 @@ API_AVAILABLE(macos(26.0))
 - (void) begin;
 
 - (void) addPolygonWithVertices:(Vertex *)vertices count:(NSUInteger)vertexCount;
-- (void) addPolygonWithVertices:(Vertex *)vertices count:(NSUInteger)vertexCount textureID:(NSUInteger)textureID;
+- (void) addPolygonWithVertices:(Vertex *)vertices count:(NSUInteger)vertexCount textureID:(NSNumber*)textureID;
 
-- (bool) hasTextureWithID:(NSUInteger)textureID;
-- (void) addTextureWithID:(NSUInteger)textureID image:(MetalImage*)image;
+- (bool) hasTextureWithID:(NSNumber*)textureID;
+- (void) addTextureWithID:(NSNumber*)textureID image:(MetalImage*)image;
 
 - (void) end;
 

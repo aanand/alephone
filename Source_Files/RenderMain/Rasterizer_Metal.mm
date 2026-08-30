@@ -10,6 +10,8 @@
 
 #include <vector>
 
+#include <Foundation/Foundation.h>
+
 #include "Rasterizer_Metal.h"
 
 #include "Metal/MetalRenderer.h"
@@ -90,11 +92,12 @@ const ImageDescriptor* GetTexture(shape_descriptor ShapeDesc) {
 	return TMgr->GetNormal();
 }
 
-NSUInteger LoadWallTexture(vertical_surface_data *surface) {
+NSNumber* LoadWallTexture(vertical_surface_data *surface) {
 	shape_descriptor shape = surface->texture_definition->texture;
+	NSNumber *textureID = @(shape);
 
 	if (@available(macOS 26.0, *)) {
-		if (![renderer hasTextureWithID:shape]) {
+		if (![renderer hasTextureWithID:textureID]) {
 			const ImageDescriptor *image = GetTexture(shape);
 
 //			const uint32* pixels = image->GetBuffer();
@@ -107,12 +110,12 @@ NSUInteger LoadWallTexture(vertical_surface_data *surface) {
 																height:image->GetHeight()
 																pixels:image->GetBuffer()];
 
-			[renderer addTextureWithID:shape image:metalImage];
-			return shape;
+			[renderer addTextureWithID:textureID image:metalImage];
+			return textureID;
 		}
 	}
 	
-	return 0;
+	return textureID;
 }
 
 // Aleph One hands us camera-relative quad vertices whose dimensions seem to lie in the [-2000, 2000] range or so.
@@ -144,7 +147,7 @@ void RenderRasterize_Metal::render_node_floor_or_ceiling(clipping_window_data *w
 void RenderRasterize_Metal::render_node_side(clipping_window_data *window, vertical_surface_data *surface,
 											 bool void_present, RenderStep renderStep)
 {
-	NSUInteger textureID = LoadWallTexture(surface);
+	NSNumber *textureID = LoadWallTexture(surface);
 
 	// surface->pN.i maps to viewspace Z (near to far)
 	// surface->pN.j maps to viewspace X (left to right)
