@@ -92,6 +92,20 @@ TextureManager* GetTextureManager(shape_descriptor ShapeDesc) {
 	return TMgr;
 }
 
+int GetTextureScale(short transfer_mode, int tile_ratio) {
+	switch (transfer_mode) {
+		case _xfer_2x:
+			return 2 * WORLD_ONE * tile_ratio;
+			break;
+		case _xfer_4x:
+			return 4 * WORLD_ONE * tile_ratio;
+			break;
+		default:
+			return WORLD_ONE * tile_ratio;
+			break;
+	}
+}
+
 NSNumber* LoadWallTexture(vertical_surface_data *surface, simd_float3 *viewSpacePositions, simd_float2 *textureCoordinates) {
 	shape_descriptor shape = surface->texture_definition->texture;
 	NSNumber* textureID = @(shape);
@@ -111,18 +125,7 @@ NSNumber* LoadWallTexture(vertical_surface_data *surface, simd_float3 *viewSpace
 	}
 	
 	// Pulled out of RenderRasterize_Shader::render_node_side()
-	uint16 div;
-	switch (surface->transfer_mode) {
-		case _xfer_2x:
-			div = 2 * WORLD_ONE * TMgr->TileRatio();
-			break;
-		case _xfer_4x:
-			div = 4 * WORLD_ONE * TMgr->TileRatio();
-			break;
-		default:
-			div = WORLD_ONE * TMgr->TileRatio();
-			break;
-	}
+	int div = GetTextureScale(surface->transfer_mode, TMgr->TileRatio());
 	
 	world_distance x0 = surface->texture_definition->x0 % div;
 	world_distance y0 = surface->texture_definition->y0 % div;
