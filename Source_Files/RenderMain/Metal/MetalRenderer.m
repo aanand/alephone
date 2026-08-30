@@ -264,6 +264,7 @@ API_AVAILABLE(macos(26.0))
 			   bytesPerRow:sizeof(uint32) * image.width];
 	
 	singleLoadedTexture = texture;
+	[residencySet addAllocation:singleLoadedTexture];
 }
 
 - (void) end {

@@ -563,7 +563,9 @@ bool TextureManager::Setup()
 		// Display size: may be shrunk
 		int MaxWidth = MAX(TxtrWidth >> TxtrTypeInfo.Resolution, 1);
 		int MaxHeight = MAX(TxtrHeight >> TxtrTypeInfo.Resolution, 1);
-		
+
+		/* SORRY: disabling this until I can figure out a cleaner way to reuse all of this logic without making an OpenGL call
+		 
 		// Fit the image into the maximum size allowed by the OpenGL implementation in use
 		GLint MaxTextureSize;
 		glGetIntegerv(GL_MAX_TEXTURE_SIZE,&MaxTextureSize);
@@ -572,6 +574,7 @@ bool TextureManager::Setup()
 			LoadedWidth >>= 1;
 			LoadedHeight >>= 1;
 		}
+		 */
 
 		while (NormalImage.get()->GetWidth() > MaxWidth || NormalImage.get()->GetHeight() > MaxHeight)
 		{
