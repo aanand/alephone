@@ -12,7 +12,7 @@ using namespace metal;
 
 struct RasterizerData {
 	float4 position [[position]];
-	float4 color;
+	float2 textureCoordinate;
 };
 
 vertex RasterizerData
@@ -22,17 +22,18 @@ vertexShader(uint vertexID [[vertex_id]],
 			 constant float4x4 &perspectiveProjection [[buffer(2)]]) {
 	
 	RasterizerData out;
-	float3 position = vertexData[vertexID].position;
+	
+	Vertex v = vertexData[vertexID];
 
-	float4 result = float4(position, 1.0);
+	float4 result = float4(v.position, 1.0);
 	result = perspectiveProjection * result;
 
 	out.position = result;
-	out.color = float4(clamp(float3(1, 1, 1) - result.zzz * 0.25, 0.0, 1.0), 1.0);
+	out.textureCoordinate = v.textureCoordinate;
 	
 	return out;
 }
 
 fragment float4 fragmentShader(RasterizerData in [[stage_in]]) {
-	return in.color;
+	return float4(0.0, in.textureCoordinate[0], in.textureCoordinate[1], 1.0);
 }

@@ -15,6 +15,16 @@
 
 #include "Metal/VertexTypes.h"
 
+@interface MetalImage : NSObject
+
+@property (nonatomic, readonly) NSUInteger width;
+@property (nonatomic, readonly) NSUInteger height;
+@property (nonatomic, readonly) NSData* data;
+
+- (MetalImage*) initWithWidth:(NSUInteger)width height:(NSUInteger)height pixels:(const uint32*)pixels;
+
+@end
+
 API_AVAILABLE(macos(26.0))
 @interface MetalRenderer : NSObject
 
@@ -25,7 +35,13 @@ API_AVAILABLE(macos(26.0))
 - (void) updateViewWithFOV:(float)fov;
 
 - (void) begin;
-- (void) addPolygonWithVertices:(Vertex *)vertices count:(int)vertexCount;
+
+- (void) addPolygonWithVertices:(Vertex *)vertices count:(NSUInteger)vertexCount;
+- (void) addPolygonWithVertices:(Vertex *)vertices count:(NSUInteger)vertexCount textureID:(NSUInteger)textureID;
+
+- (bool) hasTextureWithID:(NSUInteger)textureID;
+- (void) addTextureWithID:(NSUInteger)textureID image:(MetalImage*)image;
+
 - (void) end;
 
 @end

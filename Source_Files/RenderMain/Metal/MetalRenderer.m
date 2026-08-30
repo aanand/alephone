@@ -17,6 +17,18 @@
 #include "VertexTypes.h"
 #include "MetalRenderer.h"
 
+@implementation MetalImage
+
+- (MetalImage*) initWithWidth:(NSUInteger)width height:(NSUInteger)height pixels:(const uint32 *)pixels {
+	if (self = [super init]) {
+		_width = width;
+		_height = height;
+		_data = [NSData dataWithBytes:pixels length:sizeof(uint32) * width * height];
+	}
+	return self;
+}
+
+@end
 
 // Assumes fov is the horizontal FOV, not the traditional vertical one
 simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
@@ -48,13 +60,14 @@ API_AVAILABLE(macos(26.0))
 
 	uint64_t frameNumber;
 	
-	// Metal pipeline insternals
+	// Metal pipeline internals
 	
 	id<MTLDevice> device;
 	id<MTL4CommandQueue> commandQueue;
 	id<MTL4CommandBuffer> commandBuffer;
 	id<MTLLibrary> defaultLibrary;
-	id<MTL4ArgumentTable> argumentTable;
+	id<MTL4ArgumentTable> vertexArgumentTable;
+	id<MTL4ArgumentTable> fragmentArgumentTable;
 	id<MTLResidencySet> residencySet;
 	id<MTL4CommandAllocator> commandAllocator;
 	id<MTLSharedEvent> sharedEvent;
@@ -66,6 +79,8 @@ API_AVAILABLE(macos(26.0))
 
 	id<MTLBuffer> viewportSizeBuffer;
 	id<MTLBuffer> perspectiveProjectionBuffer;
+
+	id<MTLTexture> singleLoadedTexture;
 
 	// Short-lived variables, created per frame
 
@@ -91,16 +106,22 @@ API_AVAILABLE(macos(26.0))
 
 	NSError *error;
 	
-	MTL4ArgumentTableDescriptor *argumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
-	argumentTableDescriptor.maxBufferBindCount = 3;
-	argumentTable = [device newArgumentTableWithDescriptor:argumentTableDescriptor
-													 error:&error];
-	
+	MTL4ArgumentTableDescriptor *vertexArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
+	vertexArgumentTableDescriptor.maxBufferBindCount = 3;
+	vertexArgumentTable = [device newArgumentTableWithDescriptor:vertexArgumentTableDescriptor error:&error];
 	if (error) {
 		NSLog(@"%@", error);
 		return nil;
 	}
 	
+	MTL4ArgumentTableDescriptor *fragmentArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
+	fragmentArgumentTableDescriptor.maxTextureBindCount = 1;
+	fragmentArgumentTable = [device newArgumentTableWithDescriptor:fragmentArgumentTableDescriptor error:&error];
+	if (error) {
+		NSLog(@"%@", error);
+		return nil;
+	}
+
 	MTLResidencySetDescriptor *residencySetDescriptor = [MTLResidencySetDescriptor new];
 	residencySet = [device newResidencySetWithDescriptor:residencySetDescriptor
 												   error:&error];
@@ -187,7 +208,7 @@ API_AVAILABLE(macos(26.0))
 	triangleVertexData = [NSMutableData data];
 }
 
-- (void) addPolygonWithVertices:(Vertex *)vertices count:(int)vertexCount {
+- (void) addPolygonWithVertices:(Vertex *)vertices count:(NSUInteger)vertexCount {
 	assert(vertexCount > 2);
 	
 	// Triangle fan: draw 0-1-2, 0-2-3, 0-3-4, etc
@@ -197,6 +218,10 @@ API_AVAILABLE(macos(26.0))
 		[self addVertex:vertices+j+2];
 		numTriangleVertices += 3;
 	}
+}
+
+- (void) addPolygonWithVertices:(Vertex *)vertices count:(NSUInteger)vertexCount textureID:(NSUInteger)textureID {
+	[self addPolygonWithVertices:vertices count:vertexCount];
 }
 
 - (void) addVertex:(Vertex*)vertex {
@@ -215,6 +240,30 @@ API_AVAILABLE(macos(26.0))
 	[residencySet commit];
 
 	trianglesVertexBuffer = newBuffer;
+}
+
+- (bool) hasTextureWithID:(NSUInteger)textureID {
+	return !!singleLoadedTexture;
+}
+
+- (void) addTextureWithID:(NSUInteger)textureID image:(MetalImage *)image {
+	MTLTextureDescriptor *descriptor = [[MTLTextureDescriptor alloc] init];
+	descriptor.pixelFormat = MTLPixelFormatBGRA8Unorm;
+	descriptor.width = image.width;
+	descriptor.height = image.height;
+	
+	MTLRegion region = {
+		{ 0, 0, 0 },
+		{ image.width, image.height, 1 }
+	};
+
+	id<MTLTexture> texture = [device newTextureWithDescriptor:descriptor];
+	[texture replaceRegion:region
+			   mipmapLevel:0
+				 withBytes:image.data.bytes
+			   bytesPerRow:sizeof(uint32) * image.width];
+	
+	singleLoadedTexture = texture;
 }
 
 - (void) end {
@@ -252,10 +301,14 @@ API_AVAILABLE(macos(26.0))
 	viewPort.height = (double)viewportSize.y;
 	[renderPassEncoder setViewport:viewPort];
 	
-	[argumentTable setAddress:trianglesVertexBuffer.gpuAddress atIndex:0];
-	[argumentTable setAddress:viewportSizeBuffer.gpuAddress atIndex:1];
-	[argumentTable setAddress:perspectiveProjectionBuffer.gpuAddress atIndex:2];
-	[renderPassEncoder setArgumentTable:argumentTable atStages:MTLRenderStageVertex];
+	[vertexArgumentTable setAddress:trianglesVertexBuffer.gpuAddress atIndex:0];
+	[vertexArgumentTable setAddress:viewportSizeBuffer.gpuAddress atIndex:1];
+	[vertexArgumentTable setAddress:perspectiveProjectionBuffer.gpuAddress atIndex:2];
+	[renderPassEncoder setArgumentTable:vertexArgumentTable atStages:MTLRenderStageVertex];
+
+	[fragmentArgumentTable setTexture:singleLoadedTexture.gpuResourceID atIndex:0];
+	[renderPassEncoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
+
 	[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:numTriangleVertices];
 
 	[renderPassEncoder endEncoding];
