@@ -32,7 +32,7 @@ API_AVAILABLE(macos(26.0))
 								 width:(int)width
 								height:(int)height;
 
-- (void) updateViewWithFOV:(float)fov;
+- (void) updateViewWithFOV:(float)fov pitch:(float)pitch;
 
 - (void) begin;
 

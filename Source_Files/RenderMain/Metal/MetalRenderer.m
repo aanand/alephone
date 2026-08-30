@@ -55,10 +55,13 @@
 
 @end
 
+float radians(float degrees) {
+	return degrees * 8.0 * atan(1.0) / 360.0;
+}
+
 // Assumes fov is the horizontal FOV, not the traditional vertical one
 simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
-	float fovRadians = fov * 8.0 * atan(1.0) / 360.0;
-	float xs = 1.0 / tanf(fovRadians * 0.5);
+	float xs = 1.0 / tanf(radians(fov) * 0.5);
 	float ys = xs * aspectRatio;
 	float nz = 0.01;
 	
@@ -66,6 +69,12 @@ simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
 					   (simd_float4){ 0.0,  ys, 0.0, 0.0 },
 					   (simd_float4){ 0.0, 0.0, 1.0, 1.0 },
 					   (simd_float4){ 0.0, 0.0, -nz, 0.0 });
+}
+
+simd_float4 pitchQuaternion(float angle) {
+	NSLog(@"degrees = %f, radians = %f", angle, radians(angle));
+	simd_quatf quat = simd_quaternion(radians(angle), simd_make_float3(1.0, 0.0, 0.0));
+	return quat.vector;
 }
 
 API_AVAILABLE(macos(26.0))
@@ -80,7 +89,7 @@ API_AVAILABLE(macos(26.0))
 	// Variables
 	
 	simd_uint2 viewportSize;
-	float fov;
+	float fov, pitch;
 	simd_int3 origin;
 
 	uint64_t frameNumber;
@@ -103,7 +112,7 @@ API_AVAILABLE(macos(26.0))
 	id<MTLBuffer> triangleBuffer;
 
 	id<MTLBuffer> viewportSizeBuffer;
-	id<MTLBuffer> perspectiveProjectionBuffer;
+	id<MTLBuffer> cameraBuffer;
 
 	NSMutableDictionary<NSNumber *, id<MTLTexture>> *textures;
 
@@ -178,8 +187,8 @@ API_AVAILABLE(macos(26.0))
 	viewportSizeBuffer = [device newBufferWithLength:sizeof(viewportSize) options:MTLResourceStorageModeShared];
 	[residencySet addAllocation:viewportSizeBuffer];
 	
-	perspectiveProjectionBuffer = [device newBufferWithLength:sizeof(simd_float4x4) options:MTLResourceStorageModeShared];
-	[residencySet addAllocation:perspectiveProjectionBuffer];
+	cameraBuffer = [device newBufferWithLength:sizeof(simd_float4x4) options:MTLResourceStorageModeShared];
+	[residencySet addAllocation:cameraBuffer];
 }
 
 - (id<MTLRenderPipelineState>) compileRenderPipeline:(MTLPixelFormat) colorPixelFormat {
@@ -223,8 +232,9 @@ API_AVAILABLE(macos(26.0))
 	return descriptor;
 }
 
-- (void) updateViewWithFOV:(float)newFOV {
+- (void) updateViewWithFOV:(float)newFOV pitch:(float)newPitch {
 	fov = newFOV;
+	pitch = newPitch;
 }
 
 - (void) begin {
@@ -278,7 +288,9 @@ API_AVAILABLE(macos(26.0))
 	memcpy(viewportSizeBuffer.contents, &viewportSize, sizeof(viewportSize));
 
 	simd_float4x4 projection = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
-	memcpy(perspectiveProjectionBuffer.contents, &projection, sizeof(simd_float4x4));
+	simd_float4 rotation = pitchQuaternion(pitch);
+	Camera camera = { projection, rotation };
+	memcpy(cameraBuffer.contents, &camera, sizeof(Camera));
 
 	NSString *label = [NSString stringWithFormat:@"Frame %llu", frameNumber];
 	
@@ -310,7 +322,7 @@ API_AVAILABLE(macos(26.0))
 	[renderPassEncoder setViewport:viewPort];
 	
 	[vertexArgumentTable setAddress:viewportSizeBuffer.gpuAddress atIndex:1];
-	[vertexArgumentTable setAddress:perspectiveProjectionBuffer.gpuAddress atIndex:2];
+	[vertexArgumentTable setAddress:cameraBuffer.gpuAddress atIndex:2];
 
 	for (int i = 0; i < triangles.count; i++) {
 		Triangle *triangle = [triangles objectAtIndex:i];

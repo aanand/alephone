@@ -19,14 +19,14 @@ vertex RasterizerData
 vertexShader(uint vertexID [[vertex_id]],
 			 constant Vertex *vertexData [[buffer(0)]],
 			 constant float2 *viewportSize [[buffer(1)]],
-			 constant float4x4 &perspectiveProjection [[buffer(2)]]) {
+			 constant Camera &camera [[buffer(2)]]) {
 	
 	RasterizerData out;
 	
 	Vertex v = vertexData[vertexID];
 
 	float4 result = float4(v.position, 1.0);
-	result = perspectiveProjection * result;
+	result = camera.perspectiveProjection * result;
 
 	out.position = result;
 	out.textureCoordinate = v.textureCoordinate;

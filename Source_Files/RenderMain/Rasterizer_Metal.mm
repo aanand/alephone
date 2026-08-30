@@ -53,7 +53,7 @@ bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
 void Rasterizer_Metal_Class::SetView(view_data &View) {
 	if (@available(macOS 26.0, *)) {
 		if (renderer) {
-			[renderer updateViewWithFOV:View.field_of_view];
+			[renderer updateViewWithFOV:View.field_of_view pitch:View.pitch];
 		}
 	}
 }
