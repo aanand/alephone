@@ -74,7 +74,7 @@ void Rasterizer_Metal_Class::End() {
 	}
 }
 
-const ImageDescriptor* GetTexture(shape_descriptor ShapeDesc) {
+TextureManager* GetTextureManager(shape_descriptor ShapeDesc) {
 	TextureManager *TMgr = new TextureManager();
 	TMgr->ShapeDesc = ShapeDesc;
 	TMgr->LowLevelShape = 0;
@@ -89,32 +89,52 @@ const ImageDescriptor* GetTexture(shape_descriptor ShapeDesc) {
 		return NULL;
 	}
 	
-	return TMgr->GetNormal();
+	return TMgr;
 }
 
-NSNumber* LoadWallTexture(vertical_surface_data *surface) {
+NSNumber* LoadWallTexture(vertical_surface_data *surface, simd_float3 *worldPositions, simd_float2 *textureCoordinates) {
 	shape_descriptor shape = surface->texture_definition->texture;
-	NSNumber *textureID = @(shape);
+	NSNumber* textureID = @(shape);
+
+	TextureManager *TMgr = GetTextureManager(shape);
 
 	if (@available(macOS 26.0, *)) {
 		if (![renderer hasTextureWithID:textureID]) {
-			const ImageDescriptor *image = GetTexture(shape);
+			const ImageDescriptor *image = TMgr->GetNormal();
 
-//			const uint32* pixels = image->GetBuffer();
-//			for (int i = 0; i < image->GetNumPixels(); i += 129) {
-//				uint32 pixel = pixels[i];
-//				logWarning("pixels[%d]: (b=%u, g=%u, r=%u, a=%u)", i, pixel & 0xFF, (pixel >> 8) & 0xFF, (pixel >> 16) & 0xFF, (pixel >> 24) & 0xFF);
-//			}
-			
 			MetalImage *metalImage = [[MetalImage alloc] initWithWidth:image->GetWidth()
 																height:image->GetHeight()
 																pixels:image->GetBuffer()];
 
 			[renderer addTextureWithID:textureID image:metalImage];
-			return textureID;
 		}
 	}
 	
+	uint16 div;
+	switch (surface->transfer_mode) {
+		case _xfer_2x:
+			div = 2 * WORLD_ONE * TMgr->TileRatio();
+			break;
+		case _xfer_4x:
+			div = 4 * WORLD_ONE * TMgr->TileRatio();
+			break;
+		default:
+			div = WORLD_ONE * TMgr->TileRatio();
+			break;
+	}
+	
+	world_distance x0 = surface->texture_definition->x0 % div;
+	world_distance y0 = surface->texture_definition->y0 % div;
+
+	double tOffset = surface->h1 + y0;
+	
+	for (int i = 0; i < 4; i++) {
+		world_distance p2 = (i == 1 || i == 2) ? surface->length : 0;
+		
+		textureCoordinates[i] = simd_make_float2((tOffset - worldPositions[i].y) / static_cast<float>(div),
+												 (x0 + p2) / static_cast<float>(div));
+	}
+
 	return textureID;
 }
 
@@ -147,8 +167,6 @@ void RenderRasterize_Metal::render_node_floor_or_ceiling(clipping_window_data *w
 void RenderRasterize_Metal::render_node_side(clipping_window_data *window, vertical_surface_data *surface,
 											 bool void_present, RenderStep renderStep)
 {
-	NSNumber *textureID = LoadWallTexture(surface);
-
 	// surface->pN.i maps to viewspace Z (near to far)
 	// surface->pN.j maps to viewspace X (left to right)
 	// surface->hN   maps to viewspace Y (low to high)
@@ -156,23 +174,21 @@ void RenderRasterize_Metal::render_node_side(clipping_window_data *window, verti
 	long bottom = surface->h0;
 	long top = MIN(surface->h1, surface->hmax);
 	
+	simd_float3 worldPositions[] = {
+		simd_make_float3(surface->p0.j, top,    surface->p0.i),
+		simd_make_float3(surface->p1.j, top,    surface->p1.i),
+		simd_make_float3(surface->p1.j, bottom, surface->p1.i),
+		simd_make_float3(surface->p0.j, bottom, surface->p0.i),
+	};
+	
+	simd_float2 textureCoordinates[4];
+	NSNumber *textureID = LoadWallTexture(surface, worldPositions, textureCoordinates);
+	
 	Vertex vertices[] = {
-		Vertex{
-			scaleToViewSpace(simd_make_float3(surface->p0.j, top,    surface->p0.i)),
-			simd_make_float2(0, 0)
-		},
-		Vertex{
-			scaleToViewSpace(simd_make_float3(surface->p1.j, top,    surface->p1.i)),
-			simd_make_float2(1, 0)
-		},
-		Vertex{
-			scaleToViewSpace(simd_make_float3(surface->p1.j, bottom, surface->p1.i)),
-			simd_make_float2(1, 1)
-		},
-		Vertex{
-			scaleToViewSpace(simd_make_float3(surface->p0.j, bottom, surface->p0.i)),
-			simd_make_float2(0, 1)
-		}
+		{ worldPositions[0], textureCoordinates[0] },
+		{ worldPositions[1], textureCoordinates[1] },
+		{ worldPositions[2], textureCoordinates[2] },
+		{ worldPositions[3], textureCoordinates[3] },
 	};
 
 	if (@available(macOS 26.0, *)) {
