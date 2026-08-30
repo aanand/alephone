@@ -114,10 +114,23 @@ void LoadTextureIntoRenderer(NSNumber *textureID, TextureManager *TMgr) {
 	if (@available(macOS 26.0, *)) {
 		if (![renderer hasTextureWithID:textureID]) {
 			const ImageDescriptor *image = TMgr->GetNormal();
+			const uint32 *pixelsIn = image->GetBuffer();
 
+			// Convert RGBA -> BGRA
+			auto pixels = std::vector<uint32>(image->GetNumPixels());
+			for (int i = 0; i < image->GetNumPixels(); i++) {
+				uint32 pixel = pixelsIn[i];
+				uint8 r = (pixel) & 0xFF;
+				uint8 g = (pixel >> 8) & 0xFF;
+				uint8 b = (pixel >> 16) & 0xFF;
+				uint8 a = (pixel >> 24) & 0xFF;
+				
+				pixels[i] = b | (g << 8) | (r << 16) | (a << 24);
+			}
+			
 			MetalImage *metalImage = [[MetalImage alloc] initWithWidth:image->GetWidth()
 																height:image->GetHeight()
-																pixels:image->GetBuffer()];
+																pixels:pixels.data()];
 
 			[renderer addTextureWithID:textureID image:metalImage];
 		}
