@@ -11,8 +11,8 @@
 #include <simd/simd.h>
 
 typedef struct {
-	matrix_float4x4 perspectiveProjection;
-	vector_float4 rotationQuaternion;
+	matrix_float4x4 perspective;
+	matrix_float4x4 rotation;
 } Camera;
 
 typedef struct {

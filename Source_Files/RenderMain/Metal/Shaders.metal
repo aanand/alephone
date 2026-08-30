@@ -26,7 +26,8 @@ vertexShader(uint vertexID [[vertex_id]],
 	Vertex v = vertexData[vertexID];
 
 	float4 result = float4(v.position, 1.0);
-	result = camera.perspectiveProjection * result;
+	result = camera.rotation * result;
+	result = camera.perspective * result;
 
 	out.position = result;
 	out.textureCoordinate = v.textureCoordinate;

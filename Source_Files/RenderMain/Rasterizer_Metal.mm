@@ -50,10 +50,14 @@ bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
 	return false;
 }
 
+// Copied from RenderRasterize_Shader.cpp
+const float FixedAngleToDegrees = 360.0/(float(FIXED_ONE)*float(FULL_CIRCLE));
+
 void Rasterizer_Metal_Class::SetView(view_data &View) {
 	if (@available(macOS 26.0, *)) {
 		if (renderer) {
-			[renderer updateViewWithFOV:View.field_of_view pitch:View.pitch];
+			[renderer updateViewWithFOV:View.field_of_view
+								  pitch:View.virtual_pitch * FixedAngleToDegrees];
 		}
 	}
 }

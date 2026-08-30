@@ -71,10 +71,9 @@ simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
 					   (simd_float4){ 0.0, 0.0, -nz, 0.0 });
 }
 
-simd_float4 pitchQuaternion(float angle) {
-	NSLog(@"degrees = %f, radians = %f", angle, radians(angle));
+simd_float4x4 pitchMatrix(float angle) {
 	simd_quatf quat = simd_quaternion(radians(angle), simd_make_float3(1.0, 0.0, 0.0));
-	return quat.vector;
+	return simd_matrix4x4(quat);
 }
 
 API_AVAILABLE(macos(26.0))
@@ -287,9 +286,9 @@ API_AVAILABLE(macos(26.0))
 - (void) end {
 	memcpy(viewportSizeBuffer.contents, &viewportSize, sizeof(viewportSize));
 
-	simd_float4x4 projection = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
-	simd_float4 rotation = pitchQuaternion(pitch);
-	Camera camera = { projection, rotation };
+	simd_float4x4 perspective = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
+	simd_float4x4 rotation = pitchMatrix(pitch);
+	Camera camera = { perspective, rotation };
 	memcpy(cameraBuffer.contents, &camera, sizeof(Camera));
 
 	NSString *label = [NSString stringWithFormat:@"Frame %llu", frameNumber];
