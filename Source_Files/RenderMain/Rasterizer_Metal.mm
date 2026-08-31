@@ -89,14 +89,15 @@ TextureManager* GetTextureManager(shape_descriptor ShapeDesc) {
 	get_shape_bitmap_and_shading_table(ShapeDesc, &TMgr->Texture, &TMgr->ShadingTables, _shading_normal);
 
 	if (!TMgr->Setup()) {
-		logError("Failed to set up TextureManager");
 		return NULL;
 	}
 	
 	return TMgr;
 }
 
-int GetTextureScale(short transfer_mode, int tile_ratio) {
+int GetTextureScale(short transfer_mode, TextureManager *TMgr) {
+	int tile_ratio = TMgr ? TMgr->TileRatio() : 1;
+
 	switch (transfer_mode) {
 		case _xfer_2x:
 			return 2 * WORLD_ONE * tile_ratio;
@@ -113,6 +114,14 @@ int GetTextureScale(short transfer_mode, int tile_ratio) {
 void LoadTextureIntoRenderer(NSNumber *textureID, TextureManager *TMgr) {
 	if (@available(macOS 26.0, *)) {
 		if (![renderer hasTextureWithID:textureID]) {
+			if (!TMgr) {
+				logWarning("Texture %d failed to load - substituting magenta", textureID.intValue);
+				uint32 pixels[1] = { 255u | (0u << 8) | (255u << 16) | (255u << 24) };
+				MetalImage *substitute = [[MetalImage alloc] initWithWidth:1 height:1 pixels:pixels];
+				[renderer addTextureWithID:textureID image:substitute];
+				return;
+			}
+
 			const ImageDescriptor *image = TMgr->GetNormal();
 			const uint32 *pixelsIn = image->GetBuffer();
 
@@ -145,7 +154,7 @@ NSNumber* LoadWallTexture(vertical_surface_data *surface, simd_float3 *viewSpace
 	LoadTextureIntoRenderer(textureID, TMgr);
 	
 	// Pulled out of RenderRasterize_Shader::render_node_side()
-	int div = GetTextureScale(surface->transfer_mode, TMgr->TileRatio());
+	int div = GetTextureScale(surface->transfer_mode, TMgr);
 	
 	world_distance x0 = surface->texture_definition->x0 % div;
 	world_distance y0 = surface->texture_definition->y0 % div;
@@ -169,7 +178,7 @@ NSNumber* LoadFloorOrCeilingTexture(horizontal_surface_data *surface, polygon_da
 	TextureManager *TMgr = GetTextureManager(shape);
 	LoadTextureIntoRenderer(textureID, TMgr);
 	
-	float scale = (float) GetTextureScale(surface->transfer_mode, TMgr->TileRatio());
+	float scale = (float) GetTextureScale(surface->transfer_mode, TMgr);
 	
 	// Pulled out of RenderRasterize_Shader::render_node_floor_or_ceiling()
 	for (int i = 0; i < polygon->vertex_count; i++) {
