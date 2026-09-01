@@ -303,16 +303,24 @@ void RenderRasterize_Metal::render_node_object(render_object_data *data, bool ot
 	
 	simd_float3 surfaceNormal = simd_make_float3(0, 0, -1);
 	
-	float left = rect.WorldLeft * rect.HorizScale / WORLD_ONE;
-	float right = rect.WorldRight * rect.HorizScale / WORLD_ONE;
-	float top = rect.WorldTop * rect.Scale / WORLD_ONE;
-	float bottom = rect.WorldBottom * rect.Scale / WORLD_ONE;
+	float spriteL = rect.WorldLeft * rect.HorizScale / WORLD_ONE;
+	float spriteR = rect.WorldRight * rect.HorizScale / WORLD_ONE;
+	float spriteT = rect.WorldTop * rect.Scale / WORLD_ONE;
+	float spriteB = rect.WorldBottom * rect.Scale / WORLD_ONE;
 	
+	float texL = TMgr->V_Offset;
+	float texR = TMgr->V_Scale+TMgr->V_Offset;
+	float texT = TMgr->U_Offset;
+	float texB = TMgr->U_Scale+TMgr->U_Offset;
+
+	// Per the comment in TextureManager::SetupTextureMatrix(), inhabitant textures
+	// "come in right side up, but the renderer expects them to be upside down and sideways",
+	// so swap texture top-left and bottom-right
 	Vertex vertices[] = {
-		{ (playerRelativePosition.xyz + simd_make_float3(left,  bottom, 0.0)), simd_make_float2(0.0, 0.0), surfaceNormal },
-		{ (playerRelativePosition.xyz + simd_make_float3(left,  top,    0.0)), simd_make_float2(0.0, 1.0), surfaceNormal },
-		{ (playerRelativePosition.xyz + simd_make_float3(right, top,    0.0)), simd_make_float2(1.0, 1.0), surfaceNormal },
-		{ (playerRelativePosition.xyz + simd_make_float3(right, bottom, 0.0)), simd_make_float2(1.0, 0.0), surfaceNormal },
+		{ (playerRelativePosition.xyz + simd_make_float3(spriteL, spriteB, 0.0)), simd_make_float2(texR, texT), surfaceNormal },
+		{ (playerRelativePosition.xyz + simd_make_float3(spriteL, spriteT, 0.0)), simd_make_float2(texL, texT), surfaceNormal },
+		{ (playerRelativePosition.xyz + simd_make_float3(spriteR, spriteT, 0.0)), simd_make_float2(texL, texB), surfaceNormal },
+		{ (playerRelativePosition.xyz + simd_make_float3(spriteR, spriteB, 0.0)), simd_make_float2(texR, texB), surfaceNormal },
 	};
 	
 	if (@available(macos 26.0, *)) {
