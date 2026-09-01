@@ -76,6 +76,11 @@ simd_float4x4 pitchMatrix(float angle) {
 	return simd_matrix4x4(quat);
 }
 
+simd_float4x4 toWorldSpaceMatrix(float yaw) {
+	simd_quatf quat = simd_quaternion(radians(-yaw), simd_make_float3(0.0, 1.0, 0.0));
+	return simd_matrix4x4(quat);
+}
+
 API_AVAILABLE(macos(26.0))
 @implementation MetalRenderer
 {
@@ -88,7 +93,7 @@ API_AVAILABLE(macos(26.0))
 	// Variables
 	
 	simd_uint2 viewportSize;
-	float fov, pitch;
+	float fov, pitch, yaw;
 	simd_int3 origin;
 
 	uint64_t frameNumber;
@@ -231,9 +236,10 @@ API_AVAILABLE(macos(26.0))
 	return descriptor;
 }
 
-- (void) updateViewWithFOV:(float)newFOV pitch:(float)newPitch {
+- (void) updateViewWithFOV:(float)newFOV pitch:(float)newPitch yaw:(float)newYaw {
 	fov = newFOV;
 	pitch = newPitch;
+	yaw = newYaw;
 }
 
 - (void) begin {
@@ -288,7 +294,8 @@ API_AVAILABLE(macos(26.0))
 
 	simd_float4x4 perspective = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
 	simd_float4x4 rotation = pitchMatrix(pitch);
-	Camera camera = { perspective, rotation };
+	simd_float4x4 toWorldSpace = toWorldSpaceMatrix(yaw);
+	Camera camera = { perspective, rotation, toWorldSpace };
 	memcpy(cameraBuffer.contents, &camera, sizeof(Camera));
 
 	NSString *label = [NSString stringWithFormat:@"Frame %llu", frameNumber];

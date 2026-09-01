@@ -13,6 +13,7 @@ using namespace metal;
 struct RasterizerData {
 	float4 position [[position]];
 	float2 textureCoordinate;
+	float3 surfaceNormal;
 };
 
 vertex RasterizerData
@@ -31,6 +32,7 @@ vertexShader(uint vertexID [[vertex_id]],
 
 	out.position = result;
 	out.textureCoordinate = v.textureCoordinate;
+	out.surfaceNormal = (camera.toWorldSpace * float4(v.surfaceNormal, 1.0)).xyz;
 	
 	return out;
 }
@@ -38,7 +40,14 @@ vertexShader(uint vertexID [[vertex_id]],
 fragment float4 fragmentShader(RasterizerData in [[stage_in]],
 							   texture2d<half> colorTexture [[ texture(0) ]])
 {
+	float3 globalLightDirection = normalize(float3(-1, -1, -1));
+	float globalLightIntensity = 1.0;
+	float ambientLightIntensity = 0.5;
+
+	float incoming = dot(-in.surfaceNormal, globalLightDirection);
+	float intensity = mix(ambientLightIntensity, globalLightIntensity, incoming);
+
 	constexpr sampler textureSampler (mag_filter::nearest, min_filter::nearest, address::repeat);
 	const half4 colorSample = colorTexture.sample(textureSampler, in.textureCoordinate);
-	return float4(colorSample);
+	return float4(float3(colorSample.xyz) * intensity, colorSample.w);
 }

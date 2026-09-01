@@ -57,7 +57,8 @@ void Rasterizer_Metal_Class::SetView(view_data &View) {
 	if (@available(macOS 26.0, *)) {
 		if (renderer) {
 			[renderer updateViewWithFOV:View.field_of_view
-								  pitch:View.virtual_pitch * FixedAngleToDegrees];
+								  pitch:View.virtual_pitch * FixedAngleToDegrees
+									yaw:View.virtual_yaw * FixedAngleToDegrees];
 		}
 	}
 }
@@ -204,10 +205,12 @@ void RenderRasterize_Metal::render_node_floor_or_ceiling(clipping_window_data *w
 	auto textureCoordinates = std::vector<simd_float2>(polygon->vertex_count);
 	NSNumber* textureID = LoadFloorOrCeilingTexture(surface, polygon, textureCoordinates);
 	
+	simd_float3 surfaceNormal = simd_make_float3(0.0, ceil ? -1.0 : 1.0, 0.0);
+	
 	auto vertices = std::vector<Vertex>(polygon->vertex_count);
 	
 	for (int i=0; i < polygon->vertex_count; i++) {
-		vertices[i] = Vertex{ viewSpacePositions[i], textureCoordinates[i] };
+		vertices[i] = Vertex{ viewSpacePositions[i], textureCoordinates[i], surfaceNormal };
 	}
 	
 	if (@available(macOS 26.0, *)) {
@@ -234,14 +237,16 @@ void RenderRasterize_Metal::render_node_side(clipping_window_data *window, verti
 		simd_make_float3(surface->p0.j, bottom, surface->p0.i),
 	};
 	
+	simd_float3 surfaceNormal = simd_normalize(simd_make_float3(surface->p0.j - surface->p1.j, 0.0, surface->p1.i - surface->p0.i));
+	
 	simd_float2 textureCoordinates[4];
 	NSNumber *textureID = LoadWallTexture(surface, viewSpacePositions, textureCoordinates);
 	
 	Vertex vertices[] = {
-		{ viewSpacePositions[0], textureCoordinates[0] },
-		{ viewSpacePositions[1], textureCoordinates[1] },
-		{ viewSpacePositions[2], textureCoordinates[2] },
-		{ viewSpacePositions[3], textureCoordinates[3] },
+		{ viewSpacePositions[0], textureCoordinates[0], surfaceNormal },
+		{ viewSpacePositions[1], textureCoordinates[1], surfaceNormal },
+		{ viewSpacePositions[2], textureCoordinates[2], surfaceNormal },
+		{ viewSpacePositions[3], textureCoordinates[3], surfaceNormal },
 	};
 
 	if (@available(macOS 26.0, *)) {
