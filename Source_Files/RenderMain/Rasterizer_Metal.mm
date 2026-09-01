@@ -24,6 +24,7 @@
 
 API_AVAILABLE(macos(26.0))
 MetalRenderer *renderer;
+view_data *view;
 
 bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
     logWarning("Metal_InitializeForWindow(window, %d, %d)", width, height);
@@ -54,6 +55,8 @@ bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
 const float FixedAngleToDegrees = 360.0/(float(FIXED_ONE)*float(FULL_CIRCLE));
 
 void Rasterizer_Metal_Class::SetView(view_data &View) {
+	view = &View;
+
 	if (@available(macOS 26.0, *)) {
 		if (renderer) {
 			[renderer updateViewWithFOV:View.field_of_view
@@ -250,6 +253,64 @@ void RenderRasterize_Metal::render_node_side(clipping_window_data *window, verti
 	};
 
 	if (@available(macOS 26.0, *)) {
+		if (renderer) {
+			[renderer addPolygonWithVertices:vertices count:4 textureID:textureID];
+		}
+	}
+}
+
+float radians(float degrees) {
+	return degrees * 8.0 * atan(1.0) / 360.0;
+}
+
+void RenderRasterize_Metal::render_node_object(render_object_data *data, bool other_side_of_media, RenderStep renderStep) {
+	rectangle_definition rect = data->rectangle;
+
+	float yaw = -(view->virtual_yaw * FixedAngleToDegrees);
+	simd_float3 worldPosition = simd_make_float3(rect.Position.x, rect.Position.z, rect.Position.y);
+	simd_float3 playerPosition = simd_make_float3(view->origin.x, view->origin.z, view->origin.y);
+	simd_quatf yawRotation = simd_quaternion(radians(yaw), simd_make_float3(0.0, 1.0, 0.0));
+
+	simd_float4 playerRelativePosition = simd_make_float4(worldPosition - playerPosition, 1.0);
+
+	// World left = -X, world right = +X, world up = -Z, world down = +Z
+	// At yaw=0, player is looking in the +X direction
+	// Therefore -playerX = - worldZ, +playerRight = +worldZ, -playerZ = -worldX, +playerZ = +worldX
+	playerRelativePosition = playerRelativePosition.zyxw;
+	playerRelativePosition = playerRelativePosition / (float)WORLD_ONE;
+	playerRelativePosition = simd_mul(simd_matrix4x4(yawRotation), playerRelativePosition);
+	
+	TextureManager *TMgr = new TextureManager();
+	
+	TMgr->ShapeDesc = rect.ShapeDesc;
+	TMgr->LowLevelShape = rect.LowLevelShape;
+	TMgr->ShadingTables = rect.shading_tables;
+	TMgr->Texture = rect.texture;
+	TMgr->TransferMode = rect.transfer_mode;
+	TMgr->TransferData = rect.transfer_data;
+	TMgr->IsShadeless = (rect.flags&_SHADELESS_BIT) != 0;
+	TMgr->TextureType = OGL_Txtr_Inhabitant;
+
+	get_shape_bitmap_and_shading_table(rect.ShapeDesc, &TMgr->Texture, &TMgr->ShadingTables, _shading_normal);
+
+	if (!TMgr->Setup()) {
+		logError("Failed to set up TextureManager for sprite");
+		return;
+	}
+
+	NSNumber *textureID = @( rect.ShapeDesc );
+	LoadTextureIntoRenderer(textureID, TMgr);
+	
+	simd_float3 surfaceNormal = simd_make_float3(0, 0, -1);
+	
+	Vertex vertices[] = {
+		{ (playerRelativePosition.xyz + simd_make_float3(-0.5, -0.5, 0.0)), simd_make_float2(0.0, 0.0), surfaceNormal },
+		{ (playerRelativePosition.xyz + simd_make_float3(-0.5,  0.5, 0.0)), simd_make_float2(0.0, 1.0), surfaceNormal },
+		{ (playerRelativePosition.xyz + simd_make_float3( 0.5,  0.5, 0.0)), simd_make_float2(1.0, 1.0), surfaceNormal },
+		{ (playerRelativePosition.xyz + simd_make_float3( 0.5, -0.5, 0.0)), simd_make_float2(1.0, 0.0), surfaceNormal },
+	};
+	
+	if (@available(macos 26.0, *)) {
 		if (renderer) {
 			[renderer addPolygonWithVertices:vertices count:4 textureID:textureID];
 		}
