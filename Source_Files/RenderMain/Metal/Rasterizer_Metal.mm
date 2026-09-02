@@ -300,8 +300,8 @@ void RenderRasterize_Metal::render_node_object(render_object_data *data, bool ot
 	
 	simd_float3 surfaceNormal = simd_make_float3(0, 0, -1);
 	
-	float spriteL = rect.WorldLeft * rect.HorizScale;
-	float spriteR = rect.WorldRight * rect.HorizScale;
+	float spriteL = rect.WorldLeft * rect.HorizScale * rect.Scale;
+	float spriteR = rect.WorldRight * rect.HorizScale * rect.Scale;
 	float spriteT = rect.WorldTop * rect.Scale;
 	float spriteB = rect.WorldBottom * rect.Scale;
 	
