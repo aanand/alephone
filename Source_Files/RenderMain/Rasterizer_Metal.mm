@@ -115,7 +115,10 @@ int GetTextureScale(short transfer_mode, TextureManager *TMgr) {
 	}
 }
 
-void LoadTextureIntoRenderer(NSNumber *textureID, TextureManager *TMgr) {
+NSNumber* LoadTextureIntoRenderer(TextureManager *TMgr) {
+	uint32 identifier = TMgr->ShapeDesc << 16 | TMgr->LowLevelShape;
+	NSNumber *textureID = @( identifier );
+
 	if (@available(macOS 26.0, *)) {
 		if (![renderer hasTextureWithID:textureID]) {
 			if (!TMgr) {
@@ -123,8 +126,10 @@ void LoadTextureIntoRenderer(NSNumber *textureID, TextureManager *TMgr) {
 				uint32 pixels[1] = { 255u | (0u << 8) | (255u << 16) | (255u << 24) };
 				MetalImage *substitute = [[MetalImage alloc] initWithWidth:1 height:1 pixels:pixels];
 				[renderer addTextureWithID:textureID image:substitute];
-				return;
+				return textureID;
 			}
+			
+			logWarning("Loading texture %u", identifier);
 
 			const ImageDescriptor *image = TMgr->GetNormal();
 			const uint32 *pixelsIn = image->GetBuffer();
@@ -148,14 +153,15 @@ void LoadTextureIntoRenderer(NSNumber *textureID, TextureManager *TMgr) {
 			[renderer addTextureWithID:textureID image:metalImage];
 		}
 	}
+	
+	return textureID;
 }
 
 NSNumber* LoadWallTexture(vertical_surface_data *surface, simd_float3 *viewSpacePositions, simd_float2 *textureCoordinates) {
 	shape_descriptor shape = surface->texture_definition->texture;
-	NSNumber* textureID = @(shape);
 
 	TextureManager *TMgr = GetTextureManager(shape);
-	LoadTextureIntoRenderer(textureID, TMgr);
+	NSNumber* textureID = LoadTextureIntoRenderer(TMgr);
 	
 	// Pulled out of RenderRasterize_Shader::render_node_side()
 	int div = GetTextureScale(surface->transfer_mode, TMgr);
@@ -177,10 +183,9 @@ NSNumber* LoadWallTexture(vertical_surface_data *surface, simd_float3 *viewSpace
 
 NSNumber* LoadFloorOrCeilingTexture(horizontal_surface_data *surface, polygon_data *polygon, std::vector<simd_float2> &textureCoordinates) {
 	shape_descriptor shape = surface->texture;
-	NSNumber *textureID = @(shape);
 	
 	TextureManager *TMgr = GetTextureManager(shape);
-	LoadTextureIntoRenderer(textureID, TMgr);
+	NSNumber *textureID = LoadTextureIntoRenderer(TMgr);
 	
 	float scale = (float) GetTextureScale(surface->transfer_mode, TMgr);
 	
@@ -291,15 +296,15 @@ void RenderRasterize_Metal::render_node_object(render_object_data *data, bool ot
 	TMgr->IsShadeless = (rect.flags&_SHADELESS_BIT) != 0;
 	TMgr->TextureType = OGL_Txtr_Inhabitant;
 
-	get_shape_bitmap_and_shading_table(rect.ShapeDesc, &TMgr->Texture, &TMgr->ShadingTables, _shading_normal);
+	struct bitmap_definition* dummy;
+	extended_get_shape_bitmap_and_shading_table(GET_DESCRIPTOR_COLLECTION(TMgr->ShapeDesc), TMgr->LowLevelShape, &dummy, &TMgr->ShadingTables, _shading_normal);
 
 	if (!TMgr->Setup()) {
 		logError("Failed to set up TextureManager for sprite");
 		return;
 	}
 
-	NSNumber *textureID = @( rect.ShapeDesc );
-	LoadTextureIntoRenderer(textureID, TMgr);
+	NSNumber *textureID = LoadTextureIntoRenderer(TMgr);
 	
 	simd_float3 surfaceNormal = simd_make_float3(0, 0, -1);
 	
