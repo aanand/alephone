@@ -312,12 +312,12 @@ void RenderRasterize_Metal::render_node_object(render_object_data *data, bool ot
 
 	// Per the comment in TextureManager::SetupTextureMatrix(), inhabitant textures
 	// "come in right side up, but the renderer expects them to be upside down and sideways",
-	// so swap texture top-left and bottom-right
+	// i.e. X and Y are transposed - so texture coordinates here are (Y, X)
 	Vertex vertices[] = {
-		{ (playerRelativePosition.xyz + simd_make_float3(spriteL, spriteB, 0.0)), simd_make_float2(texR, texT), surfaceNormal },
-		{ (playerRelativePosition.xyz + simd_make_float3(spriteL, spriteT, 0.0)), simd_make_float2(texL, texT), surfaceNormal },
-		{ (playerRelativePosition.xyz + simd_make_float3(spriteR, spriteT, 0.0)), simd_make_float2(texL, texB), surfaceNormal },
-		{ (playerRelativePosition.xyz + simd_make_float3(spriteR, spriteB, 0.0)), simd_make_float2(texR, texB), surfaceNormal },
+		{ (playerRelativePosition.xyz + simd_make_float3(spriteL, spriteB, 0.0)), simd_make_float2(texB, texL), surfaceNormal },
+		{ (playerRelativePosition.xyz + simd_make_float3(spriteL, spriteT, 0.0)), simd_make_float2(texT, texL), surfaceNormal },
+		{ (playerRelativePosition.xyz + simd_make_float3(spriteR, spriteT, 0.0)), simd_make_float2(texT, texR), surfaceNormal },
+		{ (playerRelativePosition.xyz + simd_make_float3(spriteR, spriteB, 0.0)), simd_make_float2(texB, texR), surfaceNormal },
 	};
 	
 	if (@available(macos 26.0, *)) {
