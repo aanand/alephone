@@ -314,7 +314,6 @@ API_AVAILABLE(macos(26.0))
 	
 	MTL4RenderPassDescriptor *configuration = [MTL4RenderPassDescriptor new];
 	configuration.colorAttachments[0].texture = currentDrawable.texture;
-	configuration.colorAttachments[0].loadAction = MTLLoadActionClear;
 	configuration.colorAttachments[0].storeAction = MTLStoreActionStore;
 	
 	MTLViewport viewPort;
