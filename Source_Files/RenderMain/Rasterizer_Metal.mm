@@ -294,15 +294,14 @@ void RenderRasterize_Metal::render_node_object(render_object_data *data, bool ot
 	// At yaw=0, player is looking in the +X direction
 	// Therefore -playerX = - worldZ, +playerRight = +worldZ, -playerZ = -worldX, +playerZ = +worldX
 	playerRelativePosition = playerRelativePosition.zyxw;
-	playerRelativePosition = playerRelativePosition / (float)WORLD_ONE;
 	playerRelativePosition = simd_mul(simd_matrix4x4(yawRotation), playerRelativePosition);
 	
 	simd_float3 surfaceNormal = simd_make_float3(0, 0, -1);
 	
-	float spriteL = rect.WorldLeft * rect.HorizScale / WORLD_ONE;
-	float spriteR = rect.WorldRight * rect.HorizScale / WORLD_ONE;
-	float spriteT = rect.WorldTop * rect.Scale / WORLD_ONE;
-	float spriteB = rect.WorldBottom * rect.Scale / WORLD_ONE;
+	float spriteL = rect.WorldLeft * rect.HorizScale;
+	float spriteR = rect.WorldRight * rect.HorizScale;
+	float spriteT = rect.WorldTop * rect.Scale;
+	float spriteB = rect.WorldBottom * rect.Scale;
 	
 	float texL = TMgr->V_Offset;
 	float texR = TMgr->V_Scale+TMgr->V_Offset;
