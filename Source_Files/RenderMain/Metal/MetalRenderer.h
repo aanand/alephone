@@ -40,7 +40,6 @@ API_AVAILABLE(macos(26.0))
  Vertices should be in Metal-oriented space (+X = screen right, +Y = screen up, +Z = into screen), but world-scaled.
  (TODO: Maybe revisit this, and scale down before passing in?)
  */
-- (void) addPolygonWithVertices:(Vertex *)vertices count:(NSUInteger)vertexCount;
 - (void) addPolygonWithVertices:(Vertex *)vertices count:(NSUInteger)vertexCount textureID:(NSNumber*)textureID;
 
 - (bool) hasTextureWithID:(NSNumber*)textureID;

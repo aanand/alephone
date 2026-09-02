@@ -277,10 +277,6 @@ API_AVAILABLE(macos(26.0))
 	}
 }
 
-- (void) addPolygonWithVertices:(Vertex *)vertices count:(NSUInteger)vertexCount {
-	[self addPolygonWithVertices:vertices count:vertexCount textureID:0];
-}
-
 - (bool) hasTextureWithID:(NSNumber*)textureID {
 	return [textures objectForKey:textureID] != nil;
 }
