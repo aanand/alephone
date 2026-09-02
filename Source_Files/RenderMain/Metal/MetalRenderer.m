@@ -110,6 +110,7 @@ API_AVAILABLE(macos(26.0))
 	id<MTL4CommandAllocator> commandAllocator;
 	id<MTLSharedEvent> sharedEvent;
 	id<MTLRenderPipelineState> renderPipelineState;
+	id<MTLDepthStencilState> depthState;
 
 	// Shader inputs
 	
@@ -178,6 +179,8 @@ API_AVAILABLE(macos(26.0))
 		return nil;
 	}
 	
+	depthState = [self configureDepth];
+	
 	sharedEvent = [device newSharedEvent];
 	sharedEvent.signaledValue = frameNumber;
 	
@@ -241,6 +244,13 @@ API_AVAILABLE(macos(26.0))
 	colorAttachment.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
 	
 	return descriptor;
+}
+
+- (id<MTLDepthStencilState>) configureDepth {
+	MTLDepthStencilDescriptor *depthDescriptor = [MTLDepthStencilDescriptor new];
+	depthDescriptor.depthCompareFunction = MTLCompareFunctionLessEqual;
+	depthDescriptor.depthWriteEnabled = YES;
+	return [device newDepthStencilStateWithDescriptor:depthDescriptor];
 }
 
 - (void) updateViewWithFOV:(float)newFOV pitch:(float)newPitch yaw:(float)newYaw {
@@ -331,6 +341,7 @@ API_AVAILABLE(macos(26.0))
 	renderPassEncoder.label = label;
 	
 	[renderPassEncoder setRenderPipelineState:renderPipelineState];
+	[renderPassEncoder setDepthStencilState:depthState];
 	[renderPassEncoder setViewport:viewPort];
 	
 	[vertexArgumentTable setAddress:viewportSizeBuffer.gpuAddress atIndex:1];
