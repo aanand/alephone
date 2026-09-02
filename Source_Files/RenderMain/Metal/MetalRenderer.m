@@ -229,9 +229,16 @@ API_AVAILABLE(macos(26.0))
 
 	MTL4RenderPipelineDescriptor *descriptor = [MTL4RenderPipelineDescriptor new];
 	descriptor.label = @"Basic Metal 4 render pipeline";
-	descriptor.colorAttachments[0].pixelFormat = colorPixelFormat;
 	descriptor.vertexFunctionDescriptor = vertexFunction;
 	descriptor.fragmentFunctionDescriptor = fragmentFunction;
+
+	MTL4RenderPipelineColorAttachmentDescriptor *colorAttachment = descriptor.colorAttachments[0];
+	colorAttachment.pixelFormat = colorPixelFormat;
+	colorAttachment.blendingState = MTL4BlendStateEnabled;
+	colorAttachment.sourceAlphaBlendFactor = MTLBlendFactorSourceAlpha;
+	colorAttachment.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+	colorAttachment.sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+	colorAttachment.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
 	
 	return descriptor;
 }
