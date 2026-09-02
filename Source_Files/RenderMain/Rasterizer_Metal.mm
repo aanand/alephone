@@ -82,8 +82,7 @@ void Rasterizer_Metal_Class::End() {
 	}
 }
 
-TextureManager* GetTextureManager(shape_descriptor ShapeDesc) {
-	TextureManager *TMgr = new TextureManager();
+bool SetupPolygonTexture(TextureManager *TMgr, shape_descriptor ShapeDesc) {
 	TMgr->ShapeDesc = ShapeDesc;
 	TMgr->LowLevelShape = 0;
 	TMgr->TransferMode = _textured_transfer;
@@ -92,11 +91,23 @@ TextureManager* GetTextureManager(shape_descriptor ShapeDesc) {
 	
 	get_shape_bitmap_and_shading_table(ShapeDesc, &TMgr->Texture, &TMgr->ShadingTables, _shading_normal);
 
-	if (!TMgr->Setup()) {
-		return NULL;
-	}
-	
-	return TMgr;
+	return TMgr->Setup();
+}
+
+bool SetupSpriteTexture(TextureManager *TMgr, rectangle_definition rect) {
+	TMgr->ShapeDesc = rect.ShapeDesc;
+	TMgr->LowLevelShape = rect.LowLevelShape;
+	TMgr->ShadingTables = rect.shading_tables;
+	TMgr->Texture = rect.texture;
+	TMgr->TransferMode = rect.transfer_mode;
+	TMgr->TransferData = rect.transfer_data;
+	TMgr->IsShadeless = (rect.flags&_SHADELESS_BIT) != 0;
+	TMgr->TextureType = OGL_Txtr_Inhabitant;
+
+	struct bitmap_definition* dummy;
+	extended_get_shape_bitmap_and_shading_table(GET_DESCRIPTOR_COLLECTION(TMgr->ShapeDesc), TMgr->LowLevelShape, &dummy, &TMgr->ShadingTables, _shading_normal);
+
+	return TMgr->Setup();
 }
 
 int GetTextureScale(short transfer_mode, TextureManager *TMgr) {
@@ -115,13 +126,13 @@ int GetTextureScale(short transfer_mode, TextureManager *TMgr) {
 	}
 }
 
-NSNumber* LoadTextureIntoRenderer(TextureManager *TMgr) {
+NSNumber* LoadTextureIntoRenderer(TextureManager *TMgr, bool didLoad) {
 	uint32 identifier = TMgr->ShapeDesc << 16 | TMgr->LowLevelShape;
 	NSNumber *textureID = @( identifier );
 
 	if (@available(macOS 26.0, *)) {
 		if (![renderer hasTextureWithID:textureID]) {
-			if (!TMgr) {
+			if (!didLoad) {
 				logWarning("Texture %d failed to load - substituting magenta", textureID.intValue);
 				uint32 pixels[1] = { 255u | (0u << 8) | (255u << 16) | (255u << 24) };
 				MetalImage *substitute = [[MetalImage alloc] initWithWidth:1 height:1 pixels:pixels];
@@ -160,11 +171,12 @@ NSNumber* LoadTextureIntoRenderer(TextureManager *TMgr) {
 NSNumber* LoadWallTexture(vertical_surface_data *surface, simd_float3 *viewSpacePositions, simd_float2 *textureCoordinates) {
 	shape_descriptor shape = surface->texture_definition->texture;
 
-	TextureManager *TMgr = GetTextureManager(shape);
-	NSNumber* textureID = LoadTextureIntoRenderer(TMgr);
+	auto TMgr = std::make_unique<TextureManager>();
+	bool didLoad = SetupPolygonTexture(TMgr.get(), shape);
+	NSNumber* textureID = LoadTextureIntoRenderer(TMgr.get(), didLoad);
 	
 	// Pulled out of RenderRasterize_Shader::render_node_side()
-	int div = GetTextureScale(surface->transfer_mode, TMgr);
+	int div = GetTextureScale(surface->transfer_mode, TMgr.get());
 	
 	world_distance x0 = surface->texture_definition->x0 % div;
 	world_distance y0 = surface->texture_definition->y0 % div;
@@ -184,10 +196,11 @@ NSNumber* LoadWallTexture(vertical_surface_data *surface, simd_float3 *viewSpace
 NSNumber* LoadFloorOrCeilingTexture(horizontal_surface_data *surface, polygon_data *polygon, std::vector<simd_float2> &textureCoordinates) {
 	shape_descriptor shape = surface->texture;
 	
-	TextureManager *TMgr = GetTextureManager(shape);
-	NSNumber *textureID = LoadTextureIntoRenderer(TMgr);
+	auto TMgr = std::make_unique<TextureManager>();
+	bool success = SetupPolygonTexture(TMgr.get(), shape);
+	NSNumber *textureID = LoadTextureIntoRenderer(TMgr.get(), success);
 	
-	float scale = (float) GetTextureScale(surface->transfer_mode, TMgr);
+	float scale = (float) GetTextureScale(surface->transfer_mode, TMgr.get());
 	
 	// Pulled out of RenderRasterize_Shader::render_node_floor_or_ceiling()
 	for (int i = 0; i < polygon->vertex_count; i++) {
@@ -285,26 +298,9 @@ void RenderRasterize_Metal::render_node_object(render_object_data *data, bool ot
 	playerRelativePosition = playerRelativePosition / (float)WORLD_ONE;
 	playerRelativePosition = simd_mul(simd_matrix4x4(yawRotation), playerRelativePosition);
 	
-	TextureManager *TMgr = new TextureManager();
-	
-	TMgr->ShapeDesc = rect.ShapeDesc;
-	TMgr->LowLevelShape = rect.LowLevelShape;
-	TMgr->ShadingTables = rect.shading_tables;
-	TMgr->Texture = rect.texture;
-	TMgr->TransferMode = rect.transfer_mode;
-	TMgr->TransferData = rect.transfer_data;
-	TMgr->IsShadeless = (rect.flags&_SHADELESS_BIT) != 0;
-	TMgr->TextureType = OGL_Txtr_Inhabitant;
-
-	struct bitmap_definition* dummy;
-	extended_get_shape_bitmap_and_shading_table(GET_DESCRIPTOR_COLLECTION(TMgr->ShapeDesc), TMgr->LowLevelShape, &dummy, &TMgr->ShadingTables, _shading_normal);
-
-	if (!TMgr->Setup()) {
-		logError("Failed to set up TextureManager for sprite");
-		return;
-	}
-
-	NSNumber *textureID = LoadTextureIntoRenderer(TMgr);
+	auto TMgr = std::make_unique<TextureManager>();
+	bool success = SetupSpriteTexture(TMgr.get(), rect);
+	NSNumber *textureID = LoadTextureIntoRenderer(TMgr.get(), success);
 	
 	simd_float3 surfaceNormal = simd_make_float3(0, 0, -1);
 	
