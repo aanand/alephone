@@ -34,6 +34,8 @@ bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
 			return true;
 		}
 		
+		// This is unfortunately necessary while we're using TextureManager,
+		// which is heavily coupled to OpenGL but too complex to recreate from scratch
 		OGL_StartTextures();
 		
 		MetalRenderer *r = [[MetalRenderer alloc] initializeWithWindow:window width:width height:height];
