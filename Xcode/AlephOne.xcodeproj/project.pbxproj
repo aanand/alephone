@@ -1172,12 +1172,8 @@
 		AEFD86B713EB84CF00C1E687 /* MusakIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = F5CFAD400200FA6B01D80110 /* MusakIcon.icns */; };
 		AEFD86B913EB84CF00C1E687 /* PhysIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = F5CFAD420200FA6B01D80110 /* PhysIcon.icns */; };
 		AEFD86BA13EB84CF00C1E687 /* SaveIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = F5CFAD430200FA6B01D80110 /* SaveIcon.icns */; };
-		E25D2B14303D01B8001A6224 /* Rasterizer_Metal.mm in Sources */ = {isa = PBXBuildFile; fileRef = E25D2B13303D01B0001A6224 /* Rasterizer_Metal.mm */; };
-		E25D2B15303D01B8001A6224 /* Rasterizer_Metal.mm in Sources */ = {isa = PBXBuildFile; fileRef = E25D2B13303D01B0001A6224 /* Rasterizer_Metal.mm */; };
 		E25D2B17303D1392001A6224 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E25D2B16303D1392001A6224 /* Metal.framework */; };
 		E25D2B19303D13C2001A6224 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E25D2B18303D13C2001A6224 /* MetalKit.framework */; };
-		E2A9B421303CFAFE007B8824 /* Rasterizer_Metal.h in Headers */ = {isa = PBXBuildFile; fileRef = E2A9B420303CFAFE007B8824 /* Rasterizer_Metal.h */; };
-		E2A9B422303CFAFE007B8824 /* Rasterizer_Metal.h in Headers */ = {isa = PBXBuildFile; fileRef = E2A9B420303CFAFE007B8824 /* Rasterizer_Metal.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1922,10 +1918,8 @@
 		AEBDC6DA2C4DF0780026DFF1 /* Classic Marathon Infinity Steam.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Classic Marathon Infinity Steam.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		AEC3C89609AD68AE003258E4 /* Aleph One.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Aleph One.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		AEFD87C313EB84CF00C1E687 /* Classic Marathon.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Classic Marathon.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		E25D2B13303D01B0001A6224 /* Rasterizer_Metal.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = Rasterizer_Metal.mm; sourceTree = "<group>"; };
 		E25D2B16303D1392001A6224 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		E25D2B18303D13C2001A6224 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
-		E2A9B420303CFAFE007B8824 /* Rasterizer_Metal.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Rasterizer_Metal.h; sourceTree = "<group>"; };
 		F53AB44B01F3CB1D01EF2901 /* AlephOne.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AlephOne.icns; sourceTree = "<group>"; };
 		F56AEB6B01F8AA1201780311 /* ImagesIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = ImagesIcon.icns; sourceTree = "<group>"; };
 		F56AEB6C01F8AA1201780311 /* ShapesIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = ShapesIcon.icns; sourceTree = "<group>"; };
@@ -2826,8 +2820,6 @@
 				4F5568662F3940D400C9207C /* OGL_Textures.cpp */,
 				4F5568672F3940D400C9207C /* Rasterizer.h */,
 				4F5568682F3940D400C9207C /* Rasterizer_OGL.h */,
-				E2A9B420303CFAFE007B8824 /* Rasterizer_Metal.h */,
-				E25D2B13303D01B0001A6224 /* Rasterizer_Metal.mm */,
 				4F5568692F3940D400C9207C /* Rasterizer_Shader.h */,
 				4F55686A2F3940D400C9207C /* Rasterizer_Shader.cpp */,
 				4F55686B2F3940D400C9207C /* Rasterizer_SW.h */,
@@ -3265,7 +3257,6 @@
 				4F9CAF6E2F39442500F91C02 /* StudioLoader.h in Headers */,
 				4F9CAF6F2F39442500F91C02 /* OGL_Model_Def.h in Headers */,
 				4F9CAF702F39442500F91C02 /* network_capabilities.h in Headers */,
-				E2A9B421303CFAFE007B8824 /* Rasterizer_Metal.h in Headers */,
 				4F9CAF712F39442500F91C02 /* vec3.h in Headers */,
 				4F9CAF722F39442500F91C02 /* powered_by_alephone_h.h in Headers */,
 				4F9CAF732F39442500F91C02 /* find_files.h in Headers */,
@@ -3526,7 +3517,6 @@
 				4F556BBB2F3940D400C9207C /* StudioLoader.h in Headers */,
 				4F556BBC2F3940D400C9207C /* OGL_Model_Def.h in Headers */,
 				4F556BBD2F3940D400C9207C /* network_capabilities.h in Headers */,
-				E2A9B422303CFAFE007B8824 /* Rasterizer_Metal.h in Headers */,
 				4F556BBE2F3940D400C9207C /* vec3.h in Headers */,
 				4F556BBF2F3940D400C9207C /* powered_by_alephone_h.h in Headers */,
 				4F556BC02F3940D400C9207C /* find_files.h in Headers */,
@@ -4570,7 +4560,6 @@
 				4F556B7C2F3940D400C9207C /* monsters.cpp in Sources */,
 				4F556B7D2F3940D400C9207C /* csstrings.cpp in Sources */,
 				4F556B7E2F3940D400C9207C /* overhead_map.cpp in Sources */,
-				E25D2B14303D01B8001A6224 /* Rasterizer_Metal.mm in Sources */,
 				4F556B7F2F3940D400C9207C /* ChaseCam.cpp in Sources */,
 				4F556B802F3940D400C9207C /* Decoder.cpp in Sources */,
 				4F556B812F3940D400C9207C /* SoundPlayer.cpp in Sources */,
@@ -4810,7 +4799,6 @@
 				4F9CB1042F39442500F91C02 /* monsters.cpp in Sources */,
 				4F9CB1052F39442500F91C02 /* csstrings.cpp in Sources */,
 				4F9CB1062F39442500F91C02 /* overhead_map.cpp in Sources */,
-				E25D2B15303D01B8001A6224 /* Rasterizer_Metal.mm in Sources */,
 				4F9CB1072F39442500F91C02 /* ChaseCam.cpp in Sources */,
 				4F9CB1082F39442500F91C02 /* Decoder.cpp in Sources */,
 				4F9CB1092F39442500F91C02 /* SoundPlayer.cpp in Sources */,
