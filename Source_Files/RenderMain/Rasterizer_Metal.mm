@@ -140,8 +140,6 @@ NSNumber* LoadTextureIntoRenderer(TextureManager *TMgr, bool didLoad) {
 				return textureID;
 			}
 			
-			logWarning("Loading texture %u", identifier);
-
 			const ImageDescriptor *image = TMgr->GetNormal();
 			const uint32 *pixelsIn = image->GetBuffer();
 
