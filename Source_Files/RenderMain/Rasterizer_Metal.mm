@@ -126,14 +126,14 @@ int GetTextureScale(short transfer_mode, TextureManager *TMgr) {
 	}
 }
 
-NSNumber* LoadTextureIntoRenderer(TextureManager *TMgr, bool didLoad) {
+NSNumber* LoadTextureIntoRenderer(TextureManager *TMgr, bool didSetupSucceed) {
 	uint32 identifier = TMgr->ShapeDesc << 16 | TMgr->LowLevelShape;
 	NSNumber *textureID = @( identifier );
 
 	if (@available(macOS 26.0, *)) {
 		if (![renderer hasTextureWithID:textureID]) {
-			if (!didLoad) {
-				logWarning("Texture %d failed to load - substituting magenta", textureID.intValue);
+			if (!didSetupSucceed) {
+				logWarning("Failed to set up texture %d - substituting magenta", textureID.intValue);
 				uint32 pixels[1] = { 255u | (0u << 8) | (255u << 16) | (255u << 24) };
 				MetalImage *substitute = [[MetalImage alloc] initWithWidth:1 height:1 pixels:pixels];
 				[renderer addTextureWithID:textureID image:substitute];
@@ -170,8 +170,7 @@ NSNumber* LoadWallTexture(vertical_surface_data *surface, simd_float3 *viewSpace
 	shape_descriptor shape = surface->texture_definition->texture;
 
 	auto TMgr = std::make_unique<TextureManager>();
-	bool didLoad = SetupPolygonTexture(TMgr.get(), shape);
-	NSNumber* textureID = LoadTextureIntoRenderer(TMgr.get(), didLoad);
+	NSNumber* textureID = LoadTextureIntoRenderer(TMgr.get(), SetupPolygonTexture(TMgr.get(), shape));
 	
 	// Pulled out of RenderRasterize_Shader::render_node_side()
 	int div = GetTextureScale(surface->transfer_mode, TMgr.get());
@@ -195,8 +194,7 @@ NSNumber* LoadFloorOrCeilingTexture(horizontal_surface_data *surface, polygon_da
 	shape_descriptor shape = surface->texture;
 	
 	auto TMgr = std::make_unique<TextureManager>();
-	bool success = SetupPolygonTexture(TMgr.get(), shape);
-	NSNumber *textureID = LoadTextureIntoRenderer(TMgr.get(), success);
+	NSNumber *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupPolygonTexture(TMgr.get(), shape));
 	
 	float scale = (float) GetTextureScale(surface->transfer_mode, TMgr.get());
 	
@@ -282,6 +280,9 @@ float radians(float degrees) {
 void RenderRasterize_Metal::render_node_object(render_object_data *data, bool other_side_of_media, RenderStep renderStep) {
 	rectangle_definition rect = data->rectangle;
 
+	auto TMgr = std::make_unique<TextureManager>();
+	NSNumber *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupSpriteTexture(TMgr.get(), rect));
+	
 	float yaw = -(view->virtual_yaw * FixedAngleToDegrees);
 	simd_float3 worldPosition = simd_make_float3(rect.Position.x, rect.Position.z, rect.Position.y);
 	simd_float3 playerPosition = simd_make_float3(view->origin.x, view->origin.z, view->origin.y);
@@ -295,10 +296,6 @@ void RenderRasterize_Metal::render_node_object(render_object_data *data, bool ot
 	playerRelativePosition = playerRelativePosition.zyxw;
 	playerRelativePosition = playerRelativePosition / (float)WORLD_ONE;
 	playerRelativePosition = simd_mul(simd_matrix4x4(yawRotation), playerRelativePosition);
-	
-	auto TMgr = std::make_unique<TextureManager>();
-	bool success = SetupSpriteTexture(TMgr.get(), rect);
-	NSNumber *textureID = LoadTextureIntoRenderer(TMgr.get(), success);
 	
 	simd_float3 surfaceNormal = simd_make_float3(0, 0, -1);
 	
