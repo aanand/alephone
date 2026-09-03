@@ -116,8 +116,10 @@ API_AVAILABLE(macos(26.0))
 
 	id<MTL4ArgumentTable> vertexArgumentTable;
 	id<MTL4ArgumentTable> fragmentArgumentTable;
+	id<MTL4ArgumentTable> computeArgumentTable;
 
 	id<MTLResidencySet> initialRenderResidencySet;
+	id<MTLResidencySet> rayTracingResidencySet;
 	id<MTLResidencySet> finalRenderResidencySet;
 	
 	id<MTLTexture> initialRenderOutputTexture;
@@ -182,6 +184,7 @@ API_AVAILABLE(macos(26.0))
 	[self setupBuffers];
 	
 	[initialRenderResidencySet commit];
+	[rayTracingResidencySet commit];
 	[finalRenderResidencySet commit];
 	
 	textures = [NSMutableDictionary dictionary];
@@ -191,6 +194,10 @@ API_AVAILABLE(macos(26.0))
 
 - (bool) setupArgumentTables {
 	NSError *error;
+	
+	// FIXME:
+	// These are reused across initial and final renders, but their sizes are set to the *initial* render pipeline's requirements, ignoring final
+	// It works for now, but it should be future-proofed
 	
 	MTL4ArgumentTableDescriptor *vertexArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
 	vertexArgumentTableDescriptor.maxBufferBindCount = InitialRenderVertexShader_NumBuffers;
@@ -208,6 +215,14 @@ API_AVAILABLE(macos(26.0))
 		return false;
 	}
 	
+	MTL4ArgumentTableDescriptor *computeArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
+	computeArgumentTableDescriptor.maxTextureBindCount = RayTracingKernel_NumTextures;
+	computeArgumentTable = [device newArgumentTableWithDescriptor:computeArgumentTableDescriptor error:&error];
+	if (error) {
+		NSLog(@"%@", error);
+		return false;
+	}
+
 	return true;
 }
 
@@ -221,6 +236,13 @@ API_AVAILABLE(macos(26.0))
 		NSLog(@"%@", error);
 		return false;
 	}
+	
+	rayTracingResidencySet = [device newResidencySetWithDescriptor:residencySetDescriptor
+															 error:&error];
+	if (error) {
+		NSLog(@"%@", error);
+		return false;
+	}
 
 	finalRenderResidencySet = [device newResidencySetWithDescriptor:residencySetDescriptor
 															  error:&error];
@@ -230,6 +252,7 @@ API_AVAILABLE(macos(26.0))
 	}
 	
 	[commandQueue addResidencySet:initialRenderResidencySet];
+	[commandQueue addResidencySet:rayTracingResidencySet];
 	[commandQueue addResidencySet:finalRenderResidencySet];
 	[commandQueue addResidencySet:metalLayer.residencySet];
 
@@ -255,7 +278,9 @@ API_AVAILABLE(macos(26.0))
 	initialRenderOutputTexture = [device newTextureWithDescriptor:textureDescriptor];
 	rayTracingOutputTexture = [device newTextureWithDescriptor:textureDescriptor];
 	
+	[rayTracingResidencySet addAllocation:rayTracingOutputTexture];
 	[finalRenderResidencySet addAllocation:initialRenderOutputTexture];
+	[finalRenderResidencySet addAllocation:rayTracingOutputTexture];
 }
 
 - (id<MTLRenderPipelineState>) compileInitialRenderPipeline:(MTLPixelFormat) colorPixelFormat {
@@ -423,7 +448,9 @@ API_AVAILABLE(macos(26.0))
 	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu", frameNumber];
 	
 	[self encodeInitialRenderToOutputTexture:initialRenderOutputTexture];
-	[self encodeFinalRenderFromInputTexture:initialRenderOutputTexture toOutputTexture:currentDrawable.texture];
+	[self encodeRayTracingPassToOutputTexture:rayTracingOutputTexture];
+	[self encodeFinalRenderFromInputTexture:rayTracingOutputTexture
+							toOutputTexture:currentDrawable.texture];
 
 	[commandBuffer endCommandBuffer];
 
@@ -479,6 +506,28 @@ API_AVAILABLE(macos(26.0))
 	}
 
 	[renderPassEncoder endEncoding];
+}
+
+-(void) encodeRayTracingPassToOutputTexture:(id<MTLTexture>)outputTexture {
+	id<MTL4ComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
+	if (!encoder) {
+		NSLog(@"Failed to create compute command encoder");
+		return;
+	}
+	encoder.label = @"Ray tracing";
+	
+	[encoder setComputePipelineState:rayTracingPipeline];
+	
+	[computeArgumentTable setTexture:outputTexture.gpuResourceID atIndex:RayTracingKernelOutImageIndex];
+	[encoder setArgumentTable:computeArgumentTable];
+	
+	NSUInteger w = rayTracingPipeline.threadExecutionWidth;
+	NSUInteger h = rayTracingPipeline.maxTotalThreadsPerThreadgroup / w;
+	MTLSize threadsPerThreadgroup = MTLSizeMake( w, h, 1 );
+	MTLSize threadsPerGrid = MTLSizeMake(outputTexture.width, outputTexture.height, 1);
+	[encoder dispatchThreads:threadsPerGrid threadsPerThreadgroup:threadsPerThreadgroup];
+	
+	[encoder endEncoding];
 }
 
 -(void) encodeFinalRenderFromInputTexture:(id<MTLTexture>)inputTexture toOutputTexture:(id<MTLTexture>)outputTexture {
