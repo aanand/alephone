@@ -81,6 +81,8 @@ simd_float4x4 toWorldSpaceMatrix(float yaw) {
 	return simd_matrix4x4(quat);
 }
 
+uint MAX_TRIANGLES = 10000;
+
 API_AVAILABLE(macos(26.0))
 @implementation MetalRenderer
 {
@@ -177,7 +179,7 @@ API_AVAILABLE(macos(26.0))
 	}
 
 	[self setupIntermediateTextures];
-	[self setupConstantSizeBuffers];
+	[self setupBuffers];
 	
 	[initialRenderResidencySet commit];
 	[finalRenderResidencySet commit];
@@ -234,9 +236,12 @@ API_AVAILABLE(macos(26.0))
 	return true;
 }
 
-- (void) setupConstantSizeBuffers {
+- (void) setupBuffers {
 	cameraBuffer = [device newBufferWithLength:sizeof(Camera) options:MTLResourceStorageModeShared];
 	[initialRenderResidencySet addAllocation:cameraBuffer];
+	
+	triangleBuffer = [device newBufferWithLength:(sizeof(Vertex) * MAX_TRIANGLES * 3) options:MTLResourceStorageModeShared];
+	[initialRenderResidencySet addAllocation:triangleBuffer];
 }
 
 - (void) setupIntermediateTextures {
@@ -375,6 +380,8 @@ API_AVAILABLE(macos(26.0))
 													   v1:*(vertices+j+1)
 													   v2:*(vertices+j+2)
 												textureID:textureID]];
+
+		assert(triangles.count < MAX_TRIANGLES);
 	}
 }
 
@@ -427,12 +434,13 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (void) encodeInitialRenderToOutputTexture:(id<MTLTexture>)outputTexture {
+	// Commit any textures that were added
+	[initialRenderResidencySet commit];
+
 	MTL4RenderPassDescriptor *configuration = [MTL4RenderPassDescriptor new];
 	configuration.colorAttachments[0].texture = outputTexture;
 	configuration.colorAttachments[0].storeAction = MTLStoreActionStore;
 
-	NSMutableArray<id<MTLBuffer>> *vertexBuffers = [NSMutableArray array];
-	
 	id<MTL4RenderCommandEncoder> renderPassEncoder = [commandBuffer renderCommandEncoderWithDescriptor:configuration];
 	if (!renderPassEncoder) {
 		NSLog(@"Failed to create render command encoder");
@@ -445,39 +453,32 @@ API_AVAILABLE(macos(26.0))
 	[renderPassEncoder setViewport:[self getViewport]];
 	
 	[vertexArgumentTable setAddress:cameraBuffer.gpuAddress atIndex:InitialRenderVertexShaderCameraIndex];
+	[vertexArgumentTable setAddress:triangleBuffer.gpuAddress atIndex:InitialRenderVertexShaderVertexDataIndex];
 
+	Vertex *target = (Vertex*)triangleBuffer.contents;
+	NSUInteger offset = 0;
+	
 	for (int i = 0; i < triangles.count; i++) {
 		Triangle *triangle = [triangles objectAtIndex:i];
 
-		NSMutableData *vertexData = [NSMutableData data];
-		Vertex vertex;
-		vertex = triangle.v0; [vertexData appendBytes:&vertex length:sizeof(Vertex)];
-		vertex = triangle.v1; [vertexData appendBytes:&vertex length:sizeof(Vertex)];
-		vertex = triangle.v2; [vertexData appendBytes:&vertex length:sizeof(Vertex)];
-
-		id<MTLBuffer> vertexBuffer = [device newBufferWithBytes:vertexData.bytes
-														 length:vertexData.length
-														options:MTLResourceStorageModeShared];
-		[initialRenderResidencySet addAllocation:vertexBuffer];
-		[vertexBuffers addObject:vertexBuffer];
+		target[offset] = triangle.v0;
+		target[offset+1] = triangle.v1;
+		target[offset+2] = triangle.v2;
 		
-		[vertexArgumentTable setAddress:vertexBuffer.gpuAddress atIndex:InitialRenderVertexShaderVertexDataIndex];
+		MTLGPUAddress address = triangleBuffer.gpuAddress + (offset * sizeof(Vertex));
+		[vertexArgumentTable setAddress:address atIndex:InitialRenderVertexShaderVertexDataIndex];
 		[renderPassEncoder setArgumentTable:vertexArgumentTable atStages:MTLRenderStageVertex];
 
 		id<MTLTexture> texture = [textures objectForKey:triangle.textureID];
 		[fragmentArgumentTable setTexture:texture.gpuResourceID atIndex:InitialRenderFragmentShaderColorTextureIndex];
 		[renderPassEncoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
 		
-		[initialRenderResidencySet commit];
 		[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+		
+		offset += 3;
 	}
 
 	[renderPassEncoder endEncoding];
-
-//	for (int i = 0; i < vertexBuffers.count; i++) {
-//		[initialRenderResidencySet removeAllocation:[vertexBuffers objectAtIndex:i]];
-//	}
-//	[initialRenderResidencySet commit];
 }
 
 -(void) encodeFinalRenderFromInputTexture:(id<MTLTexture>)inputTexture toOutputTexture:(id<MTLTexture>)outputTexture {
