@@ -92,9 +92,12 @@ finalRenderVertexShader(unsigned short vid [[vertex_id]])
 // Adapted from https://developer.apple.com/documentation/metal/accelerating-ray-tracing-using-metal?language=objc
 fragment float4
 finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
-						  texture2d<float> tex [[ texture(FinalRenderFragmentShaderInputTextureIndex) ]])
+						  texture2d<float> initialPassTex [[ texture(FinalRenderFragmentShaderInitialPassTextureIndex) ]],
+						  texture2d<float> rayTracingPassTex [[ texture(FinalRenderFragmentShaderRayTracingPassTextureIndex) ]])
 {
 	constexpr sampler sam(min_filter::nearest, mag_filter::nearest, mip_filter::none);
-	float3 color = tex.sample(sam, in.uv).xyz;
+	float3 initialPassColor = initialPassTex.sample(sam, in.uv).xyz;
+	float3 rayTracingPassColor = rayTracingPassTex.sample(sam, in.uv).xyz;
+	float3 color = mix(initialPassColor, rayTracingPassColor, 0.5);
 	return float4(color, 1.0f);
 }

@@ -27,7 +27,12 @@ enum {
 };
 
 enum {
-	FinalRenderFragmentShaderInputTextureIndex,
+	FinalRenderVertexShader_NumBuffers,
+};
+
+enum {
+	FinalRenderFragmentShaderInitialPassTextureIndex,
+	FinalRenderFragmentShaderRayTracingPassTextureIndex,
 	FinalRenderFragmentShader_NumTextures,
 };
 

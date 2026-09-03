@@ -195,12 +195,8 @@ API_AVAILABLE(macos(26.0))
 - (bool) setupArgumentTables {
 	NSError *error;
 	
-	// FIXME:
-	// These are reused across initial and final renders, but their sizes are set to the *initial* render pipeline's requirements, ignoring final
-	// It works for now, but it should be future-proofed
-	
 	MTL4ArgumentTableDescriptor *vertexArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
-	vertexArgumentTableDescriptor.maxBufferBindCount = InitialRenderVertexShader_NumBuffers;
+	vertexArgumentTableDescriptor.maxBufferBindCount = MAX(InitialRenderVertexShader_NumBuffers, FinalRenderVertexShader_NumBuffers);
 	vertexArgumentTable = [device newArgumentTableWithDescriptor:vertexArgumentTableDescriptor error:&error];
 	if (error) {
 		NSLog(@"%@", error);
@@ -208,7 +204,7 @@ API_AVAILABLE(macos(26.0))
 	}
 	
 	MTL4ArgumentTableDescriptor *fragmentArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
-	fragmentArgumentTableDescriptor.maxTextureBindCount = InitialRenderFragmentShader_NumTextures;
+	fragmentArgumentTableDescriptor.maxTextureBindCount = MAX(InitialRenderFragmentShader_NumTextures, FinalRenderFragmentShader_NumTextures);
 	fragmentArgumentTable = [device newArgumentTableWithDescriptor:fragmentArgumentTableDescriptor error:&error];
 	if (error) {
 		NSLog(@"%@", error);
@@ -449,8 +445,9 @@ API_AVAILABLE(macos(26.0))
 	
 	[self encodeInitialRenderToOutputTexture:initialRenderOutputTexture];
 	[self encodeRayTracingPassToOutputTexture:rayTracingOutputTexture];
-	[self encodeFinalRenderFromInputTexture:rayTracingOutputTexture
-							toOutputTexture:currentDrawable.texture];
+	[self encodeFinalRenderFromInitialPassTexture:initialRenderOutputTexture
+							rayTracingPassTexture:rayTracingOutputTexture
+								  toOutputTexture:currentDrawable.texture];
 
 	[commandBuffer endCommandBuffer];
 
@@ -530,7 +527,10 @@ API_AVAILABLE(macos(26.0))
 	[encoder endEncoding];
 }
 
--(void) encodeFinalRenderFromInputTexture:(id<MTLTexture>)inputTexture toOutputTexture:(id<MTLTexture>)outputTexture {
+-(void) encodeFinalRenderFromInitialPassTexture:(id<MTLTexture>)initialPassTexture
+						  rayTracingPassTexture:(id<MTLTexture>)rayTracingPassTexture
+								toOutputTexture:(id<MTLTexture>)outputTexture
+{
 	MTL4RenderPassDescriptor *configuration = [MTL4RenderPassDescriptor new];
 	configuration.colorAttachments[0].texture = outputTexture;
 	configuration.colorAttachments[0].storeAction = MTLStoreActionStore;
@@ -547,7 +547,8 @@ API_AVAILABLE(macos(26.0))
 
 	[encoder setArgumentTable:vertexArgumentTable atStages:MTLRenderStageVertex];
 
-	[fragmentArgumentTable setTexture:inputTexture.gpuResourceID atIndex:FinalRenderFragmentShaderInputTextureIndex];
+	[fragmentArgumentTable setTexture:initialPassTexture.gpuResourceID atIndex:FinalRenderFragmentShaderInitialPassTextureIndex];
+	[fragmentArgumentTable setTexture:rayTracingPassTexture.gpuResourceID atIndex:FinalRenderFragmentShaderRayTracingPassTextureIndex];
 	[encoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
 	[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
 	
