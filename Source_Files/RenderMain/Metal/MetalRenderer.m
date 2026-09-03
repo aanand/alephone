@@ -104,8 +104,6 @@ API_AVAILABLE(macos(26.0))
 	id<MTL4CommandQueue> commandQueue;
 	id<MTL4CommandBuffer> commandBuffer;
 	id<MTLLibrary> defaultLibrary;
-	id<MTL4ArgumentTable> vertexArgumentTable;
-	id<MTL4ArgumentTable> fragmentArgumentTable;
 	id<MTL4CommandAllocator> commandAllocator;
 	id<MTLSharedEvent> sharedEvent;
 
@@ -113,6 +111,9 @@ API_AVAILABLE(macos(26.0))
 	id<MTLComputePipelineState> rayTracingPipeline;
 	id<MTLRenderPipelineState> finalRenderPipeline;
 	id<MTLDepthStencilState> depthState;
+
+	id<MTL4ArgumentTable> vertexArgumentTable;
+	id<MTL4ArgumentTable> fragmentArgumentTable;
 
 	id<MTLResidencySet> initialRenderResidencySet;
 	id<MTLResidencySet> finalRenderResidencySet;
@@ -144,45 +145,10 @@ API_AVAILABLE(macos(26.0))
 	commandQueue = [device newMTL4CommandQueue];
 	commandBuffer = [device newCommandBuffer];
 	defaultLibrary = [device newDefaultLibrary];
-
-	NSError *error;
-	
-	MTL4ArgumentTableDescriptor *vertexArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
-	vertexArgumentTableDescriptor.maxBufferBindCount = InitialRenderVertexShader_NumBuffers;
-	vertexArgumentTable = [device newArgumentTableWithDescriptor:vertexArgumentTableDescriptor error:&error];
-	if (error) {
-		NSLog(@"%@", error);
-		return nil;
-	}
-	
-	MTL4ArgumentTableDescriptor *fragmentArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
-	fragmentArgumentTableDescriptor.maxTextureBindCount = InitialRenderFragmentShader_NumTextures;
-	fragmentArgumentTable = [device newArgumentTableWithDescriptor:fragmentArgumentTableDescriptor error:&error];
-	if (error) {
-		NSLog(@"%@", error);
-		return nil;
-	}
-
-	MTLResidencySetDescriptor *residencySetDescriptor = [MTLResidencySetDescriptor new];
-	initialRenderResidencySet = [device newResidencySetWithDescriptor:residencySetDescriptor
-												   error:&error];
-	if (error) {
-		NSLog(@"%@", error);
-		return nil;
-	}
-	finalRenderResidencySet = [device newResidencySetWithDescriptor:residencySetDescriptor
-															  error:&error];
-	if (error) {
-		NSLog(@"%@", error);
-		return nil;
-	}
-
-	[self setupConstantSizeBuffers];
-	
-	textures = [NSMutableDictionary dictionary];
-	
 	commandAllocator = [device newCommandAllocator];
-	
+	sharedEvent = [device newSharedEvent];
+	sharedEvent.signaledValue = frameNumber;
+
 	initialRenderPipeline = [self compileInitialRenderPipeline:metalLayer.pixelFormat];
 	if (!initialRenderPipeline) {
 		return nil;
@@ -200,14 +166,64 @@ API_AVAILABLE(macos(26.0))
 	
 	depthState = [self configureDepth];
 	
-	sharedEvent = [device newSharedEvent];
-	sharedEvent.signaledValue = frameNumber;
+	if (![self setupArgumentTables]) {
+		return nil;
+	}
+	if (![self setupResidencySets]) {
+		return nil;
+	}
+	[self setupConstantSizeBuffers];
+	
+	textures = [NSMutableDictionary dictionary];
+	
+	return self;
+}
+
+- (bool) setupArgumentTables {
+	NSError *error;
+	
+	MTL4ArgumentTableDescriptor *vertexArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
+	vertexArgumentTableDescriptor.maxBufferBindCount = InitialRenderVertexShader_NumBuffers;
+	vertexArgumentTable = [device newArgumentTableWithDescriptor:vertexArgumentTableDescriptor error:&error];
+	if (error) {
+		NSLog(@"%@", error);
+		return false;
+	}
+	
+	MTL4ArgumentTableDescriptor *fragmentArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
+	fragmentArgumentTableDescriptor.maxTextureBindCount = InitialRenderFragmentShader_NumTextures;
+	fragmentArgumentTable = [device newArgumentTableWithDescriptor:fragmentArgumentTableDescriptor error:&error];
+	if (error) {
+		NSLog(@"%@", error);
+		return false;
+	}
+	
+	return true;
+}
+
+- (bool) setupResidencySets {
+	NSError *error;
+
+	MTLResidencySetDescriptor *residencySetDescriptor = [MTLResidencySetDescriptor new];
+	initialRenderResidencySet = [device newResidencySetWithDescriptor:residencySetDescriptor
+												   error:&error];
+	if (error) {
+		NSLog(@"%@", error);
+		return false;
+	}
+
+	finalRenderResidencySet = [device newResidencySetWithDescriptor:residencySetDescriptor
+															  error:&error];
+	if (error) {
+		NSLog(@"%@", error);
+		return false;
+	}
 	
 	[commandQueue addResidencySet:initialRenderResidencySet];
 	[commandQueue addResidencySet:finalRenderResidencySet];
 	[commandQueue addResidencySet:metalLayer.residencySet];
-	
-	return self;
+
+	return true;
 }
 
 - (void) setupConstantSizeBuffers {
