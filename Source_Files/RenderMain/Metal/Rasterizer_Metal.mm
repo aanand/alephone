@@ -128,10 +128,9 @@ int GetTextureScale(short transfer_mode, TextureManager *TMgr) {
 	}
 }
 
-NSNumber* LoadTextureIntoRenderer(TextureManager *TMgr, bool didSetupSucceed) {
-	uint32 identifier = TMgr->ShapeDesc << 16 | TMgr->LowLevelShape;
-	NSNumber *textureID = @( identifier );
-
+NSString* LoadTextureIntoRenderer(TextureManager *TMgr, bool didSetupSucceed) {
+	NSString *textureID = [NSString stringWithFormat:@"[ShapeDesc=%u/Collection=%d/CTable=%d/Frame=%d/Bitmap=%d]", TMgr->ShapeDesc, TMgr->GetCollection(), TMgr->GetCTable(), TMgr->GetFrame(), TMgr->GetBitmap()];
+	
 	if (@available(macOS 26.0, *)) {
 		if (![renderer hasTextureWithID:textureID]) {
 			if (!didSetupSucceed) {
@@ -168,11 +167,11 @@ NSNumber* LoadTextureIntoRenderer(TextureManager *TMgr, bool didSetupSucceed) {
 	return textureID;
 }
 
-NSNumber* LoadWallTexture(vertical_surface_data *surface, simd_float3 *viewSpacePositions, simd_float2 *textureCoordinates) {
+NSString* LoadWallTexture(vertical_surface_data *surface, simd_float3 *viewSpacePositions, simd_float2 *textureCoordinates) {
 	shape_descriptor shape = surface->texture_definition->texture;
 
 	auto TMgr = std::make_unique<TextureManager>();
-	NSNumber* textureID = LoadTextureIntoRenderer(TMgr.get(), SetupPolygonTexture(TMgr.get(), shape));
+	NSString* textureID = LoadTextureIntoRenderer(TMgr.get(), SetupPolygonTexture(TMgr.get(), shape));
 	
 	// Pulled out of RenderRasterize_Shader::render_node_side()
 	int div = GetTextureScale(surface->transfer_mode, TMgr.get());
@@ -192,11 +191,11 @@ NSNumber* LoadWallTexture(vertical_surface_data *surface, simd_float3 *viewSpace
 	return textureID;
 }
 
-NSNumber* LoadFloorOrCeilingTexture(horizontal_surface_data *surface, polygon_data *polygon, std::vector<simd_float2> &textureCoordinates) {
+NSString* LoadFloorOrCeilingTexture(horizontal_surface_data *surface, polygon_data *polygon, std::vector<simd_float2> &textureCoordinates) {
 	shape_descriptor shape = surface->texture;
 	
 	auto TMgr = std::make_unique<TextureManager>();
-	NSNumber *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupPolygonTexture(TMgr.get(), shape));
+	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupPolygonTexture(TMgr.get(), shape));
 	
 	float scale = (float) GetTextureScale(surface->transfer_mode, TMgr.get());
 	
@@ -222,7 +221,7 @@ void RenderRasterize_Metal::render_node_floor_or_ceiling(clipping_window_data *w
 	}
 	
 	auto textureCoordinates = std::vector<simd_float2>(polygon->vertex_count);
-	NSNumber* textureID = LoadFloorOrCeilingTexture(surface, polygon, textureCoordinates);
+	NSString* textureID = LoadFloorOrCeilingTexture(surface, polygon, textureCoordinates);
 	
 	simd_float3 surfaceNormal = simd_make_float3(0.0, ceil ? -1.0 : 1.0, 0.0);
 	
@@ -259,7 +258,7 @@ void RenderRasterize_Metal::render_node_side(clipping_window_data *window, verti
 	simd_float3 surfaceNormal = simd_normalize(simd_make_float3(surface->p0.j - surface->p1.j, 0.0, surface->p1.i - surface->p0.i));
 	
 	simd_float2 textureCoordinates[4];
-	NSNumber *textureID = LoadWallTexture(surface, viewSpacePositions, textureCoordinates);
+	NSString *textureID = LoadWallTexture(surface, viewSpacePositions, textureCoordinates);
 	
 	Vertex vertices[] = {
 		{ viewSpacePositions[0], textureCoordinates[0], surfaceNormal },
@@ -283,7 +282,7 @@ void RenderRasterize_Metal::render_node_object(render_object_data *data, bool ot
 	rectangle_definition rect = data->rectangle;
 
 	auto TMgr = std::make_unique<TextureManager>();
-	NSNumber *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupSpriteTexture(TMgr.get(), rect));
+	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupSpriteTexture(TMgr.get(), rect));
 	
 	float yaw = -(view->virtual_yaw * FixedAngleToDegrees);
 	simd_float3 worldPosition = simd_make_float3(rect.Position.x, rect.Position.z, rect.Position.y);
