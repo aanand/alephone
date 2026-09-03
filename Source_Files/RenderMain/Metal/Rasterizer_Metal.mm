@@ -19,6 +19,7 @@
 
 #include "OGL_Textures.h"
 #include "Logging.h"
+#include "vbl.h"
 
 #include <simd/simd.h>
 
@@ -56,20 +57,25 @@ bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
 // Copied from RenderRasterize_Shader.cpp
 const float FixedAngleToDegrees = 360.0/(float(FIXED_ONE)*float(FULL_CIRCLE));
 
+void LoadWorld();
+
 void Rasterizer_Metal_Class::SetView(view_data &View) {
 	view = &View;
 
 	if (@available(macOS 26.0, *)) {
 		if (renderer) {
-			[renderer updateViewWithFOV:View.field_of_view
+			[renderer updateViewWithOrigin:simd_make_int3(View.origin.x, View.origin.y, View.origin.z)
 								  pitch:View.virtual_pitch * FixedAngleToDegrees
-									yaw:View.virtual_yaw * FixedAngleToDegrees];
+									yaw:View.virtual_yaw * FixedAngleToDegrees
+									   FOV:View.field_of_view];
 		}
 	}
 }
 
 void Rasterizer_Metal_Class::Begin() {
 	if (@available(macOS 26.0, *)) {
+		LoadWorld();
+
 		if (renderer) {
 			[renderer begin];
 		}
@@ -210,14 +216,77 @@ NSString* LoadFloorOrCeilingTexture(horizontal_surface_data *surface, polygon_da
 	return textureID;
 }
 
+bool isWorldLoaded = false;
+
+void LoadWorld() {
+	if (isWorldLoaded) return;
+	
+	for (short polyIdx = 0; polyIdx < dynamic_world->polygon_count; polyIdx++) {
+		polygon_data *polygon = get_polygon_data(polyIdx);
+		
+		for (short i=0; i < polygon->vertex_count; i++) {
+			short sideIdx = polygon->side_indexes[i];
+			if (sideIdx == NONE) continue;;
+			
+			side_data *side = get_side_data(sideIdx);
+			line_data *line = get_line_data(polygon->line_indexes[i]);
+			
+			endpoint_data *ep0 = get_endpoint_data(polygon->endpoint_indexes[i]);
+			endpoint_data *ep1 = get_endpoint_data(polygon->endpoint_indexes[(i+1) % polygon->vertex_count]);
+			
+			simd_float2 d = simd_make_float2(ep1->vertex.x - ep0->vertex.x, ep1->vertex.y - ep0->vertex.y);
+			simd_float3 normal = simd_normalize(simd_make_float3(-d.y, d.x, 0.0));
+			
+			// TODO: set these based on the side type (hardcode full height for now)
+			world_distance bottom = polygon->floor_height;
+			world_distance top = polygon->ceiling_height;
+			side_texture_definition texDef = side->primary_texture;
+			short transferMode = side->primary_transfer_mode;
+			
+			if (top <= bottom || texDef.texture == UNONE) continue;
+			
+			simd_int3 p0 = simd_make_int3(ep0->vertex.x, ep0->vertex.y, top);
+			simd_int3 p1 = simd_make_int3(ep1->vertex.x, ep1->vertex.y, top);
+			simd_int3 p2 = simd_make_int3(ep1->vertex.x, ep1->vertex.y, bottom);
+			simd_int3 p3 = simd_make_int3(ep0->vertex.x, ep0->vertex.y, bottom);
+			
+			auto TMgr = std::make_unique<TextureManager>();
+			NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupPolygonTexture(TMgr.get(), texDef.texture));
+			int div = GetTextureScale(transferMode, TMgr.get());
+			world_distance x0 = texDef.x0 % div;
+			world_distance y0 = texDef.y0 % div;
+			float tOffset = polygon->ceiling_height + y0;
+			
+			simd_float2 uv0 = simd_make_float2((tOffset - top   ) / (float) div, (x0               ) / (float) div);
+			simd_float2 uv1 = simd_make_float2((tOffset - top   ) / (float) div, (x0 + line->length) / (float) div);
+			simd_float2 uv2 = simd_make_float2((tOffset - bottom) / (float) div, (x0 + line->length) / (float) div);
+			simd_float2 uv3 = simd_make_float2((tOffset - bottom) / (float) div, (x0               ) / (float) div);
+			
+			WorldVertex vertices[4] = {
+				{ p0, uv0, normal },
+				{ p1, uv1, normal },
+				{ p2, uv2, normal },
+				{ p3, uv3, normal },
+			};
+			
+			if (@available(macOS 26.0, *)) {
+				[renderer addPolygonWithVertices:vertices count:4 textureID:textureID];
+			}
+		}
+	}
+	
+	isWorldLoaded = true;
+}
+
+/*
 void RenderRasterize_Metal::render_node_floor_or_ceiling(clipping_window_data *window, polygon_data *polygon, horizontal_surface_data *surface,
 														 bool void_present, bool ceil, RenderStep renderStep)
 {
-	auto viewSpacePositions = std::vector<simd_float3>(polygon->vertex_count);
+	auto viewSpacePositions = std::vector<simd_int3>(polygon->vertex_count);
 
 	for (int i=0; i < polygon->vertex_count; i++) {
 		endpoint_data *data = get_endpoint_data(polygon->endpoint_indexes[i]);
-		viewSpacePositions[i] = simd_make_float3(data->transformed.y, surface->height - view->origin.z, data->transformed.x);
+		viewSpacePositions[i] = simd_make_int3(data->vertex.x, data->vertex.y, surface->height - view->origin.z);
 	}
 	
 	auto textureCoordinates = std::vector<simd_float2>(polygon->vertex_count);
@@ -225,10 +294,10 @@ void RenderRasterize_Metal::render_node_floor_or_ceiling(clipping_window_data *w
 	
 	simd_float3 surfaceNormal = simd_make_float3(0.0, ceil ? -1.0 : 1.0, 0.0);
 	
-	auto vertices = std::vector<Vertex>(polygon->vertex_count);
+	auto vertices = std::vector<WorldVertex>(polygon->vertex_count);
 	
 	for (int i=0; i < polygon->vertex_count; i++) {
-		vertices[i] = Vertex{ viewSpacePositions[i], textureCoordinates[i], surfaceNormal };
+		vertices[i] = WorldVertex{ viewSpacePositions[i], textureCoordinates[i], surfaceNormal };
 	}
 	
 	if (@available(macOS 26.0, *)) {
@@ -332,3 +401,4 @@ void RenderRasterize_Metal::render_node_object(render_object_data *data, bool ot
 		}
 	}
 }
+*/

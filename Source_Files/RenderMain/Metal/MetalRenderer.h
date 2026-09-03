@@ -32,15 +32,17 @@ API_AVAILABLE(macos(26.0))
 								 width:(int)width
 								height:(int)height;
 
-- (void) updateViewWithFOV:(float)fov pitch:(float)pitch yaw:(float)yaw;
+- (void) updateViewWithOrigin:(simd_int3)origin
+						pitch:(float)pitch
+						  yaw:(float)yaw
+						  FOV:(float)fov;
 
 - (void) begin;
 
 /**
- Vertices should be in Metal-oriented space (+X = screen right, +Y = screen up, +Z = into screen), but world-scaled.
- (TODO: Maybe revisit this, and scale down before passing in?)
+ Vertices should be in world-space, i.e. X=east, Y=north, Z=up (away from the ground).
  */
-- (void) addPolygonWithVertices:(Vertex *)vertices count:(NSUInteger)vertexCount textureID:(NSString*)textureID;
+- (void) addPolygonWithVertices:(WorldVertex *)vertices count:(NSUInteger)vertexCount textureID:(NSString*)textureID;
 
 - (bool) hasTextureWithID:(NSString*)textureID;
 - (void) addTextureWithID:(NSString*)textureID image:(MetalImage*)image;

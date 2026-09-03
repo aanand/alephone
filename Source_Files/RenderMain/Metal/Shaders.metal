@@ -16,22 +16,34 @@ struct RasterizerData {
 	float3 surfaceNormal;
 };
 
+// Reorient a world-space position to view-space.
+// At pitch=0 and yaw=0, world +X is depth, world +Y is left (or... right? check this), and world +Z is up.
+// 1024 world-space units = 1 view-space unit.
+float3 fromWorldSpace(float3 worldPosition) {
+	return float3(worldPosition.y, worldPosition.z, worldPosition.x) / 1024.0;
+}
+
+float3 fromWorldSpace(int3 worldPosition) {
+	return fromWorldSpace(float3(worldPosition));
+}
+
 vertex RasterizerData
 initialRenderVertexShader(uint vertexID [[vertex_id]],
-						  constant Vertex *vertexData [[buffer(InitialRenderVertexShaderVertexDataIndex)]],
+						  constant WorldVertex *vertexData [[buffer(InitialRenderVertexShaderVertexDataIndex)]],
 						  constant Camera &camera [[buffer(InitialRenderVertexShaderCameraIndex)]])
 {
 	RasterizerData out;
 	
-	Vertex v = vertexData[vertexID];
+	WorldVertex v = vertexData[vertexID];
 
-	float4 result = float4(v.position, 1.0);
-	result = camera.rotation * result;
-	result = camera.perspective * result;
+	float4 result = float4(fromWorldSpace(v.position - camera.origin), 1.0);
+	result = camera.yawMat * result;
+	result = camera.pitchMat * result;
+	result = camera.perspectiveMat * result;
 
 	out.position = result;
 	out.textureCoordinate = v.textureCoordinate;
-	out.surfaceNormal = (camera.toWorldSpace * float4(v.surfaceNormal, 1.0)).xyz;
+	out.surfaceNormal = float4(fromWorldSpace(v.surfaceNormal), 1.0).xyz;
 	
 	return out;
 }
@@ -55,7 +67,7 @@ initialRenderFragmentShader(RasterizerData in [[stage_in]],
 kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
 							 uint2 tid [[thread_position_in_grid]])
 {
-	outImage.write(float4(1.0, 0.0, 1.0, 1.0), tid);
+	outImage.write(float4(1.0, 1.0, 1.0, 1.0), tid);
 }
 
 // Screen filling quad in normalized device coordinates.
@@ -97,7 +109,8 @@ finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
 {
 	constexpr sampler sam(min_filter::nearest, mag_filter::nearest, mip_filter::none);
 	float3 initialPassColor = initialPassTex.sample(sam, in.uv).xyz;
-	float3 rayTracingPassColor = rayTracingPassTex.sample(sam, in.uv).xyz;
-	float3 color = mix(initialPassColor, rayTracingPassColor, 0.5);
-	return float4(color, 1.0f);
+	return float4(initialPassColor, 1.0);
+//	float3 rayTracingPassColor = rayTracingPassTex.sample(sam, in.uv).xyz;
+//	float3 color = mix(initialPassColor, rayTracingPassColor, 0.0);
+//	return float4(color, 1.0f);
 }

@@ -32,18 +32,18 @@
 
 @interface Triangle : NSObject
 
-@property (nonatomic, readonly) Vertex v0;
-@property (nonatomic, readonly) Vertex v1;
-@property (nonatomic, readonly) Vertex v2;
+@property (nonatomic, readonly) WorldVertex v0;
+@property (nonatomic, readonly) WorldVertex v1;
+@property (nonatomic, readonly) WorldVertex v2;
 @property (nonatomic, readonly) NSNumber* textureID;
 
-- (Triangle *) initWithV0:(Vertex)v0 v1:(Vertex)v1 v2:(Vertex)v2 textureID:(NSNumber*)textureID;
+- (Triangle *) initWithV0:(WorldVertex)v0 v1:(WorldVertex)v1 v2:(WorldVertex)v2 textureID:(NSNumber*)textureID;
 
 @end
 
 @implementation Triangle
 
-- (Triangle *) initWithV0:(Vertex)v0 v1:(Vertex)v1 v2:(Vertex)v2 textureID:(NSNumber *)textureID {
+- (Triangle *) initWithV0:(WorldVertex)v0 v1:(WorldVertex)v1 v2:(WorldVertex)v2 textureID:(NSNumber *)textureID {
 	if (self = [super init]) {
 		_v0 = v0;
 		_v1 = v1;
@@ -59,6 +59,11 @@ float radians(float degrees) {
 	return degrees * 8.0 * atan(1.0) / 360.0;
 }
 
+simd_float4x4 rotationMatrix(float angle, simd_float3 axis) {
+	simd_quatf quat = simd_quaternion(radians(angle), axis);
+	return simd_matrix4x4(quat);
+}
+
 // Assumes fov is the horizontal FOV, not the traditional vertical one
 simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
 	float xs = 1.0 / tanf(radians(fov) * 0.5);
@@ -69,16 +74,6 @@ simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
 					   (simd_float4){ 0.0,  ys, 0.0, 0.0 },
 					   (simd_float4){ 0.0, 0.0, 1.0, 1.0 },
 					   (simd_float4){ 0.0, 0.0, -nz, 0.0 });
-}
-
-simd_float4x4 pitchMatrix(float angle) {
-	simd_quatf quat = simd_quaternion(radians(angle), simd_make_float3(1.0, 0.0, 0.0));
-	return simd_matrix4x4(quat);
-}
-
-simd_float4x4 toWorldSpaceMatrix(float yaw) {
-	simd_quatf quat = simd_quaternion(radians(-yaw), simd_make_float3(0.0, 1.0, 0.0));
-	return simd_matrix4x4(quat);
 }
 
 uint MAX_TRIANGLES = 10000;
@@ -188,6 +183,7 @@ API_AVAILABLE(macos(26.0))
 	[finalRenderResidencySet commit];
 	
 	textures = [NSMutableDictionary dictionary];
+	triangles = [NSMutableArray array];
 	
 	return self;
 }
@@ -259,7 +255,7 @@ API_AVAILABLE(macos(26.0))
 	cameraBuffer = [device newBufferWithLength:sizeof(Camera) options:MTLResourceStorageModeShared];
 	[initialRenderResidencySet addAllocation:cameraBuffer];
 	
-	triangleBuffer = [device newBufferWithLength:(sizeof(Vertex) * MAX_TRIANGLES * 3) options:MTLResourceStorageModeShared];
+	triangleBuffer = [device newBufferWithLength:(sizeof(WorldVertex) * MAX_TRIANGLES * 3) options:MTLResourceStorageModeShared];
 	[initialRenderResidencySet addAllocation:triangleBuffer];
 }
 
@@ -380,7 +376,8 @@ API_AVAILABLE(macos(26.0))
 	return state;
 }
 
-- (void) updateViewWithFOV:(float)newFOV pitch:(float)newPitch yaw:(float)newYaw {
+- (void) updateViewWithOrigin:(simd_int3)newOrigin pitch:(float)newPitch yaw:(float)newYaw FOV:(float)newFOV {
+	origin = newOrigin;
 	fov = newFOV;
 	pitch = newPitch;
 	yaw = newYaw;
@@ -388,11 +385,9 @@ API_AVAILABLE(macos(26.0))
 
 - (void) begin {
 	frameNumber += 1;
-	
-	triangles = [NSMutableArray array];
 }
 
-- (void) addPolygonWithVertices:(Vertex *)vertices count:(NSUInteger)vertexCount textureID:(NSNumber*)textureID {
+- (void) addPolygonWithVertices:(WorldVertex *)vertices count:(NSUInteger)vertexCount textureID:(NSNumber*)textureID {
 	assert(vertexCount > 2);
 	
 	// Triangle fan: draw 0-1-2, 0-2-3, 0-3-4, etc
@@ -432,10 +427,11 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (void) end {
-	simd_float4x4 perspective = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
-	simd_float4x4 rotation = pitchMatrix(pitch);
-	simd_float4x4 toWorldSpace = toWorldSpaceMatrix(yaw);
-	Camera camera = { perspective, rotation, toWorldSpace };
+	Camera camera;
+	camera.origin = origin;
+	camera.pitchMat = rotationMatrix(pitch, simd_make_float3(1.0, 0.0, 0.0));
+	camera.yawMat = rotationMatrix(-yaw, simd_make_float3(0.0, 1.0, 0.0));
+	camera.perspectiveMat = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
 	memcpy(cameraBuffer.contents, &camera, sizeof(Camera));
 		
 	id<CAMetalDrawable> currentDrawable = [metalLayer nextDrawable];
@@ -479,7 +475,7 @@ API_AVAILABLE(macos(26.0))
 	[vertexArgumentTable setAddress:cameraBuffer.gpuAddress atIndex:InitialRenderVertexShaderCameraIndex];
 	[vertexArgumentTable setAddress:triangleBuffer.gpuAddress atIndex:InitialRenderVertexShaderVertexDataIndex];
 
-	Vertex *target = (Vertex*)triangleBuffer.contents;
+	WorldVertex *target = (WorldVertex*)triangleBuffer.contents;
 	NSUInteger offset = 0;
 	
 	for (int i = 0; i < triangles.count; i++) {
@@ -489,7 +485,7 @@ API_AVAILABLE(macos(26.0))
 		target[offset+1] = triangle.v1;
 		target[offset+2] = triangle.v2;
 		
-		MTLGPUAddress address = triangleBuffer.gpuAddress + (offset * sizeof(Vertex));
+		MTLGPUAddress address = triangleBuffer.gpuAddress + (offset * sizeof(WorldVertex));
 		[vertexArgumentTable setAddress:address atIndex:InitialRenderVertexShaderVertexDataIndex];
 		[renderPassEncoder setArgumentTable:vertexArgumentTable atStages:MTLRenderStageVertex];
 
