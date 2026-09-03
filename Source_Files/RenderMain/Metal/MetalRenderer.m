@@ -194,7 +194,7 @@ API_AVAILABLE(macos(26.0))
 	viewportSizeBuffer = [device newBufferWithLength:sizeof(viewportSize) options:MTLResourceStorageModeShared];
 	[residencySet addAllocation:viewportSizeBuffer];
 	
-	cameraBuffer = [device newBufferWithLength:sizeof(simd_float4x4) options:MTLResourceStorageModeShared];
+	cameraBuffer = [device newBufferWithLength:sizeof(Camera) options:MTLResourceStorageModeShared];
 	[residencySet addAllocation:cameraBuffer];
 }
 
