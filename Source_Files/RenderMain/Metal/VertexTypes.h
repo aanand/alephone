@@ -10,6 +10,17 @@
 
 #include <simd/simd.h>
 
+enum {
+	InitialRenderVertexShaderVertexDataIndex,
+	InitialRenderVertexShaderCameraIndex,
+	InitialRenderVertexShader_NumBuffers,
+};
+
+enum {
+	InitialRenderFragmentShaderColorTextureIndex,
+	InitialRenderFragmentShader_NumTextures,
+};
+
 typedef struct {
 	matrix_float4x4 perspective;
 	matrix_float4x4 rotation;

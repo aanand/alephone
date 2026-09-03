@@ -109,7 +109,10 @@ API_AVAILABLE(macos(26.0))
 	id<MTLResidencySet> residencySet;
 	id<MTL4CommandAllocator> commandAllocator;
 	id<MTLSharedEvent> sharedEvent;
-	id<MTLRenderPipelineState> renderPipelineState;
+
+	id<MTLRenderPipelineState> initialRenderPipeline;
+	id<MTLComputePipelineState> rayTracingPipeline;
+	id<MTLRenderPipelineState> finalRenderPipeline;
 	id<MTLDepthStencilState> depthState;
 
 	// Shader inputs
@@ -143,7 +146,7 @@ API_AVAILABLE(macos(26.0))
 	NSError *error;
 	
 	MTL4ArgumentTableDescriptor *vertexArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
-	vertexArgumentTableDescriptor.maxBufferBindCount = 3;
+	vertexArgumentTableDescriptor.maxBufferBindCount = InitialRenderVertexShader_NumBuffers;
 	vertexArgumentTable = [device newArgumentTableWithDescriptor:vertexArgumentTableDescriptor error:&error];
 	if (error) {
 		NSLog(@"%@", error);
@@ -151,7 +154,7 @@ API_AVAILABLE(macos(26.0))
 	}
 	
 	MTL4ArgumentTableDescriptor *fragmentArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
-	fragmentArgumentTableDescriptor.maxTextureBindCount = 1;
+	fragmentArgumentTableDescriptor.maxTextureBindCount = InitialRenderFragmentShader_NumTextures;
 	fragmentArgumentTable = [device newArgumentTableWithDescriptor:fragmentArgumentTableDescriptor error:&error];
 	if (error) {
 		NSLog(@"%@", error);
@@ -172,12 +175,17 @@ API_AVAILABLE(macos(26.0))
 	
 	commandAllocator = [device newCommandAllocator];
 	
-	renderPipelineState = [self compileRenderPipeline:metalLayer.pixelFormat];
-	if (!renderPipelineState) {
+	initialRenderPipeline = [self compileInitialRenderPipeline:metalLayer.pixelFormat];
+	if (!initialRenderPipeline) {
 		return nil;
 	}
 	
 	depthState = [self configureDepth];
+	
+	rayTracingPipeline = [self compileRayTracingPipeline];
+	if (!rayTracingPipeline) {
+		return nil;
+	}
 	
 	sharedEvent = [device newSharedEvent];
 	sharedEvent.signaledValue = frameNumber;
@@ -193,7 +201,7 @@ API_AVAILABLE(macos(26.0))
 	[residencySet addAllocation:cameraBuffer];
 }
 
-- (id<MTLRenderPipelineState>) compileRenderPipeline:(MTLPixelFormat) colorPixelFormat {
+- (id<MTLRenderPipelineState>) compileInitialRenderPipeline:(MTLPixelFormat) colorPixelFormat {
 	NSError *error;
 	id<MTL4Compiler> compiler = [device newCompilerWithDescriptor:[MTL4CompilerDescriptor new]
 															error:&error];
@@ -203,8 +211,27 @@ API_AVAILABLE(macos(26.0))
 		return nil;
 	}
 
-	MTL4RenderPipelineDescriptor *descriptor = [self configureRenderPipeline:colorPixelFormat];
+	MTL4LibraryFunctionDescriptor *vertexFunction = [MTL4LibraryFunctionDescriptor new];
+	vertexFunction.library = defaultLibrary;
+	vertexFunction.name = @"initialRenderVertexShader";
 	
+	MTL4LibraryFunctionDescriptor *fragmentFunction = [MTL4LibraryFunctionDescriptor new];
+	fragmentFunction.library = defaultLibrary;
+	fragmentFunction.name = @"initialRenderFragmentShader";
+
+	MTL4RenderPipelineDescriptor *descriptor = [MTL4RenderPipelineDescriptor new];
+	descriptor.label = @"Initial Render";
+	descriptor.vertexFunctionDescriptor = vertexFunction;
+	descriptor.fragmentFunctionDescriptor = fragmentFunction;
+
+	MTL4RenderPipelineColorAttachmentDescriptor *colorAttachment = descriptor.colorAttachments[0];
+	colorAttachment.pixelFormat = colorPixelFormat;
+	colorAttachment.blendingState = MTL4BlendStateEnabled;
+	colorAttachment.sourceAlphaBlendFactor = MTLBlendFactorSourceAlpha;
+	colorAttachment.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+	colorAttachment.sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+	colorAttachment.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
 	id<MTLRenderPipelineState> state = [compiler newRenderPipelineStateWithDescriptor:descriptor
 																  compilerTaskOptions:nil
 																				error:&error];
@@ -216,36 +243,25 @@ API_AVAILABLE(macos(26.0))
 	return state;
 }
 
-- (MTL4RenderPipelineDescriptor *) configureRenderPipeline:(MTLPixelFormat) colorPixelFormat {
-	MTL4LibraryFunctionDescriptor *vertexFunction = [MTL4LibraryFunctionDescriptor new];
-	vertexFunction.library = defaultLibrary;
-	vertexFunction.name = @"vertexShader";
-	
-	MTL4LibraryFunctionDescriptor *fragmentFunction = [MTL4LibraryFunctionDescriptor new];
-	fragmentFunction.library = defaultLibrary;
-	fragmentFunction.name = @"fragmentShader";
-
-	MTL4RenderPipelineDescriptor *descriptor = [MTL4RenderPipelineDescriptor new];
-	descriptor.label = @"Basic Metal 4 render pipeline";
-	descriptor.vertexFunctionDescriptor = vertexFunction;
-	descriptor.fragmentFunctionDescriptor = fragmentFunction;
-
-	MTL4RenderPipelineColorAttachmentDescriptor *colorAttachment = descriptor.colorAttachments[0];
-	colorAttachment.pixelFormat = colorPixelFormat;
-	colorAttachment.blendingState = MTL4BlendStateEnabled;
-	colorAttachment.sourceAlphaBlendFactor = MTLBlendFactorSourceAlpha;
-	colorAttachment.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-	colorAttachment.sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-	colorAttachment.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-	
-	return descriptor;
-}
-
 - (id<MTLDepthStencilState>) configureDepth {
 	MTLDepthStencilDescriptor *depthDescriptor = [MTLDepthStencilDescriptor new];
 	depthDescriptor.depthCompareFunction = MTLCompareFunctionLessEqual;
 	depthDescriptor.depthWriteEnabled = YES;
 	return [device newDepthStencilStateWithDescriptor:depthDescriptor];
+}
+
+- (id<MTLComputePipelineState>) compileRayTracingPipeline {
+	NSError *error;
+	id<MTLFunction> function = [defaultLibrary newFunctionWithName:@"rayTracingKernel"];
+	
+	id<MTLComputePipelineState> state = [device newComputePipelineStateWithFunction:function
+																			  error:&error];
+	
+	if (error) {
+		NSLog(@"%@", error);
+	}
+	
+	return state;
 }
 
 - (void) updateViewWithFOV:(float)newFOV pitch:(float)newPitch yaw:(float)newYaw {
@@ -329,11 +345,11 @@ API_AVAILABLE(macos(26.0))
 	if (!renderPassEncoder) return;
 	renderPassEncoder.label = label;
 	
-	[renderPassEncoder setRenderPipelineState:renderPipelineState];
+	[renderPassEncoder setRenderPipelineState:initialRenderPipeline];
 	[renderPassEncoder setDepthStencilState:depthState];
 	[renderPassEncoder setViewport:viewPort];
 	
-	[vertexArgumentTable setAddress:cameraBuffer.gpuAddress atIndex:1];
+	[vertexArgumentTable setAddress:cameraBuffer.gpuAddress atIndex:InitialRenderVertexShaderCameraIndex];
 
 	for (int i = 0; i < triangles.count; i++) {
 		Triangle *triangle = [triangles objectAtIndex:i];
@@ -350,11 +366,11 @@ API_AVAILABLE(macos(26.0))
 		[residencySet addAllocation:vertexBuffer];
 		[vertexBuffers addObject:vertexBuffer];
 		
-		[vertexArgumentTable setAddress:vertexBuffer.gpuAddress atIndex:0];
+		[vertexArgumentTable setAddress:vertexBuffer.gpuAddress atIndex:InitialRenderVertexShaderVertexDataIndex];
 		[renderPassEncoder setArgumentTable:vertexArgumentTable atStages:MTLRenderStageVertex];
 
 		id<MTLTexture> texture = [textures objectForKey:triangle.textureID];
-		[fragmentArgumentTable setTexture:texture.gpuResourceID atIndex:0];
+		[fragmentArgumentTable setTexture:texture.gpuResourceID atIndex:InitialRenderFragmentShaderColorTextureIndex];
 		[renderPassEncoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
 		
 		[residencySet commit];

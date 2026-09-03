@@ -17,10 +17,10 @@ struct RasterizerData {
 };
 
 vertex RasterizerData
-vertexShader(uint vertexID [[vertex_id]],
-			 constant Vertex *vertexData [[buffer(0)]],
-			 constant Camera &camera [[buffer(1)]]) {
-	
+initialRenderVertexShader(uint vertexID [[vertex_id]],
+						  constant Vertex *vertexData [[buffer(InitialRenderVertexShaderVertexDataIndex)]],
+						  constant Camera &camera [[buffer(InitialRenderVertexShaderCameraIndex)]])
+{
 	RasterizerData out;
 	
 	Vertex v = vertexData[vertexID];
@@ -36,8 +36,9 @@ vertexShader(uint vertexID [[vertex_id]],
 	return out;
 }
 
-fragment float4 fragmentShader(RasterizerData in [[stage_in]],
-							   texture2d<half> colorTexture [[ texture(0) ]])
+fragment float4
+initialRenderFragmentShader(RasterizerData in [[stage_in]],
+			   texture2d<half> colorTexture [[ texture(InitialRenderFragmentShaderColorTextureIndex) ]])
 {
 	float3 globalLightDirection = normalize(float3(-1, -1, -1));
 	float globalLightIntensity = 1.0;
@@ -49,4 +50,9 @@ fragment float4 fragmentShader(RasterizerData in [[stage_in]],
 	constexpr sampler textureSampler (mag_filter::nearest, min_filter::nearest, address::repeat);
 	const half4 colorSample = colorTexture.sample(textureSampler, in.textureCoordinate);
 	return float4(float3(colorSample.xyz) * intensity, colorSample.w);
+}
+
+kernel void rayTracingKernel()
+{
+	
 }
