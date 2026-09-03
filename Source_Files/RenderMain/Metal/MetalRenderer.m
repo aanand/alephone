@@ -117,6 +117,9 @@ API_AVAILABLE(macos(26.0))
 
 	id<MTLResidencySet> initialRenderResidencySet;
 	id<MTLResidencySet> finalRenderResidencySet;
+	
+	id<MTLTexture> initialRenderOutputTexture;
+	id<MTLTexture> rayTracingOutputTexture;
 
 	// Shader inputs
 	
@@ -172,7 +175,12 @@ API_AVAILABLE(macos(26.0))
 	if (![self setupResidencySets]) {
 		return nil;
 	}
+
+	[self setupIntermediateTextures];
 	[self setupConstantSizeBuffers];
+	
+	[initialRenderResidencySet commit];
+	[finalRenderResidencySet commit];
 	
 	textures = [NSMutableDictionary dictionary];
 	
@@ -229,6 +237,20 @@ API_AVAILABLE(macos(26.0))
 - (void) setupConstantSizeBuffers {
 	cameraBuffer = [device newBufferWithLength:sizeof(Camera) options:MTLResourceStorageModeShared];
 	[initialRenderResidencySet addAllocation:cameraBuffer];
+}
+
+- (void) setupIntermediateTextures {
+	MTLTextureDescriptor *textureDescriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:metalLayer.pixelFormat
+																								 width:viewportSize.x
+																								height:viewportSize.y
+																							 mipmapped:NO];
+	textureDescriptor.storageMode = MTLStorageModePrivate;
+	textureDescriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
+	
+	initialRenderOutputTexture = [device newTextureWithDescriptor:textureDescriptor];
+	rayTracingOutputTexture = [device newTextureWithDescriptor:textureDescriptor];
+	
+	[finalRenderResidencySet addAllocation:initialRenderOutputTexture];
 }
 
 - (id<MTLRenderPipelineState>) compileInitialRenderPipeline:(MTLPixelFormat) colorPixelFormat {
@@ -387,17 +409,7 @@ API_AVAILABLE(macos(26.0))
 	simd_float4x4 toWorldSpace = toWorldSpaceMatrix(yaw);
 	Camera camera = { perspective, rotation, toWorldSpace };
 	memcpy(cameraBuffer.contents, &camera, sizeof(Camera));
-	
-	MTLTextureDescriptor *textureDescriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:metalLayer.pixelFormat
-																								 width:viewportSize.x
-																								height:viewportSize.y
-																							 mipmapped:NO];
-	textureDescriptor.storageMode = MTLStorageModePrivate;
-	textureDescriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
-	
-	id<MTLTexture> initialRenderOutputTexture = [device newTextureWithDescriptor:textureDescriptor];
-	//	id<MTLTexture> rayTracingOutputTexture = [device newTextureWithDescriptor:textureDescriptor];
-	
+		
 	id<CAMetalDrawable> currentDrawable = [metalLayer nextDrawable];
 
 	[commandBuffer beginCommandBufferWithAllocator:commandAllocator];
@@ -487,13 +499,9 @@ API_AVAILABLE(macos(26.0))
 
 	[fragmentArgumentTable setTexture:inputTexture.gpuResourceID atIndex:FinalRenderFragmentShaderInputTextureIndex];
 	[encoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
-	[finalRenderResidencySet addAllocation:inputTexture];
 	[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
 	
-	[finalRenderResidencySet commit];
 	[encoder endEncoding];
-	
-//	[finalRenderResidencySet removeAllocation:inputTexture];
 }
 
 - (MTLViewport) getViewport {
