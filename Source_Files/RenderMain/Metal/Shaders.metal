@@ -19,8 +19,7 @@ struct RasterizerData {
 vertex RasterizerData
 vertexShader(uint vertexID [[vertex_id]],
 			 constant Vertex *vertexData [[buffer(0)]],
-			 constant float2 *viewportSize [[buffer(1)]],
-			 constant Camera &camera [[buffer(2)]]) {
+			 constant Camera &camera [[buffer(1)]]) {
 	
 	RasterizerData out;
 	

@@ -115,8 +115,6 @@ API_AVAILABLE(macos(26.0))
 	// Shader inputs
 	
 	id<MTLBuffer> triangleBuffer;
-
-	id<MTLBuffer> viewportSizeBuffer;
 	id<MTLBuffer> cameraBuffer;
 
 	NSMutableDictionary<NSNumber *, id<MTLTexture>> *textures;
@@ -191,9 +189,6 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (void) setupConstantSizeBuffers {
-	viewportSizeBuffer = [device newBufferWithLength:sizeof(viewportSize) options:MTLResourceStorageModeShared];
-	[residencySet addAllocation:viewportSizeBuffer];
-	
 	cameraBuffer = [device newBufferWithLength:sizeof(Camera) options:MTLResourceStorageModeShared];
 	[residencySet addAllocation:cameraBuffer];
 }
@@ -303,8 +298,6 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (void) end {
-	memcpy(viewportSizeBuffer.contents, &viewportSize, sizeof(viewportSize));
-
 	simd_float4x4 perspective = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
 	simd_float4x4 rotation = pitchMatrix(pitch);
 	simd_float4x4 toWorldSpace = toWorldSpaceMatrix(yaw);
@@ -340,8 +333,7 @@ API_AVAILABLE(macos(26.0))
 	[renderPassEncoder setDepthStencilState:depthState];
 	[renderPassEncoder setViewport:viewPort];
 	
-	[vertexArgumentTable setAddress:viewportSizeBuffer.gpuAddress atIndex:1];
-	[vertexArgumentTable setAddress:cameraBuffer.gpuAddress atIndex:2];
+	[vertexArgumentTable setAddress:cameraBuffer.gpuAddress atIndex:1];
 
 	for (int i = 0; i < triangles.count; i++) {
 		Triangle *triangle = [triangles objectAtIndex:i];
