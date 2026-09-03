@@ -308,6 +308,13 @@ void RenderRasterize_Metal::render_node_object(render_object_data *data, bool ot
 	float texR = TMgr->V_Scale+TMgr->V_Offset;
 	float texT = TMgr->U_Offset;
 	float texB = TMgr->U_Scale+TMgr->U_Offset;
+	
+	if (rect.flip_horizontal) {
+		std::swap(texL, texR);
+	}
+	if (rect.flip_vertical) {
+		std::swap(texT, texB);
+	}
 
 	// Per the comment in TextureManager::SetupTextureMatrix(), inhabitant textures
 	// "come in right side up, but the renderer expects them to be upside down and sideways",
