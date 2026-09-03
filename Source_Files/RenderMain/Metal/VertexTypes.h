@@ -21,6 +21,16 @@ enum {
 	InitialRenderFragmentShader_NumTextures,
 };
 
+enum {
+	RayTracingKernelOutImageIndex,
+	RayTracingKernel_NumTextures,
+};
+
+enum {
+	FinalRenderFragmentShaderInputTextureIndex,
+	FinalRenderFragmentShader_NumTextures,
+};
+
 typedef struct {
 	matrix_float4x4 perspective;
 	matrix_float4x4 rotation;

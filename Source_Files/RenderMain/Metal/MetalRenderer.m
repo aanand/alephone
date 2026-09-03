@@ -106,7 +106,6 @@ API_AVAILABLE(macos(26.0))
 	id<MTLLibrary> defaultLibrary;
 	id<MTL4ArgumentTable> vertexArgumentTable;
 	id<MTL4ArgumentTable> fragmentArgumentTable;
-	id<MTLResidencySet> residencySet;
 	id<MTL4CommandAllocator> commandAllocator;
 	id<MTLSharedEvent> sharedEvent;
 
@@ -114,6 +113,9 @@ API_AVAILABLE(macos(26.0))
 	id<MTLComputePipelineState> rayTracingPipeline;
 	id<MTLRenderPipelineState> finalRenderPipeline;
 	id<MTLDepthStencilState> depthState;
+
+	id<MTLResidencySet> initialRenderResidencySet;
+	id<MTLResidencySet> finalRenderResidencySet;
 
 	// Shader inputs
 	
@@ -162,13 +164,19 @@ API_AVAILABLE(macos(26.0))
 	}
 
 	MTLResidencySetDescriptor *residencySetDescriptor = [MTLResidencySetDescriptor new];
-	residencySet = [device newResidencySetWithDescriptor:residencySetDescriptor
+	initialRenderResidencySet = [device newResidencySetWithDescriptor:residencySetDescriptor
 												   error:&error];
 	if (error) {
 		NSLog(@"%@", error);
 		return nil;
 	}
-	
+	finalRenderResidencySet = [device newResidencySetWithDescriptor:residencySetDescriptor
+															  error:&error];
+	if (error) {
+		NSLog(@"%@", error);
+		return nil;
+	}
+
 	[self setupConstantSizeBuffers];
 	
 	textures = [NSMutableDictionary dictionary];
@@ -180,17 +188,23 @@ API_AVAILABLE(macos(26.0))
 		return nil;
 	}
 	
-	depthState = [self configureDepth];
-	
 	rayTracingPipeline = [self compileRayTracingPipeline];
 	if (!rayTracingPipeline) {
 		return nil;
 	}
 	
+	finalRenderPipeline = [self compileFinalRenderPipeline:metalLayer.pixelFormat];
+	if (!finalRenderPipeline) {
+		return nil;
+	}
+	
+	depthState = [self configureDepth];
+	
 	sharedEvent = [device newSharedEvent];
 	sharedEvent.signaledValue = frameNumber;
 	
-	[commandQueue addResidencySet:residencySet];
+	[commandQueue addResidencySet:initialRenderResidencySet];
+	[commandQueue addResidencySet:finalRenderResidencySet];
 	[commandQueue addResidencySet:metalLayer.residencySet];
 	
 	return self;
@@ -198,7 +212,7 @@ API_AVAILABLE(macos(26.0))
 
 - (void) setupConstantSizeBuffers {
 	cameraBuffer = [device newBufferWithLength:sizeof(Camera) options:MTLResourceStorageModeShared];
-	[residencySet addAllocation:cameraBuffer];
+	[initialRenderResidencySet addAllocation:cameraBuffer];
 }
 
 - (id<MTLRenderPipelineState>) compileInitialRenderPipeline:(MTLPixelFormat) colorPixelFormat {
@@ -238,6 +252,44 @@ API_AVAILABLE(macos(26.0))
 	
 	if (error) {
 		NSLog(@"%@", error);
+	}
+	
+	return state;
+}
+
+- (id<MTLRenderPipelineState>) compileFinalRenderPipeline:(MTLPixelFormat) colorPixelFormat {
+	NSError *error;
+	id<MTL4Compiler> compiler = [device newCompilerWithDescriptor:[MTL4CompilerDescriptor new]
+															error:&error];
+	
+	if (error) {
+		NSLog(@"%@", error);
+		return nil;
+	}
+
+	MTL4LibraryFunctionDescriptor *vertexFunction = [MTL4LibraryFunctionDescriptor new];
+	vertexFunction.library = defaultLibrary;
+	vertexFunction.name = @"finalRenderVertexShader";
+	
+	MTL4LibraryFunctionDescriptor *fragmentFunction = [MTL4LibraryFunctionDescriptor new];
+	fragmentFunction.library = defaultLibrary;
+	fragmentFunction.name = @"finalRenderFragmentShader";
+	
+	MTL4RenderPipelineDescriptor *descriptor = [MTL4RenderPipelineDescriptor new];
+	descriptor.label = @"Final Render";
+	descriptor.vertexFunctionDescriptor = vertexFunction;
+	descriptor.fragmentFunctionDescriptor = fragmentFunction;
+	
+	MTL4RenderPipelineColorAttachmentDescriptor *colorAttachment = descriptor.colorAttachments[0];
+	colorAttachment.pixelFormat = colorPixelFormat;
+	// TODO: configure blending
+	
+	id<MTLRenderPipelineState> state = [compiler newRenderPipelineStateWithDescriptor:descriptor
+																  compilerTaskOptions:nil
+																				error:&error];
+	if (error) {
+		NSLog(@"%@", error);
+		return nil;
 	}
 	
 	return state;
@@ -310,7 +362,7 @@ API_AVAILABLE(macos(26.0))
 			   bytesPerRow:sizeof(uint32) * image.width];
 	
 	[textures setObject:texture forKey:textureID];
-	[residencySet addAllocation:texture];
+	[initialRenderResidencySet addAllocation:texture];
 }
 
 - (void) end {
@@ -319,35 +371,50 @@ API_AVAILABLE(macos(26.0))
 	simd_float4x4 toWorldSpace = toWorldSpaceMatrix(yaw);
 	Camera camera = { perspective, rotation, toWorldSpace };
 	memcpy(cameraBuffer.contents, &camera, sizeof(Camera));
-
-	NSString *label = [NSString stringWithFormat:@"Frame %llu", frameNumber];
+	
+	MTLTextureDescriptor *textureDescriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:metalLayer.pixelFormat
+																								 width:viewportSize.x
+																								height:viewportSize.y
+																							 mipmapped:NO];
+	textureDescriptor.storageMode = MTLStorageModePrivate;
+	textureDescriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
+	
+	id<MTLTexture> initialRenderOutputTexture = [device newTextureWithDescriptor:textureDescriptor];
+	//	id<MTLTexture> rayTracingOutputTexture = [device newTextureWithDescriptor:textureDescriptor];
 	
 	id<CAMetalDrawable> currentDrawable = [metalLayer nextDrawable];
-	
+
 	[commandBuffer beginCommandBufferWithAllocator:commandAllocator];
-	commandBuffer.label = label;
+	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu", frameNumber];
 	
+	[self encodeInitialRenderToOutputTexture:initialRenderOutputTexture];
+	[self encodeFinalRenderFromInputTexture:initialRenderOutputTexture toOutputTexture:currentDrawable.texture];
+
+	[commandBuffer endCommandBuffer];
+
+	[commandQueue waitForDrawable:currentDrawable];
+	[commandQueue commit:&commandBuffer count:1];
+	[commandQueue signalDrawable:currentDrawable];
+	[currentDrawable present];
+}
+
+- (void) encodeInitialRenderToOutputTexture:(id<MTLTexture>)outputTexture {
 	MTL4RenderPassDescriptor *configuration = [MTL4RenderPassDescriptor new];
-	configuration.colorAttachments[0].texture = currentDrawable.texture;
+	configuration.colorAttachments[0].texture = outputTexture;
 	configuration.colorAttachments[0].storeAction = MTLStoreActionStore;
-	
-	MTLViewport viewPort;
-	viewPort.originX = 0.0;
-	viewPort.originY = 0.0;
-	viewPort.znear = 0.0;
-	viewPort.zfar = 1.0;
-	viewPort.width = (double)viewportSize.x;
-	viewPort.height = (double)viewportSize.y;
 
 	NSMutableArray<id<MTLBuffer>> *vertexBuffers = [NSMutableArray array];
 	
 	id<MTL4RenderCommandEncoder> renderPassEncoder = [commandBuffer renderCommandEncoderWithDescriptor:configuration];
-	if (!renderPassEncoder) return;
-	renderPassEncoder.label = label;
+	if (!renderPassEncoder) {
+		NSLog(@"Failed to create render command encoder");
+		return;
+	}
+	renderPassEncoder.label = @"Initial render";
 	
 	[renderPassEncoder setRenderPipelineState:initialRenderPipeline];
 	[renderPassEncoder setDepthStencilState:depthState];
-	[renderPassEncoder setViewport:viewPort];
+	[renderPassEncoder setViewport:[self getViewport]];
 	
 	[vertexArgumentTable setAddress:cameraBuffer.gpuAddress atIndex:InitialRenderVertexShaderCameraIndex];
 
@@ -363,7 +430,7 @@ API_AVAILABLE(macos(26.0))
 		id<MTLBuffer> vertexBuffer = [device newBufferWithBytes:vertexData.bytes
 														 length:vertexData.length
 														options:MTLResourceStorageModeShared];
-		[residencySet addAllocation:vertexBuffer];
+		[initialRenderResidencySet addAllocation:vertexBuffer];
 		[vertexBuffers addObject:vertexBuffer];
 		
 		[vertexArgumentTable setAddress:vertexBuffer.gpuAddress atIndex:InitialRenderVertexShaderVertexDataIndex];
@@ -373,22 +440,55 @@ API_AVAILABLE(macos(26.0))
 		[fragmentArgumentTable setTexture:texture.gpuResourceID atIndex:InitialRenderFragmentShaderColorTextureIndex];
 		[renderPassEncoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
 		
-		[residencySet commit];
+		[initialRenderResidencySet commit];
 		[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
 	}
 
 	[renderPassEncoder endEncoding];
-	[commandBuffer endCommandBuffer];
-	
-	[commandQueue waitForDrawable:currentDrawable];
-	[commandQueue commit:&commandBuffer count:1];
-	[commandQueue signalDrawable:currentDrawable];
-	[currentDrawable present];
-	
-	for (int i = 0; i < vertexBuffers.count; i++) {
-		[residencySet removeAllocation:[vertexBuffers objectAtIndex:i]];
+
+//	for (int i = 0; i < vertexBuffers.count; i++) {
+//		[initialRenderResidencySet removeAllocation:[vertexBuffers objectAtIndex:i]];
+//	}
+//	[initialRenderResidencySet commit];
+}
+
+-(void) encodeFinalRenderFromInputTexture:(id<MTLTexture>)inputTexture toOutputTexture:(id<MTLTexture>)outputTexture {
+	MTL4RenderPassDescriptor *configuration = [MTL4RenderPassDescriptor new];
+	configuration.colorAttachments[0].texture = outputTexture;
+	configuration.colorAttachments[0].storeAction = MTLStoreActionStore;
+
+	id<MTL4RenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:configuration];
+	if (!encoder) {
+		NSLog(@"Failed to create render command encoder");
+		return;
 	}
-	[residencySet commit];
+	encoder.label = @"Final render";
+	
+	[encoder setRenderPipelineState:finalRenderPipeline];
+	[encoder setViewport:[self getViewport]];
+
+	[encoder setArgumentTable:vertexArgumentTable atStages:MTLRenderStageVertex];
+
+	[fragmentArgumentTable setTexture:inputTexture.gpuResourceID atIndex:FinalRenderFragmentShaderInputTextureIndex];
+	[encoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
+	[finalRenderResidencySet addAllocation:inputTexture];
+	[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
+	
+	[finalRenderResidencySet commit];
+	[encoder endEncoding];
+	
+//	[finalRenderResidencySet removeAllocation:inputTexture];
+}
+
+- (MTLViewport) getViewport {
+	MTLViewport viewPort;
+	viewPort.originX = 0.0;
+	viewPort.originY = 0.0;
+	viewPort.znear = 0.0;
+	viewPort.zfar = 1.0;
+	viewPort.width = (double)viewportSize.x;
+	viewPort.height = (double)viewportSize.y;
+	return viewPort;
 }
 
 @end
