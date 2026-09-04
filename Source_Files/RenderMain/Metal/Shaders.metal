@@ -6,7 +6,9 @@
 //
 
 #include <metal_stdlib>
+
 using namespace metal;
+using namespace raytracing;
 
 #include "VertexTypes.h"
 
@@ -65,9 +67,11 @@ initialRenderFragmentShader(RasterizerData in [[stage_in]],
 }
 
 kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
+							 instance_acceleration_structure accelerationStructure [[ buffer(RayTracingKernelAccelerationStructureIndex) ]],
+							 constant Camera &camera [[ buffer(RayTracingKernelCameraIndex) ]],
 							 uint2 tid [[thread_position_in_grid]])
 {
-	outImage.write(float4(1.0, 1.0, 1.0, 1.0), tid);
+	outImage.write(float4(0.0, 0.0, 0.0, 1.0), tid);
 }
 
 // Screen filling quad in normalized device coordinates.
@@ -109,8 +113,7 @@ finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
 {
 	constexpr sampler sam(min_filter::nearest, mag_filter::nearest, mip_filter::none);
 	float3 initialPassColor = initialPassTex.sample(sam, in.uv).xyz;
-	return float4(initialPassColor, 1.0);
-//	float3 rayTracingPassColor = rayTracingPassTex.sample(sam, in.uv).xyz;
-//	float3 color = mix(initialPassColor, rayTracingPassColor, 0.0);
-//	return float4(color, 1.0f);
+	float3 rayTracingPassColor = rayTracingPassTex.sample(sam, in.uv).xyz;
+	float3 color = mix(initialPassColor, rayTracingPassColor, 0.5);
+	return float4(color, 1.0f);
 }

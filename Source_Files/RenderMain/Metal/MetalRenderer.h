@@ -38,16 +38,18 @@ API_AVAILABLE(macos(26.0))
 						  FOV:(float)fov;
 
 - (void) begin;
+- (void) end;
 
 /**
  Vertices should be in world-space, i.e. X=east, Y=north, Z=up (away from the ground).
  */
 - (void) addPolygonWithVertices:(WorldVertex *)vertices count:(NSUInteger)vertexCount textureID:(NSString*)textureID;
 
+- (void) commitGeometry;
+- (void) clearGeometry;
+
 - (bool) hasTextureWithID:(NSString*)textureID;
 - (void) addTextureWithID:(NSString*)textureID image:(MetalImage*)image;
-
-- (void) end;
 
 @end
 

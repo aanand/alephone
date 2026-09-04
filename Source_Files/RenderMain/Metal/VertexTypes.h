@@ -22,6 +22,12 @@ enum {
 };
 
 enum {
+	RayTracingKernelAccelerationStructureIndex,
+	RayTracingKernelCameraIndex,
+	RayTracingKernel_NumBuffers,
+};
+
+enum {
 	RayTracingKernelOutImageIndex,
 	RayTracingKernel_NumTextures,
 };

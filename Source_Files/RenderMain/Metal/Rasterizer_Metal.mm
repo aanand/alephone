@@ -275,6 +275,8 @@ void LoadWorld() {
 		}
 	}
 	
+	[renderer commitGeometry];
+	
 	isWorldLoaded = true;
 }
 

@@ -5344,9 +5344,9 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.action-games";
 				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(SRCROOT)/../vcpkg/installed-arm64-osx/arm64-osx/lib";
 				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(SRCROOT)/../vcpkg/installed-x64-osx/x64-osx/lib";
-				MACOSX_DEPLOYMENT_TARGET = 10.13;
-				"MACOSX_DEPLOYMENT_TARGET[arch=arm64]" = 11.0;
-				"MACOSX_DEPLOYMENT_TARGET[arch=x86_64]" = 10.13;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				"MACOSX_DEPLOYMENT_TARGET[arch=arm64]" = 26.0;
+				"MACOSX_DEPLOYMENT_TARGET[arch=x86_64]" = 26.0;
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_LDFLAGS = (
 					"-lSDL2",
@@ -5491,9 +5491,9 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.action-games";
 				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(SRCROOT)/../vcpkg/installed-arm64-osx/arm64-osx/lib";
 				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(SRCROOT)/../vcpkg/installed-x64-osx/x64-osx/lib";
-				MACOSX_DEPLOYMENT_TARGET = 10.13;
-				"MACOSX_DEPLOYMENT_TARGET[arch=arm64]" = 11.0;
-				"MACOSX_DEPLOYMENT_TARGET[arch=x86_64]" = 10.13;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				"MACOSX_DEPLOYMENT_TARGET[arch=arm64]" = 26.0;
+				"MACOSX_DEPLOYMENT_TARGET[arch=x86_64]" = 26.0;
 				OTHER_LDFLAGS = (
 					"-lSDL2",
 					"-liconv",

@@ -125,10 +125,14 @@ API_AVAILABLE(macos(26.0))
 	id<MTLBuffer> triangleBuffer;
 	id<MTLBuffer> cameraBuffer;
 
+	id<MTLAccelerationStructure> primitiveAccelerationStructure;
+	id<MTLAccelerationStructure> instanceAccelerationStructure;
+	id<MTLBuffer> accelerationStructureVertexBuffer;
+	id<MTLBuffer> accelerationStructureInstanceBuffer;
+
+	// Data loaded in from the game
+
 	NSMutableDictionary<NSNumber *, id<MTLTexture>> *textures;
-
-	// Short-lived variables, created per frame
-
 	NSMutableArray<Triangle *> *triangles;
 }
 
@@ -208,6 +212,7 @@ API_AVAILABLE(macos(26.0))
 	}
 	
 	MTL4ArgumentTableDescriptor *computeArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
+	computeArgumentTableDescriptor.maxBufferBindCount = RayTracingKernel_NumBuffers;
 	computeArgumentTableDescriptor.maxTextureBindCount = RayTracingKernel_NumTextures;
 	computeArgumentTable = [device newArgumentTableWithDescriptor:computeArgumentTableDescriptor error:&error];
 	if (error) {
@@ -383,10 +388,6 @@ API_AVAILABLE(macos(26.0))
 	yaw = newYaw;
 }
 
-- (void) begin {
-	frameNumber += 1;
-}
-
 - (void) addPolygonWithVertices:(WorldVertex *)vertices count:(NSUInteger)vertexCount textureID:(NSNumber*)textureID {
 	assert(vertexCount > 2);
 	
@@ -398,6 +399,69 @@ API_AVAILABLE(macos(26.0))
 												textureID:textureID]];
 
 		assert(triangles.count < MAX_TRIANGLES);
+	}
+}
+
+- (void) commitGeometry {
+	simd_float3 vertices[triangles.count * 3];
+	for (int i = 0; i < triangles.count; i++) {
+		Triangle *triangle = [triangles objectAtIndex:i];
+		vertices[i*3+0] = simd_make_float3(triangle.v0.position.x, triangle.v0.position.y, triangle.v0.position.z);
+		vertices[i*3+1] = simd_make_float3(triangle.v1.position.x, triangle.v1.position.y, triangle.v1.position.z);
+		vertices[i*3+2] = simd_make_float3(triangle.v2.position.x, triangle.v2.position.y, triangle.v2.position.z);
+	}
+	
+	accelerationStructureVertexBuffer = [device newBufferWithBytes:vertices
+															length:sizeof(simd_float3) * triangles.count * 3
+														   options:MTLResourceStorageModeShared];
+
+	MTLAccelerationStructureTriangleGeometryDescriptor *geometryDescriptor = [MTLAccelerationStructureTriangleGeometryDescriptor descriptor];
+	geometryDescriptor.triangleCount = triangles.count;
+	geometryDescriptor.vertexBuffer = accelerationStructureVertexBuffer;
+	geometryDescriptor.vertexFormat = MTLAttributeFormatFloat3;
+	
+	MTLPrimitiveAccelerationStructureDescriptor *primitiveASDescriptor = [MTLPrimitiveAccelerationStructureDescriptor descriptor];
+	primitiveASDescriptor.geometryDescriptors = @[ geometryDescriptor ];
+	
+	primitiveAccelerationStructure = [device newAccelerationStructureWithDescriptor:primitiveASDescriptor];
+	
+	MTLAccelerationStructureInstanceDescriptor instanceDescriptor;
+	instanceDescriptor.accelerationStructureIndex = 0;
+	instanceDescriptor.options = MTLAccelerationStructureInstanceOptionOpaque;
+	instanceDescriptor.intersectionFunctionTableOffset = 0;
+	instanceDescriptor.mask = 0;
+	instanceDescriptor.transformationMatrix.columns[0] = MTLPackedFloat3Make(1.0, 0.0, 0.0);
+	instanceDescriptor.transformationMatrix.columns[1] = MTLPackedFloat3Make(0.0, 1.0, 0.0);
+	instanceDescriptor.transformationMatrix.columns[2] = MTLPackedFloat3Make(0.0, 0.0, 1.0);
+
+	uint instanceCount = 1;
+	
+	accelerationStructureInstanceBuffer = [device newBufferWithBytes:&instanceDescriptor
+															  length:sizeof(instanceDescriptor) * instanceCount
+															 options:MTLResourceStorageModeShared];
+
+	MTLInstanceAccelerationStructureDescriptor *instanceASDescriptor = [MTLInstanceAccelerationStructureDescriptor descriptor];
+	instanceASDescriptor.instanceCount = instanceCount;
+	instanceASDescriptor.instanceDescriptorBuffer = accelerationStructureInstanceBuffer;
+
+	instanceAccelerationStructure = [device newAccelerationStructureWithDescriptor:instanceASDescriptor];
+	
+	[self clearGeometry];
+
+	[rayTracingResidencySet addAllocation:accelerationStructureVertexBuffer];
+	[rayTracingResidencySet addAllocation:accelerationStructureInstanceBuffer];
+	[rayTracingResidencySet addAllocation:primitiveAccelerationStructure];
+	[rayTracingResidencySet addAllocation:instanceAccelerationStructure];
+	[rayTracingResidencySet commit];
+}
+
+- (void) clearGeometry {
+	if (instanceAccelerationStructure) {
+		[rayTracingResidencySet removeAllocation:accelerationStructureVertexBuffer];
+		[rayTracingResidencySet removeAllocation:accelerationStructureInstanceBuffer];
+		[rayTracingResidencySet removeAllocation:primitiveAccelerationStructure];
+		[rayTracingResidencySet removeAllocation:instanceAccelerationStructure];
+		[rayTracingResidencySet commit];
 	}
 }
 
@@ -424,6 +488,10 @@ API_AVAILABLE(macos(26.0))
 	
 	[textures setObject:texture forKey:textureID];
 	[initialRenderResidencySet addAllocation:texture];
+}
+
+- (void) begin {
+	frameNumber += 1;
 }
 
 - (void) end {
@@ -511,6 +579,8 @@ API_AVAILABLE(macos(26.0))
 	
 	[encoder setComputePipelineState:rayTracingPipeline];
 	
+	[computeArgumentTable setResource:instanceAccelerationStructure.gpuResourceID atBufferIndex:RayTracingKernelAccelerationStructureIndex];
+	[computeArgumentTable setAddress:cameraBuffer.gpuAddress atIndex:RayTracingKernelCameraIndex];
 	[computeArgumentTable setTexture:outputTexture.gpuResourceID atIndex:RayTracingKernelOutImageIndex];
 	[encoder setArgumentTable:computeArgumentTable];
 	
