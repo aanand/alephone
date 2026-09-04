@@ -107,9 +107,9 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 	typename intersector<triangle_data, instancing>::result_type intersection = i.intersect(ray, accelerationStructure);
 	
 	if (intersection.type == intersection_type::none) {
-		outImage.write(float4(0.0, 0.0, 0.0, 1.0), tid);
+		outImage.write(float4(0.0, 0.0, 0.0, 0.0), tid);
 	} else {
-		outImage.write(float4(1.0, 1.0, 1.0, 1.0), tid);
+		outImage.write(float4(1.0, 1.0, 1.0, 0.5), tid);
 	}
 }
 
@@ -151,8 +151,8 @@ finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
 						  texture2d<float> rayTracingPassTex [[ texture(FinalRenderFragmentShaderRayTracingPassTextureIndex) ]])
 {
 	constexpr sampler sam(min_filter::nearest, mag_filter::nearest, mip_filter::none);
-	float3 initialPassColor = initialPassTex.sample(sam, in.uv).xyz;
-	float3 rayTracingPassColor = rayTracingPassTex.sample(sam, in.uv).xyz;
-	float3 color = mix(initialPassColor, rayTracingPassColor, 0.5);
+	float4 initialPassColor = initialPassTex.sample(sam, in.uv);
+	float4 rayTracingPassColor = rayTracingPassTex.sample(sam, in.uv);
+	float3 color = mix(initialPassColor.rgb, rayTracingPassColor.rgb, rayTracingPassColor.a);
 	return float4(color, 1.0f);
 }
