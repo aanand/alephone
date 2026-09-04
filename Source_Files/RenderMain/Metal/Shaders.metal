@@ -71,7 +71,39 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 							 constant Camera &camera [[ buffer(RayTracingKernelCameraIndex) ]],
 							 uint2 tid [[thread_position_in_grid]])
 {
-	outImage.write(float4(0.0, 0.0, 1.0, 1.0), tid);
+	// Screen position in [0, 1]
+	float2 xy = float2(tid) / float2(camera.resolution);
+
+	// Screen position in [-1, 1], with positive Y = up
+	float2 uv = xy * 2.0 - 1.0;
+	uv.y = -uv.y;
+	
+	// View-space directions, which then get transformed by the matrices (which expect view-space), then transposed to world-space.
+	// This should probably all be reworked somehow
+	float4 forward = float4(0.0, 0.0, 1.0, 1.0);
+	float4 right   = float4(1.0, 0.0, 0.0, 1.0);
+	float4 up      = float4(0.0, 1.0, 0.0, 1.0);
+	
+	forward = camera.rotateDirectionMat * forward;
+	right   = camera.rotateDirectionMat * right;
+	up      = camera.rotateDirectionMat * up;
+
+	// Ray direction in world-space
+	float3 direction = normalize(uv.x * right.zxy + uv.y * up.zxy + forward.zxy);
+	
+	ray ray;
+	ray.origin = float3(camera.origin);
+	ray.direction = direction;
+	ray.max_distance = INFINITY;
+	
+	intersector<triangle_data, instancing> i;
+	typename intersector<triangle_data, instancing>::result_type intersection = i.intersect(ray, accelerationStructure);
+	
+	if (intersection.type == intersection_type::none) {
+		outImage.write(float4(0.0, 0.0, 0.0, 1.0), tid);
+	} else {
+		outImage.write(float4(1.0, 1.0, 1.0, 1.0), tid);
+	}
 }
 
 // Screen filling quad in normalized device coordinates.
@@ -114,6 +146,6 @@ finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
 	constexpr sampler sam(min_filter::nearest, mag_filter::nearest, mip_filter::none);
 	float3 initialPassColor = initialPassTex.sample(sam, in.uv).xyz;
 	float3 rayTracingPassColor = rayTracingPassTex.sample(sam, in.uv).xyz;
-	float3 color = mix(initialPassColor, rayTracingPassColor, 0.5);
+	float3 color = mix(initialPassColor, rayTracingPassColor, 0.75);
 	return float4(color, 1.0f);
 }

@@ -43,14 +43,19 @@ enum {
 };
 
 typedef struct {
+	vector_uint2 resolution;
+
 	// World-space camera position
 	vector_int3 origin;
 
-	// Rotates positions up or down to match player look
+	// In view-space, rotates the world up or down to match player look
 	matrix_float4x4 pitchMat;
 	
-	// Rotates positions left or right to match player look
+	// In view-space, rotates the world left or right to match player look
 	matrix_float4x4 yawMat;
+
+	// In view-space, rotates a direction vector to match player look
+	matrix_float4x4 rotateDirectionMat;
 	
 	// Transforms a view-space vector to clip-space
 	matrix_float4x4 perspectiveMat;
