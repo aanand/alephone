@@ -270,9 +270,11 @@ API_AVAILABLE(macos(26.0))
 																								height:viewportSize.y
 																							 mipmapped:NO];
 	textureDescriptor.storageMode = MTLStorageModePrivate;
+
 	textureDescriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
-	
 	initialRenderOutputTexture = [device newTextureWithDescriptor:textureDescriptor];
+
+	textureDescriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
 	rayTracingOutputTexture = [device newTextureWithDescriptor:textureDescriptor];
 	
 	[rayTracingResidencySet addAllocation:rayTracingOutputTexture];

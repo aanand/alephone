@@ -71,7 +71,7 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 							 constant Camera &camera [[ buffer(RayTracingKernelCameraIndex) ]],
 							 uint2 tid [[thread_position_in_grid]])
 {
-	outImage.write(float4(0.0, 0.0, 0.0, 1.0), tid);
+	outImage.write(float4(0.0, 0.0, 1.0, 1.0), tid);
 }
 
 // Screen filling quad in normalized device coordinates.
