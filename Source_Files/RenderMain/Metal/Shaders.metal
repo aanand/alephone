@@ -66,6 +66,10 @@ initialRenderFragmentShader(RasterizerData in [[stage_in]],
 	return float4(float3(colorSample.xyz) * intensity, colorSample.w);
 }
 
+float radians(float degrees) {
+	return degrees * 8.0 * atan(1.0) / 360.0;
+}
+
 kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
 							 instance_acceleration_structure accelerationStructure [[ buffer(RayTracingKernelAccelerationStructureIndex) ]],
 							 constant Camera &camera [[ buffer(RayTracingKernelCameraIndex) ]],
@@ -78,15 +82,18 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 	float2 uv = xy * 2.0 - 1.0;
 	uv.y = -uv.y;
 	
+	float frustumWidth = tan(radians(camera.fov/2));
+	float frustumHeight = frustumWidth * camera.resolution.y / camera.resolution.x;
+	
 	// View-space directions, which then get transformed by the matrices (which expect view-space), then transposed to world-space.
 	// This should probably all be reworked somehow
+	float4 right   = float4(1.0, 0.0, 0.0, 1.0) * frustumWidth;
+	float4 up      = float4(0.0, 1.0, 0.0, 1.0) * frustumHeight;
 	float4 forward = float4(0.0, 0.0, 1.0, 1.0);
-	float4 right   = float4(1.0, 0.0, 0.0, 1.0);
-	float4 up      = float4(0.0, 1.0, 0.0, 1.0);
-	
-	forward = camera.rotateDirectionMat * forward;
+
 	right   = camera.rotateDirectionMat * right;
 	up      = camera.rotateDirectionMat * up;
+	forward = camera.rotateDirectionMat * forward;
 
 	// Ray direction in world-space
 	float3 direction = normalize(uv.x * right.zxy + uv.y * up.zxy + forward.zxy);
@@ -146,6 +153,6 @@ finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
 	constexpr sampler sam(min_filter::nearest, mag_filter::nearest, mip_filter::none);
 	float3 initialPassColor = initialPassTex.sample(sam, in.uv).xyz;
 	float3 rayTracingPassColor = rayTracingPassTex.sample(sam, in.uv).xyz;
-	float3 color = mix(initialPassColor, rayTracingPassColor, 0.75);
+	float3 color = mix(initialPassColor, rayTracingPassColor, 0.5);
 	return float4(color, 1.0f);
 }

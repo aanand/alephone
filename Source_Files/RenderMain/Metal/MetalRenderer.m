@@ -540,6 +540,7 @@ API_AVAILABLE(macos(26.0))
 - (void) end {
 	Camera camera;
 	camera.resolution = viewportSize;
+	camera.fov = fov;
 	camera.origin = origin;
 	camera.pitchMat = rotationMatrix(pitch, simd_make_float3(1.0, 0.0, 0.0));
 	camera.yawMat = rotationMatrix(-yaw, simd_make_float3(0.0, 1.0, 0.0));

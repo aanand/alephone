@@ -44,6 +44,9 @@ enum {
 
 typedef struct {
 	vector_uint2 resolution;
+	
+	// Horizontal FOV
+	float fov;
 
 	// World-space camera position
 	vector_int3 origin;
