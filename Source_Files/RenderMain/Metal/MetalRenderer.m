@@ -123,7 +123,7 @@ API_AVAILABLE(macos(26.0))
 	// Shader inputs
 	
 	id<MTLBuffer> triangleBuffer;
-	id<MTLBuffer> cameraBuffer;
+	id<MTLBuffer> uniformsBuffer;
 
 	NSMutableArray<id<MTLAccelerationStructure>> *primitiveAccelerationStructures;
 	id<MTLAccelerationStructure> instanceAccelerationStructure;
@@ -261,8 +261,8 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (void) setupBuffers {
-	cameraBuffer = [device newBufferWithLength:sizeof(Camera) options:MTLResourceStorageModeShared];
-	[initialRenderResidencySet addAllocation:cameraBuffer];
+	uniformsBuffer = [device newBufferWithLength:sizeof(Uniforms) options:MTLResourceStorageModeShared];
+	[initialRenderResidencySet addAllocation:uniformsBuffer];
 	
 	triangleBuffer = [device newBufferWithLength:(sizeof(WorldVertex) * MAX_TRIANGLES * 3) options:MTLResourceStorageModeShared];
 	[initialRenderResidencySet addAllocation:triangleBuffer];
@@ -579,15 +579,15 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (void) end {
-	Camera camera;
-	camera.resolution = viewportSize;
-	camera.fov = fov;
-	camera.origin = origin;
-	camera.pitchMat = rotationMatrix(pitch, simd_make_float3(1.0, 0.0, 0.0));
-	camera.yawMat = rotationMatrix(-yaw, simd_make_float3(0.0, 1.0, 0.0));
-	camera.rotateDirectionMat = simd_mul(rotationMatrix(yaw, simd_make_float3(0.0, 1.0, 0.0)), rotationMatrix(-pitch, simd_make_float3(1.0, 0.0, 0.0)));
-	camera.perspectiveMat = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
-	memcpy(cameraBuffer.contents, &camera, sizeof(Camera));
+	Uniforms uniforms;
+	uniforms.resolution = viewportSize;
+	uniforms.fov = fov;
+	uniforms.origin = origin;
+	uniforms.pitchMat = rotationMatrix(pitch, simd_make_float3(1.0, 0.0, 0.0));
+	uniforms.yawMat = rotationMatrix(-yaw, simd_make_float3(0.0, 1.0, 0.0));
+	uniforms.rotateDirectionMat = simd_mul(rotationMatrix(yaw, simd_make_float3(0.0, 1.0, 0.0)), rotationMatrix(-pitch, simd_make_float3(1.0, 0.0, 0.0)));
+	uniforms.perspectiveMat = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
+	memcpy(uniformsBuffer.contents, &uniforms, sizeof(Uniforms));
 		
 	id<CAMetalDrawable> currentDrawable = [metalLayer nextDrawable];
 
@@ -627,7 +627,7 @@ API_AVAILABLE(macos(26.0))
 	[renderPassEncoder setDepthStencilState:depthState];
 	[renderPassEncoder setViewport:[self getViewport]];
 	
-	[vertexArgumentTable setAddress:cameraBuffer.gpuAddress atIndex:InitialRenderVertexShaderCameraIndex];
+	[vertexArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:InitialRenderVertexShaderUniformsIndex];
 	[vertexArgumentTable setAddress:triangleBuffer.gpuAddress atIndex:InitialRenderVertexShaderVertexDataIndex];
 
 	WorldVertex *target = (WorldVertex*)triangleBuffer.contents;
@@ -667,7 +667,7 @@ API_AVAILABLE(macos(26.0))
 	[encoder setComputePipelineState:rayTracingPipeline];
 	
 	[computeArgumentTable setResource:instanceAccelerationStructure.gpuResourceID atBufferIndex:RayTracingKernelAccelerationStructureIndex];
-	[computeArgumentTable setAddress:cameraBuffer.gpuAddress atIndex:RayTracingKernelCameraIndex];
+	[computeArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:RayTracingKernelCameraIndex];
 	[computeArgumentTable setTexture:outputTexture.gpuResourceID atIndex:RayTracingKernelOutImageIndex];
 	[encoder setArgumentTable:computeArgumentTable];
 	

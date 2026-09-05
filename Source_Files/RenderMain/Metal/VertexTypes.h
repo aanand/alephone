@@ -12,7 +12,7 @@
 
 enum {
 	InitialRenderVertexShaderVertexDataIndex,
-	InitialRenderVertexShaderCameraIndex,
+	InitialRenderVertexShaderUniformsIndex,
 	InitialRenderVertexShader_NumBuffers,
 };
 
@@ -62,7 +62,7 @@ typedef struct {
 	
 	// Transforms a view-space vector to clip-space
 	matrix_float4x4 perspectiveMat;
-} Camera;
+} Uniforms;
 
 // A vertex in Marathon world-space: X = east, Y = north, Z = up
 typedef struct {

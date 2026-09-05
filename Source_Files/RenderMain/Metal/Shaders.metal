@@ -32,16 +32,16 @@ float3 fromWorldSpace(int3 worldPosition) {
 vertex RasterizerData
 initialRenderVertexShader(uint vertexID [[vertex_id]],
 						  constant WorldVertex *vertexData [[buffer(InitialRenderVertexShaderVertexDataIndex)]],
-						  constant Camera &camera [[buffer(InitialRenderVertexShaderCameraIndex)]])
+						  constant Uniforms &uniforms [[buffer(InitialRenderVertexShaderUniformsIndex)]])
 {
 	RasterizerData out;
 	
 	WorldVertex v = vertexData[vertexID];
 
-	float4 result = float4(fromWorldSpace(v.position - camera.origin), 1.0);
-	result = camera.yawMat * result;
-	result = camera.pitchMat * result;
-	result = camera.perspectiveMat * result;
+	float4 result = float4(fromWorldSpace(v.position - uniforms.origin), 1.0);
+	result = uniforms.yawMat * result;
+	result = uniforms.pitchMat * result;
+	result = uniforms.perspectiveMat * result;
 
 	out.position = result;
 	out.textureCoordinate = v.textureCoordinate;
@@ -97,11 +97,11 @@ float3 randomInUnitSphere(thread float &seed) {
 
 kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
 							 instance_acceleration_structure accelerationStructure [[ buffer(RayTracingKernelAccelerationStructureIndex) ]],
-							 constant Camera &camera [[ buffer(RayTracingKernelCameraIndex) ]],
+							 constant Uniforms &uniforms [[ buffer(RayTracingKernelCameraIndex) ]],
 							 uint2 tid [[thread_position_in_grid]])
 {
 	// Screen position in [0, 1]
-	float2 xy = float2(tid) / float2(camera.resolution);
+	float2 xy = float2(tid) / float2(uniforms.resolution);
 
 	float seed = float(baseHash(uint2(as_type<uint>(xy.x), as_type<uint>(xy.y)))) / float(0xffffffffU);
 	
@@ -109,8 +109,8 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 	float2 uv = xy * 2.0 - 1.0;
 	uv.y = -uv.y;
 	
-	float frustumWidth = tan(radians(camera.fov/2));
-	float frustumHeight = frustumWidth * camera.resolution.y / camera.resolution.x;
+	float frustumWidth = tan(radians(uniforms.fov/2));
+	float frustumHeight = frustumWidth * uniforms.resolution.y / uniforms.resolution.x;
 	
 	// View-space directions, which then get transformed by the matrices (which expect view-space), then transposed to world-space.
 	// This should probably all be reworked somehow
@@ -118,15 +118,15 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 	float4 up      = float4(0.0, 1.0, 0.0, 1.0) * frustumHeight;
 	float4 forward = float4(0.0, 0.0, 1.0, 1.0);
 
-	right   = camera.rotateDirectionMat * right;
-	up      = camera.rotateDirectionMat * up;
-	forward = camera.rotateDirectionMat * forward;
+	right   = uniforms.rotateDirectionMat * right;
+	up      = uniforms.rotateDirectionMat * up;
+	forward = uniforms.rotateDirectionMat * forward;
 
 	// Ray direction in world-space
 	float3 direction = normalize(uv.x * right.zxy + uv.y * up.zxy + forward.zxy);
 	
 	ray ray;
-	ray.origin = float3(camera.origin);
+	ray.origin = float3(uniforms.origin);
 	ray.direction = direction;
 	ray.max_distance = INFINITY;
 
