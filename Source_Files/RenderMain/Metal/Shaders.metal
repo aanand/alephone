@@ -114,7 +114,7 @@ float3 rayTraceSoft(float3 origin, float3 direction, uint numBounces,
 	ray ray;
 	ray.origin = origin;
 	ray.direction = direction;
-	ray.min_distance = 1.0;
+	ray.min_distance = 0.1;
 	ray.max_distance = INFINITY;
 
 	float irradiance = 1.0;
