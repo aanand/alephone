@@ -75,24 +75,30 @@ float radians(float degrees) {
 	return degrees * 8.0 * atan(1.0) / 360.0;
 }
 
-// Hash functions by Nimitz:
+// Hash/vector functions by Nimitz and reinder:
 // https://www.shadertoy.com/view/Xt3cDn
+// https://www.shadertoy.com/view/llVcDz
 uint baseHash(uint2 p)
 {
 	p = 1103515245U*((p >> 1U)^(p.yx));
 	uint h32 = 1103515245U*((p.x)^(p.y>>3U));
 	return h32^(h32 >> 16);
 }
-float3 hash3(thread float &seed) {
+uint randNext(thread float &seed) {
 	float s1 = seed += 0.1;
 	float s2 = seed += 0.1;
-	uint n = baseHash(uint2(as_type<uint>(s1), as_type<uint>(s2)));
+	return baseHash(uint2(as_type<uint>(s1), as_type<uint>(s2)));
+}
+float2 hash2(thread float &seed) {
+	uint n = randNext(seed);
+	uint2 rz = uint2(n, n*48271U);
+	return float2(rz.xy & uint2(0x7fffffffU))/float(0x7fffffff);
+}
+float3 hash3(thread float &seed) {
+	uint n = randNext(seed);
 	uint3 rz = uint3(n, n*16807U, n*48271U);
 	return float3(rz & uint3(0x7fffffffU))/float(0x7fffffff);
 }
-
-// By reinder:
-// https://www.shadertoy.com/view/llVcDz
 float3 randomInUnitSphere(thread float &seed) {
 	float3 h = hash3(seed) * float3(2.,6.28318530718,1.)-float3(1,0,0);
 	float phi = h.y;
@@ -109,9 +115,14 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 							 constant Uniforms &uniforms [[ buffer(RayTracingKernelCameraIndex) ]],
 							 uint2 tid [[thread_position_in_grid]])
 {
-	// Screen position in [0, 1]
-	float2 xy = float2(tid) / float2(uniforms.resolution);
+	float2 deltaXY = float2(1.0) / float2(uniforms.resolution);
 
+	// Screen position in [0, 1]
+	float2 xy = float2(tid) * deltaXY;
+
+//	float seed = getRandomSeed(xy, uniforms.frameNumber);
+//	xy += deltaXY * hash2(seed);
+	
 	// Screen position in [-1, 1], with positive Y = up
 	float2 uv = xy * 2.0 - 1.0;
 	uv.y = -uv.y;
