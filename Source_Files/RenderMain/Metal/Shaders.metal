@@ -103,7 +103,7 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 	// Screen position in [0, 1]
 	float2 xy = float2(tid) / float2(uniforms.resolution);
 
-	float seed = float(baseHash(uint2(as_type<uint>(xy.x), as_type<uint>(xy.y)))) / float(0xffffffffU);
+	float seed = float(baseHash(uint2(as_type<uint>(xy.x), as_type<uint>(xy.y)))) / float(0xffffffffU) + (float)uniforms.frameNumber;
 	
 	// Screen position in [-1, 1], with positive Y = up
 	float2 uv = xy * 2.0 - 1.0;

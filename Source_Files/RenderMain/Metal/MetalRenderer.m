@@ -581,6 +581,7 @@ API_AVAILABLE(macos(26.0))
 - (void) end {
 	Uniforms uniforms;
 	uniforms.resolution = viewportSize;
+	uniforms.frameNumber = frameNumber;
 	uniforms.fov = fov;
 	uniforms.origin = origin;
 	uniforms.pitchMat = rotationMatrix(pitch, simd_make_float3(1.0, 0.0, 0.0));

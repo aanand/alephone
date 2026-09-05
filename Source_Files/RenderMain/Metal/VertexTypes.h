@@ -44,6 +44,7 @@ enum {
 
 typedef struct {
 	vector_uint2 resolution;
+	uint64_t frameNumber;
 	
 	// Horizontal FOV
 	float fov;
