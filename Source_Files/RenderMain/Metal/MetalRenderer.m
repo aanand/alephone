@@ -128,6 +128,7 @@ API_AVAILABLE(macos(26.0))
 	NSMutableArray<id<MTLAccelerationStructure>> *primitiveAccelerationStructures;
 	id<MTLAccelerationStructure> instanceAccelerationStructure;
 	id<MTLBuffer> accelerationStructureVertexBuffer;
+	id<MTLBuffer> accelerationStructurePrimitiveDataBuffer;
 	id<MTLBuffer> accelerationStructureInstanceBuffer;
 
 	// Data loaded in from the game
@@ -413,12 +414,16 @@ API_AVAILABLE(macos(26.0))
 	NSUInteger numBatches = numTriangles / trianglesPerBatch;
 
 	simd_float3 vertices[numTriangles * 3];
+	TriangleRayTracingData primitiveData[numTriangles];
 
 	for (int i = 0; i < numTriangles; i++) {
 		Triangle *triangle = [triangles objectAtIndex:i];
+
 		vertices[i*3+0] = simd_make_float3(triangle.v0.position.x, triangle.v0.position.y, triangle.v0.position.z);
 		vertices[i*3+1] = simd_make_float3(triangle.v1.position.x, triangle.v1.position.y, triangle.v1.position.z);
 		vertices[i*3+2] = simd_make_float3(triangle.v2.position.x, triangle.v2.position.y, triangle.v2.position.z);
+		
+		primitiveData[i].surfaceNormal = triangle.v0.surfaceNormal;
 	}
 	
 	accelerationStructureVertexBuffer = [device newBufferWithBytes:vertices
@@ -426,6 +431,11 @@ API_AVAILABLE(macos(26.0))
 														   options:MTLResourceStorageModeShared];
 	accelerationStructureVertexBuffer.label = @"vertexBuffer";
 
+	accelerationStructurePrimitiveDataBuffer = [device newBufferWithBytes:primitiveData
+																   length:sizeof(primitiveData)
+																  options:MTLResourceStorageModeShared];
+	accelerationStructurePrimitiveDataBuffer.label = @"primitiveDataBuffer";
+	
 	primitiveAccelerationStructures = [NSMutableArray array];
 	NSMutableArray<MTL4PrimitiveAccelerationStructureDescriptor*> *primitiveASDescriptors = [NSMutableArray array];
 	MTLIndirectAccelerationStructureInstanceDescriptor instanceDescriptors[numBatches];
@@ -440,6 +450,10 @@ API_AVAILABLE(macos(26.0))
 															  sizeof(simd_float3) * trianglesInBatch * 3);
 		geometryDescriptor.vertexFormat = MTLAttributeFormatFloat3;
 		geometryDescriptor.vertexStride = sizeof(simd_float3);
+		geometryDescriptor.primitiveDataBuffer = MTL4BufferRangeMake(accelerationStructurePrimitiveDataBuffer.gpuAddress + sizeof(TriangleRayTracingData) * batchOffset,
+																	 sizeof(TriangleRayTracingData) * trianglesInBatch);
+		geometryDescriptor.primitiveDataElementSize = sizeof(TriangleRayTracingData);
+		geometryDescriptor.primitiveDataStride = sizeof(TriangleRayTracingData);
 		
 		MTL4PrimitiveAccelerationStructureDescriptor *primitiveASDescriptor = [[MTL4PrimitiveAccelerationStructureDescriptor alloc] init];
 		primitiveASDescriptor.geometryDescriptors = @[ geometryDescriptor ];
@@ -476,6 +490,7 @@ API_AVAILABLE(macos(26.0))
 	[self clearGeometry];
 
 	[rayTracingResidencySet addAllocation:accelerationStructureVertexBuffer];
+	[rayTracingResidencySet addAllocation:accelerationStructurePrimitiveDataBuffer];
 	[rayTracingResidencySet addAllocation:accelerationStructureInstanceBuffer];
 	for (id<MTLAccelerationStructure> primitiveAS in primitiveAccelerationStructures) {
 		[rayTracingResidencySet addAllocation:primitiveAS];
@@ -524,6 +539,7 @@ API_AVAILABLE(macos(26.0))
 - (void) clearGeometry {
 	if (instanceAccelerationStructure) {
 		[rayTracingResidencySet removeAllocation:accelerationStructureVertexBuffer];
+		[rayTracingResidencySet removeAllocation:accelerationStructurePrimitiveDataBuffer];
 		[rayTracingResidencySet removeAllocation:accelerationStructureInstanceBuffer];
 		for (id<MTLAccelerationStructure> primitiveAS in primitiveAccelerationStructures) {
 			[rayTracingResidencySet removeAllocation:primitiveAS];

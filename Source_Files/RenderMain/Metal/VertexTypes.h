@@ -78,4 +78,8 @@ typedef struct {
 	vector_float3 surfaceNormal;
 } Vertex;
 
+typedef struct {
+	vector_float3 surfaceNormal;
+} TriangleRayTracingData;
+
 #endif /* VertexTypes_h */

@@ -70,6 +70,31 @@ float radians(float degrees) {
 	return degrees * 8.0 * atan(1.0) / 360.0;
 }
 
+// Hash functions by Nimitz:
+// https://www.shadertoy.com/view/Xt3cDn
+uint baseHash(uint2 p)
+{
+	p = 1103515245U*((p >> 1U)^(p.yx));
+	uint h32 = 1103515245U*((p.x)^(p.y>>3U));
+	return h32^(h32 >> 16);
+}
+float3 hash3(thread float &seed) {
+	float s1 = seed += 0.1;
+	float s2 = seed += 0.1;
+	uint n = baseHash(uint2(as_type<uint>(s1), as_type<uint>(s2)));
+	uint3 rz = uint3(n, n*16807U, n*48271U);
+	return float3(rz & uint3(0x7fffffffU))/float(0x7fffffff);
+}
+
+// By reinder:
+// https://www.shadertoy.com/view/llVcDz
+float3 randomInUnitSphere(thread float &seed) {
+	float3 h = hash3(seed) * float3(2.,6.28318530718,1.)-float3(1,0,0);
+	float phi = h.y;
+	float r = pow(h.z, 1./3.);
+	return r * float3(sqrt(1.-h.x*h.x)*float2(sin(phi),cos(phi)),h.x);
+}
+
 kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
 							 instance_acceleration_structure accelerationStructure [[ buffer(RayTracingKernelAccelerationStructureIndex) ]],
 							 constant Camera &camera [[ buffer(RayTracingKernelCameraIndex) ]],
@@ -78,6 +103,8 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 	// Screen position in [0, 1]
 	float2 xy = float2(tid) / float2(camera.resolution);
 
+	float seed = float(baseHash(uint2(as_type<uint>(xy.x), as_type<uint>(xy.y)))) / float(0xffffffffU);
+	
 	// Screen position in [-1, 1], with positive Y = up
 	float2 uv = xy * 2.0 - 1.0;
 	uv.y = -uv.y;
@@ -102,15 +129,34 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 	ray.origin = float3(camera.origin);
 	ray.direction = direction;
 	ray.max_distance = INFINITY;
+
+	int numBounces = 10;
+	float3 color = float3(1.0, 1.0, 1.0);
 	
-	intersector<triangle_data, instancing> i;
-	typename intersector<triangle_data, instancing>::result_type intersection = i.intersect(ray, accelerationStructure);
-	
-	if (intersection.type == intersection_type::none) {
-		outImage.write(float4(0.0, 0.0, 0.0, 0.0), tid);
-	} else {
-		outImage.write(float4(1.0, 1.0, 1.0, 0.5), tid);
+	for (int b = 0; b < numBounces; b++) {
+		intersector<triangle_data, instancing> i;
+		typename intersector<triangle_data, instancing>::result_type intersection = i.intersect(ray, accelerationStructure);
+		
+		if (intersection.type == intersection_type::none) {
+			break;
+		} else {
+			color = color * 0.8;
+
+			const device TriangleRayTracingData *data;
+			data = (const device TriangleRayTracingData*) intersection.primitive_data;
+			float3 normal = data->surfaceNormal;
+
+			float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
+			float3 newDirection = randomInUnitSphere(seed);
+			if (dot(newDirection, normal) < 0) {
+				newDirection = -newDirection;
+			}
+			ray.origin = hitPoint;
+			ray.direction = newDirection;
+		}
 	}
+	
+	outImage.write(float4(color, 1.0), tid);
 }
 
 // Screen filling quad in normalized device coordinates.
