@@ -52,23 +52,19 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 
 constant float3 globalLightDirection = float3(0, 1, -0.5);
 constant float globalLightIntensity = 10.0;
-constant float ambientLightIntensity = 0.2;
 
-float globalLightIntensityInDirection(float3 direction, float multiplier = 1.0) {
-	float intensity = (0.5 + 0.5 * dot(direction, -normalize(globalLightDirection)));
-	return mix(ambientLightIntensity, globalLightIntensity, intensity * multiplier);
+float globalLightIntensityInDirection(float3 direction) {
+	float coefficient = 0.5 + 0.5 * dot(direction, -normalize(globalLightDirection));
+	return coefficient * globalLightIntensity;
 }
 
 fragment float4
 initialRenderFragmentShader(RasterizerData in [[stage_in]],
 			   texture2d<half> colorTexture [[ texture(InitialRenderFragmentShaderColorTextureIndex) ]])
 {
-	float incoming = dot(-in.surfaceNormal, normalize(globalLightDirection));
-	float intensity = mix(ambientLightIntensity, globalLightIntensity, incoming);
-
 	constexpr sampler textureSampler (mag_filter::nearest, min_filter::nearest, address::repeat);
 	const half4 colorSample = colorTexture.sample(textureSampler, in.textureCoordinate);
-	return float4(float3(colorSample.xyz) * intensity, colorSample.w);
+	return float4(colorSample);
 }
 
 float radians(float degrees) {
@@ -110,47 +106,17 @@ float getRandomSeed(float2 xy, float frameNumber) {
 	return float(baseHash(uint2(as_type<uint>(xy.x), as_type<uint>(xy.y)))) / float(0xffffffffU) + (float)frameNumber;
 }
 
-kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
-							 instance_acceleration_structure accelerationStructure [[ buffer(RayTracingKernelAccelerationStructureIndex) ]],
-							 constant Uniforms &uniforms [[ buffer(RayTracingKernelCameraIndex) ]],
-							 uint2 tid [[thread_position_in_grid]])
+float3 rayTraceSoft(float3 origin, float3 direction, uint numBounces,
+				instance_acceleration_structure accelerationStructure,
+				thread float &seed)
 {
-	float2 deltaXY = float2(1.0) / float2(uniforms.resolution);
-
-	// Screen position in [0, 1]
-	float2 xy = float2(tid) * deltaXY;
-
-	float seed = getRandomSeed(xy, uniforms.frameNumber);
-//	xy += deltaXY * hash2(seed);
-	
-	// Screen position in [-1, 1], with positive Y = up
-	float2 uv = xy * 2.0 - 1.0;
-	uv.y = -uv.y;
-	
-	float frustumWidth = tan(radians(uniforms.fov/2));
-	float frustumHeight = frustumWidth * uniforms.resolution.y / uniforms.resolution.x;
-	
-	// View-space directions, which then get transformed by the matrices (which expect view-space), then transposed to world-space.
-	// This should probably all be reworked somehow
-	float4 right   = float4(1.0, 0.0, 0.0, 1.0) * frustumWidth;
-	float4 up      = float4(0.0, 1.0, 0.0, 1.0) * frustumHeight;
-	float4 forward = float4(0.0, 0.0, 1.0, 1.0);
-
-	right   = uniforms.rotateDirectionMat * right;
-	up      = uniforms.rotateDirectionMat * up;
-	forward = uniforms.rotateDirectionMat * forward;
-
-	// Ray direction in world-space
-	float3 direction = normalize(uv.x * right.zxy + uv.y * up.zxy + forward.zxy);
-	
 	ray ray;
-	ray.origin = float3(uniforms.origin);
+	ray.origin = origin;
 	ray.direction = direction;
 	ray.min_distance = 1.0;
 	ray.max_distance = INFINITY;
 
-	float3 color = float(1.0);
-	uint numBounces = 10;
+	float irradiance = 1.0;
 	
 	intersector<triangle_data, instancing> i;
 	typename intersector<triangle_data, instancing>::result_type intersection;
@@ -159,7 +125,11 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 		intersection = i.intersect(ray, accelerationStructure);
 		
 		if (intersection.type == intersection_type::none) {
-//			color *= globalLightIntensityInDirection(ray.direction);
+			if (b > 0) {
+				irradiance *= globalLightIntensityInDirection(ray.direction);
+			} else {
+				irradiance = 0.0;
+			}
 			break;
 		} else {
 			const device TriangleRayTracingData *data;
@@ -174,16 +144,63 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 			ray.origin = hitPoint;
 			ray.direction = newDirection;
 			
-			color -= (float)b / (float)numBounces;
+			irradiance *= 0.9;
 		}
 	}
 	
 	// We didn't escape
-//	if (intersection.type != intersection_type::none) {
-//		color = float3(ambientLightIntensity);
-//	}
+	if (intersection.type != intersection_type::none) {
+		irradiance = 0.0;
+	}
 	
-	outImage.write(float4(clamp(color, 0.0, 1.0), 1.0), tid);
+	return float3(irradiance);
+}
+
+kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
+							 instance_acceleration_structure accelerationStructure [[ buffer(RayTracingKernelAccelerationStructureIndex) ]],
+							 constant Uniforms &uniforms [[ buffer(RayTracingKernelCameraIndex) ]],
+							 uint2 tid [[thread_position_in_grid]])
+{
+	float2 deltaXY = float2(1.0) / float2(uniforms.resolution);
+
+	// Screen position in [0, 1]
+	float2 xy = float2(tid) * deltaXY;
+
+	float seed = getRandomSeed(xy, uniforms.frameNumber);
+
+	float frustumWidth = tan(radians(uniforms.fov/2));
+	float frustumHeight = frustumWidth * uniforms.resolution.y / uniforms.resolution.x;
+	
+	// View-space directions, which then get transformed by the matrices (which expect view-space), then transposed to world-space.
+	// This should probably all be reworked somehow
+	float4 right   = float4(1.0, 0.0, 0.0, 1.0) * frustumWidth;
+	float4 up      = float4(0.0, 1.0, 0.0, 1.0) * frustumHeight;
+	float4 forward = float4(0.0, 0.0, 1.0, 1.0);
+
+	right   = uniforms.rotateDirectionMat * right;
+	up      = uniforms.rotateDirectionMat * up;
+	forward = uniforms.rotateDirectionMat * forward;
+	
+	uint numSamples = 4;
+	uint numBounces = 3;
+	float3 sumColor = float3(0.0);
+	
+	for (uint s = 0; s < numSamples; s++) {
+		float2 xyPerturbed = xy + deltaXY * hash2(seed);
+
+		// Screen position in [-1, 1], with positive Y = up
+		float2 uv = xyPerturbed * 2.0 - 1.0;
+		uv.y = -uv.y;
+		
+		// Ray direction in world-space
+		float3 direction = normalize(uv.x * right.zxy + uv.y * up.zxy + forward.zxy);
+		
+		sumColor += rayTraceSoft(float3(uniforms.origin), direction, numBounces, accelerationStructure, seed);
+	}
+	
+	float3 averageColor = sumColor / (float)numSamples;
+
+	outImage.write(float4(averageColor, 1.0), tid);
 }
 
 // Screen filling quad in normalized device coordinates.
@@ -226,6 +243,6 @@ finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
 	constexpr sampler sam(min_filter::nearest, mag_filter::nearest, mip_filter::none);
 	float4 initialPassColor = initialPassTex.sample(sam, in.uv);
 	float4 rayTracingPassColor = rayTracingPassTex.sample(sam, in.uv);
-	float3 color = 1.0 * rayTracingPassColor.rgb;
+	float3 color = initialPassColor.rgb * rayTracingPassColor.rgb;
 	return float4(color, 1.0f);
 }

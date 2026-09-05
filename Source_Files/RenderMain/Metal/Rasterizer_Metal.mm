@@ -271,7 +271,12 @@ void AddFloorOrCeiling(polygon_data *polygon, bool ceil) {
 	world_point2d origin  = ceil ? polygon->ceiling_origin        : polygon->floor_origin;
 	world_distance height = ceil ? polygon->ceiling_height        : polygon->floor_height;
 	int16 transfer_mode   = ceil ? polygon->ceiling_transfer_mode : polygon->floor_transfer_mode;
-	
+
+	if (transfer_mode == _xfer_landscape) {
+		// Skip adding landscapes for now so the sun can get in
+		return;
+	}
+
 	simd_float3 surfaceNormal = simd_make_float3(0.0, 0.0, ceil ? -1.0 : 1.0);
 
 	auto TMgr = std::make_unique<TextureManager>();
