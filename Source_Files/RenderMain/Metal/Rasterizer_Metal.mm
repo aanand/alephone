@@ -223,6 +223,11 @@ void AddWall(polygon_data *polygon, line_data *line, short vertexIdx,
 					side_texture_definition texDef,
 					short transferMode)
 {
+	if (transferMode == _xfer_landscape) {
+		// Skip adding landscapes for now so the sun can get in
+		return;
+	}
+
 	endpoint_data *ep0 = get_endpoint_data(polygon->endpoint_indexes[vertexIdx]);
 	endpoint_data *ep1 = get_endpoint_data(polygon->endpoint_indexes[(vertexIdx+1) % polygon->vertex_count]);
 	
