@@ -51,8 +51,8 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 }
 
 constant float3 globalLightDirection = float3(0, 1, -0.5);
-constant float globalLightIntensity = 1.0;
-constant float ambientLightIntensity = 0.5;
+constant float globalLightIntensity = 10.0;
+constant float ambientLightIntensity = 0.2;
 
 float globalLightIntensityInDirection(float3 direction, float multiplier = 1.0) {
 	float intensity = (0.5 + 0.5 * dot(direction, -normalize(globalLightDirection)));
@@ -120,7 +120,7 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 	// Screen position in [0, 1]
 	float2 xy = float2(tid) * deltaXY;
 
-//	float seed = getRandomSeed(xy, uniforms.frameNumber);
+	float seed = getRandomSeed(xy, uniforms.frameNumber);
 //	xy += deltaXY * hash2(seed);
 	
 	// Screen position in [-1, 1], with positive Y = up
@@ -149,42 +149,41 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 	ray.min_distance = 1.0;
 	ray.max_distance = INFINITY;
 
-	float3 color;
+	float3 color = float(1.0);
+	uint numBounces = 10;
 	
 	intersector<triangle_data, instancing> i;
-	typename intersector<triangle_data, instancing>::result_type intersection = i.intersect(ray, accelerationStructure);
-	
-	if (intersection.type == intersection_type::none) {
-		color = globalLightIntensityInDirection(ray.direction);
-	} else {
-		const device TriangleRayTracingData *data;
-		data = (const device TriangleRayTracingData*) intersection.primitive_data;
-		float3 normal = data->surfaceNormal;
-		
-		float angleBasedIntensity = dot(normal, -normalize(globalLightDirection));
-		
-		if (angleBasedIntensity < 0) {
-			// Surface is facing away from the sun
-			color = float3(0.0);
-		} else {
-			// Cast a second ray towards the sun
-			float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
-			ray.origin = hitPoint;
-			ray.direction = -normalize(globalLightDirection);
-			
-			typename intersector<triangle_data, instancing>::result_type intersection2 = i.intersect(ray, accelerationStructure);
+	typename intersector<triangle_data, instancing>::result_type intersection;
 
-			if (intersection2.type == intersection_type::none) {
-				// Surface is sunlit
-				color = globalLightIntensityInDirection(ray.direction, angleBasedIntensity);
-			} else {
-				// Surface is in shadow
-				color = float3(0.0);
+	for (uint b = 0; b < numBounces; b++) {
+		intersection = i.intersect(ray, accelerationStructure);
+		
+		if (intersection.type == intersection_type::none) {
+//			color *= globalLightIntensityInDirection(ray.direction);
+			break;
+		} else {
+			const device TriangleRayTracingData *data;
+			data = (const device TriangleRayTracingData*) intersection.primitive_data;
+			float3 normal = data->surfaceNormal;
+			
+			float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
+			float3 newDirection = normalize(randomInUnitSphere(seed));
+			if (dot(newDirection, normal) < 0) {
+				newDirection = -newDirection;
 			}
+			ray.origin = hitPoint;
+			ray.direction = newDirection;
+			
+			color -= (float)b / (float)numBounces;
 		}
 	}
 	
-	outImage.write(float4(color, 1.0), tid);
+	// We didn't escape
+//	if (intersection.type != intersection_type::none) {
+//		color = float3(ambientLightIntensity);
+//	}
+	
+	outImage.write(float4(clamp(color, 0.0, 1.0), 1.0), tid);
 }
 
 // Screen filling quad in normalized device coordinates.
@@ -227,6 +226,6 @@ finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
 	constexpr sampler sam(min_filter::nearest, mag_filter::nearest, mip_filter::none);
 	float4 initialPassColor = initialPassTex.sample(sam, in.uv);
 	float4 rayTracingPassColor = rayTracingPassTex.sample(sam, in.uv);
-	float3 color = mix(initialPassColor.rgb, initialPassColor.rgb * rayTracingPassColor.rgb, rayTracingPassColor.a);
+	float3 color = 1.0 * rayTracingPassColor.rgb;
 	return float4(color, 1.0f);
 }
