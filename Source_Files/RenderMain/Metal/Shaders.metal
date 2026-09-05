@@ -52,6 +52,7 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 
 constant float3 globalLightDirection = float3(0, 1, -0.5);
 constant float globalLightIntensity = 10.0;
+constant float ambientLightIntensity = 0.15;
 
 float globalLightIntensityInDirection(float3 direction) {
 	float coefficient = 0.5 + 0.5 * dot(direction, -normalize(globalLightDirection));
@@ -199,8 +200,9 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 	}
 	
 	float3 averageColor = sumColor / (float)numSamples;
+	float3 adjusted = mix(float3(ambientLightIntensity), float3(1.0), averageColor);
 
-	outImage.write(float4(averageColor, 1.0), tid);
+	outImage.write(float4(adjusted, 1.0), tid);
 }
 
 // Screen filling quad in normalized device coordinates.
