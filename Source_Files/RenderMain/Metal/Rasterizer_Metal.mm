@@ -265,11 +265,56 @@ void AddWall(polygon_data *polygon, line_data *line, short vertexIdx,
 	}
 }
 
+void AddFloor(polygon_data *polygon) {
+	shape_descriptor shape = polygon->floor_texture;
+	
+	horizontal_surface_data surface;
+	surface.origin= polygon->floor_origin;
+	surface.height= polygon->floor_height;
+	surface.texture= polygon->floor_texture;
+	surface.lightsource_index= polygon->floor_lightsource_index;
+	surface.transfer_mode= polygon->floor_transfer_mode;
+	surface.transfer_mode_data= 0;
+	
+	simd_float3 surfaceNormal = simd_make_float3(0.0, 0.0, 1.0);
+
+	auto TMgr = std::make_unique<TextureManager>();
+	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupPolygonTexture(TMgr.get(), shape));
+	
+	float scale = (float) GetTextureScale(surface.transfer_mode, TMgr.get());
+	
+	auto positions = std::vector<simd_int3>(polygon->vertex_count);
+	auto textureCoordinates = std::vector<simd_float2>(polygon->vertex_count);
+
+	// Pulled out of RenderRasterize_Shader::render_node_floor_or_ceiling()
+	for (int i = 0; i < polygon->vertex_count; i++) {
+		// For some reason, doing the reverse-order iteration for ceilings (like RenderRasterize_Shader) gets a wrong-looking result, and going forwards in both cases looks right.
+		world_point2d position = get_endpoint_data(polygon->endpoint_indexes[i])->vertex;
+		positions[i] = simd_make_int3(position.x, position.y, surface.height);
+		textureCoordinates[i] = simd_make_float2((position.x + surface.origin.x) / scale,
+												 (position.y + surface.origin.y) / scale);
+	}
+	
+	auto vertices = std::vector<WorldVertex>(polygon->vertex_count);
+	
+	for (int i=0; i < polygon->vertex_count; i++) {
+		vertices[i] = WorldVertex{ positions[i], textureCoordinates[i], surfaceNormal };
+	}
+	
+	if (@available(macOS 26.0, *)) {
+		if (renderer) {
+			[renderer addPolygonWithVertices:vertices.data() count:polygon->vertex_count textureID:textureID];
+		}
+	}
+}
+
 void LoadWorld() {
 	if (isWorldLoaded) return;
 	
 	for (short polyIdx = 0; polyIdx < dynamic_world->polygon_count; polyIdx++) {
 		polygon_data *polygon = get_polygon_data(polyIdx);
+		
+		AddFloor(polygon);
 		
 		for (short vertexIdx=0; vertexIdx < polygon->vertex_count; vertexIdx++) {
 			short sideIdx = polygon->side_indexes[vertexIdx];
