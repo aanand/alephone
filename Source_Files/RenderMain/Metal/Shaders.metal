@@ -50,15 +50,15 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 	return out;
 }
 
+constant float3 globalLightDirection = float3(0, 1, -1);
+constant float globalLightIntensity = 1.0;
+constant float ambientLightIntensity = 0.5;
+
 fragment float4
 initialRenderFragmentShader(RasterizerData in [[stage_in]],
 			   texture2d<half> colorTexture [[ texture(InitialRenderFragmentShaderColorTextureIndex) ]])
 {
-	float3 globalLightDirection = normalize(float3(-1, -1, -1));
-	float globalLightIntensity = 1.0;
-	float ambientLightIntensity = 0.5;
-
-	float incoming = dot(-in.surfaceNormal, globalLightDirection);
+	float incoming = dot(-in.surfaceNormal, normalize(globalLightDirection));
 	float intensity = mix(ambientLightIntensity, globalLightIntensity, incoming);
 
 	constexpr sampler textureSampler (mag_filter::nearest, min_filter::nearest, address::repeat);
@@ -139,9 +139,10 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 		typename intersector<triangle_data, instancing>::result_type intersection = i.intersect(ray, accelerationStructure);
 		
 		if (intersection.type == intersection_type::none) {
-			break;
+			float intensity = (0.5 + 0.5 * dot(ray.direction, -normalize(globalLightDirection)));
+			color = color * mix(ambientLightIntensity, globalLightIntensity, intensity);
 		} else {
-			color = color * 0.8;
+			color = color * 0.9;
 
 			const device TriangleRayTracingData *data;
 			data = (const device TriangleRayTracingData*) intersection.primitive_data;
