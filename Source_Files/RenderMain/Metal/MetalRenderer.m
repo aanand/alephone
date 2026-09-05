@@ -269,17 +269,21 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (void) setupIntermediateTextures {
-	MTLTextureDescriptor *textureDescriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:metalLayer.pixelFormat
+	MTLTextureDescriptor *initial = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:metalLayer.pixelFormat
 																								 width:viewportSize.x
 																								height:viewportSize.y
 																							 mipmapped:NO];
-	textureDescriptor.storageMode = MTLStorageModePrivate;
+	initial.storageMode = MTLStorageModePrivate;
+	initial.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
+	initialRenderOutputTexture = [device newTextureWithDescriptor:initial];
 
-	textureDescriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
-	initialRenderOutputTexture = [device newTextureWithDescriptor:textureDescriptor];
-
-	textureDescriptor.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
-	rayTracingOutputTexture = [device newTextureWithDescriptor:textureDescriptor];
+	MTLTextureDescriptor *raytrace = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:metalLayer.pixelFormat
+																								 width:viewportSize.x
+																								height:viewportSize.y
+																							 mipmapped:NO];
+	raytrace.storageMode = MTLStorageModePrivate;
+	raytrace.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+	rayTracingOutputTexture = [device newTextureWithDescriptor:raytrace];
 	
 	[rayTracingResidencySet addAllocation:rayTracingOutputTexture];
 	[finalRenderResidencySet addAllocation:initialRenderOutputTexture];
@@ -353,7 +357,6 @@ API_AVAILABLE(macos(26.0))
 	
 	MTL4RenderPipelineColorAttachmentDescriptor *colorAttachment = descriptor.colorAttachments[0];
 	colorAttachment.pixelFormat = colorPixelFormat;
-	// TODO: configure blending
 	
 	id<MTLRenderPipelineState> state = [compiler newRenderPipelineStateWithDescriptor:descriptor
 																  compilerTaskOptions:nil
@@ -595,11 +598,15 @@ API_AVAILABLE(macos(26.0))
 	[commandBuffer beginCommandBufferWithAllocator:commandAllocator];
 	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu", frameNumber];
 	
-	[self encodeInitialRenderToOutputTexture:initialRenderOutputTexture];
-	[self encodeRayTracingPassToOutputTexture:rayTracingOutputTexture];
+	id<MTLFence> initialPassFence = [device newFence];
+	id<MTLFence> computePassFence = [device newFence];
+	
+	[self encodeInitialRenderToOutputTexture:initialRenderOutputTexture updatingFence:initialPassFence];
+	[self encodeRayTracingPassToOutputTexture:rayTracingOutputTexture updatingFence:computePassFence];
 	[self encodeFinalRenderFromInitialPassTexture:initialRenderOutputTexture
 							rayTracingPassTexture:rayTracingOutputTexture
-								  toOutputTexture:currentDrawable.texture];
+								  toOutputTexture:currentDrawable.texture
+									  afterFences:@[initialPassFence, computePassFence]];
 
 	[commandBuffer endCommandBuffer];
 
@@ -609,7 +616,7 @@ API_AVAILABLE(macos(26.0))
 	[currentDrawable present];
 }
 
-- (void) encodeInitialRenderToOutputTexture:(id<MTLTexture>)outputTexture {
+- (void) encodeInitialRenderToOutputTexture:(id<MTLTexture>)outputTexture updatingFence:(id<MTLFence>)fence {
 	// Commit any textures that were added
 	[initialRenderResidencySet commit];
 
@@ -655,11 +662,12 @@ API_AVAILABLE(macos(26.0))
 		
 		offset += 3;
 	}
-
+	
+	[renderPassEncoder updateFence:fence afterEncoderStages:MTLStageFragment];
 	[renderPassEncoder endEncoding];
 }
 
--(void) encodeRayTracingPassToOutputTexture:(id<MTLTexture>)outputTexture {
+-(void) encodeRayTracingPassToOutputTexture:(id<MTLTexture>)outputTexture updatingFence:(id<MTLFence>)fence {
 	id<MTL4ComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
 	if (!encoder) {
 		NSLog(@"Failed to create compute command encoder");
@@ -680,15 +688,19 @@ API_AVAILABLE(macos(26.0))
 	MTLSize threadsPerGrid = MTLSizeMake(outputTexture.width, outputTexture.height, 1);
 	[encoder dispatchThreads:threadsPerGrid threadsPerThreadgroup:threadsPerThreadgroup];
 	
+	[encoder updateFence:fence afterEncoderStages:MTLStageDispatch];
 	[encoder endEncoding];
 }
 
 -(void) encodeFinalRenderFromInitialPassTexture:(id<MTLTexture>)initialPassTexture
 						  rayTracingPassTexture:(id<MTLTexture>)rayTracingPassTexture
 								toOutputTexture:(id<MTLTexture>)outputTexture
+									afterFences:(NSArray<id<MTLFence>>*)fences
 {
 	MTL4RenderPassDescriptor *configuration = [MTL4RenderPassDescriptor new];
 	configuration.colorAttachments[0].texture = outputTexture;
+	configuration.colorAttachments[0].loadAction = MTLLoadActionClear;
+	configuration.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0);
 	configuration.colorAttachments[0].storeAction = MTLStoreActionStore;
 
 	id<MTL4RenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:configuration];
@@ -697,6 +709,10 @@ API_AVAILABLE(macos(26.0))
 		return;
 	}
 	encoder.label = @"Final render";
+	
+	for (id<MTLFence> fence in fences) {
+		[encoder waitForFence:fence beforeEncoderStages:MTLStageFragment];
+	}
 	
 	[encoder setRenderPipelineState:finalRenderPipeline];
 	[encoder setViewport:[self getViewport]];
