@@ -154,7 +154,6 @@ API_AVAILABLE(macos(26.0))
 	defaultLibrary = [device newDefaultLibrary];
 	commandAllocator = [device newCommandAllocator];
 	sharedEvent = [device newSharedEvent];
-	sharedEvent.signaledValue = frameNumber;
 
 	initialRenderPipeline = [self compileInitialRenderPipeline:metalLayer.pixelFormat];
 	if (!initialRenderPipeline) {
@@ -607,13 +606,21 @@ API_AVAILABLE(macos(26.0))
 							rayTracingPassTexture:rayTracingOutputTexture
 								  toOutputTexture:currentDrawable.texture
 									  afterFences:@[initialPassFence, computePassFence]];
-
+	
 	[commandBuffer endCommandBuffer];
-
+	
+	// Block until rendering has completed. This is inefficient, but Marathon is locked to 30fps,
+	// so it probably doesn't slow us down and it simplifies things to not have to worry about concurrent
+	// reads/writes to buffers and textures
+	uint64_t renderSignalValue = sharedEvent.signaledValue + 1;
+	
 	[commandQueue waitForDrawable:currentDrawable];
 	[commandQueue commit:&commandBuffer count:1];
 	[commandQueue signalDrawable:currentDrawable];
 	[currentDrawable present];
+	
+	[commandQueue signalEvent:sharedEvent value:renderSignalValue];
+	[sharedEvent waitUntilSignaledValue:renderSignalValue timeoutMS:5000];
 }
 
 - (void) encodeInitialRenderToOutputTexture:(id<MTLTexture>)outputTexture updatingFence:(id<MTLFence>)fence {
@@ -711,7 +718,7 @@ API_AVAILABLE(macos(26.0))
 	encoder.label = @"Final render";
 	
 	for (id<MTLFence> fence in fences) {
-		[encoder waitForFence:fence beforeEncoderStages:MTLStageFragment];
+		[encoder waitForFence:fence beforeEncoderStages:MTLStageVertex];
 	}
 	
 	[encoder setRenderPipelineState:finalRenderPipeline];
