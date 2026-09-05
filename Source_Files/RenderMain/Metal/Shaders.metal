@@ -128,6 +128,7 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 	ray ray;
 	ray.origin = float3(uniforms.origin);
 	ray.direction = direction;
+	ray.min_distance = 1.0;
 	ray.max_distance = INFINITY;
 
 	int numBounces = 10;
