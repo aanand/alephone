@@ -218,59 +218,90 @@ NSString* LoadFloorOrCeilingTexture(horizontal_surface_data *surface, polygon_da
 
 bool isWorldLoaded = false;
 
+void AddWall(polygon_data *polygon, line_data *line, short vertexIdx,
+					world_distance bottom, world_distance top,
+					side_texture_definition texDef,
+					short transferMode)
+{
+	endpoint_data *ep0 = get_endpoint_data(polygon->endpoint_indexes[vertexIdx]);
+	endpoint_data *ep1 = get_endpoint_data(polygon->endpoint_indexes[(vertexIdx+1) % polygon->vertex_count]);
+	
+	simd_float2 d = simd_make_float2(ep1->vertex.x - ep0->vertex.x, ep1->vertex.y - ep0->vertex.y);
+	simd_float3 normal = simd_normalize(simd_make_float3(-d.y, d.x, 0.0));
+
+	if (top <= bottom || texDef.texture == UNONE) return;
+	
+	simd_int3 p0 = simd_make_int3(ep0->vertex.x, ep0->vertex.y, top);
+	simd_int3 p1 = simd_make_int3(ep1->vertex.x, ep1->vertex.y, top);
+	simd_int3 p2 = simd_make_int3(ep1->vertex.x, ep1->vertex.y, bottom);
+	simd_int3 p3 = simd_make_int3(ep0->vertex.x, ep0->vertex.y, bottom);
+	
+	auto TMgr = std::make_unique<TextureManager>();
+	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupPolygonTexture(TMgr.get(), texDef.texture));
+	int div = GetTextureScale(transferMode, TMgr.get());
+	world_distance x0 = texDef.x0 % div;
+	world_distance y0 = texDef.y0 % div;
+	float tOffset = polygon->ceiling_height + y0;
+	
+	simd_float2 uv0 = simd_make_float2((tOffset - top   ) / (float) div, (x0               ) / (float) div);
+	simd_float2 uv1 = simd_make_float2((tOffset - top   ) / (float) div, (x0 + line->length) / (float) div);
+	simd_float2 uv2 = simd_make_float2((tOffset - bottom) / (float) div, (x0 + line->length) / (float) div);
+	simd_float2 uv3 = simd_make_float2((tOffset - bottom) / (float) div, (x0               ) / (float) div);
+	
+	WorldVertex vertices[4] = {
+		{ p0, uv0, normal },
+		{ p1, uv1, normal },
+		{ p2, uv2, normal },
+		{ p3, uv3, normal },
+	};
+	
+	if (@available(macOS 26.0, *)) {
+		[renderer addPolygonWithVertices:vertices count:4 textureID:textureID];
+	}
+}
+
 void LoadWorld() {
 	if (isWorldLoaded) return;
 	
 	for (short polyIdx = 0; polyIdx < dynamic_world->polygon_count; polyIdx++) {
 		polygon_data *polygon = get_polygon_data(polyIdx);
 		
-		for (short i=0; i < polygon->vertex_count; i++) {
-			short sideIdx = polygon->side_indexes[i];
+		for (short vertexIdx=0; vertexIdx < polygon->vertex_count; vertexIdx++) {
+			short sideIdx = polygon->side_indexes[vertexIdx];
 			if (sideIdx == NONE) continue;;
 			
 			side_data *side = get_side_data(sideIdx);
-			line_data *line = get_line_data(polygon->line_indexes[i]);
-			
-			endpoint_data *ep0 = get_endpoint_data(polygon->endpoint_indexes[i]);
-			endpoint_data *ep1 = get_endpoint_data(polygon->endpoint_indexes[(i+1) % polygon->vertex_count]);
-			
-			simd_float2 d = simd_make_float2(ep1->vertex.x - ep0->vertex.x, ep1->vertex.y - ep0->vertex.y);
-			simd_float3 normal = simd_normalize(simd_make_float3(-d.y, d.x, 0.0));
-			
-			// TODO: set these based on the side type (hardcode full height for now)
-			world_distance bottom = polygon->floor_height;
-			world_distance top = polygon->ceiling_height;
-			side_texture_definition texDef = side->primary_texture;
-			short transferMode = side->primary_transfer_mode;
-			
-			if (top <= bottom || texDef.texture == UNONE) continue;
-			
-			simd_int3 p0 = simd_make_int3(ep0->vertex.x, ep0->vertex.y, top);
-			simd_int3 p1 = simd_make_int3(ep1->vertex.x, ep1->vertex.y, top);
-			simd_int3 p2 = simd_make_int3(ep1->vertex.x, ep1->vertex.y, bottom);
-			simd_int3 p3 = simd_make_int3(ep0->vertex.x, ep0->vertex.y, bottom);
-			
-			auto TMgr = std::make_unique<TextureManager>();
-			NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupPolygonTexture(TMgr.get(), texDef.texture));
-			int div = GetTextureScale(transferMode, TMgr.get());
-			world_distance x0 = texDef.x0 % div;
-			world_distance y0 = texDef.y0 % div;
-			float tOffset = polygon->ceiling_height + y0;
-			
-			simd_float2 uv0 = simd_make_float2((tOffset - top   ) / (float) div, (x0               ) / (float) div);
-			simd_float2 uv1 = simd_make_float2((tOffset - top   ) / (float) div, (x0 + line->length) / (float) div);
-			simd_float2 uv2 = simd_make_float2((tOffset - bottom) / (float) div, (x0 + line->length) / (float) div);
-			simd_float2 uv3 = simd_make_float2((tOffset - bottom) / (float) div, (x0               ) / (float) div);
-			
-			WorldVertex vertices[4] = {
-				{ p0, uv0, normal },
-				{ p1, uv1, normal },
-				{ p2, uv2, normal },
-				{ p3, uv3, normal },
-			};
-			
-			if (@available(macOS 26.0, *)) {
-				[renderer addPolygonWithVertices:vertices count:4 textureID:textureID];
+			line_data *line = get_line_data(polygon->line_indexes[vertexIdx]);
+
+			switch (side->type) {
+				case _full_side:
+					AddWall(polygon, line, vertexIdx,
+							polygon->floor_height, polygon->ceiling_height,
+							side->primary_texture,
+							side->primary_transfer_mode);
+					break;
+				case _low_side:
+					AddWall(polygon, line, vertexIdx,
+							polygon->floor_height, line->highest_adjacent_floor,
+							side->primary_texture,
+							side->primary_transfer_mode);
+					break;
+				case _high_side:
+					AddWall(polygon, line, vertexIdx,
+							line->lowest_adjacent_ceiling, polygon->ceiling_height,
+							side->primary_texture,
+							side->primary_transfer_mode);
+					break;
+				case _split_side:
+					AddWall(polygon, line, vertexIdx,
+							line->lowest_adjacent_ceiling, polygon->ceiling_height,
+							side->primary_texture,
+							side->primary_transfer_mode);
+					AddWall(polygon, line, vertexIdx,
+							polygon->floor_height, line->highest_adjacent_floor,
+							side->secondary_texture,
+							side->secondary_transfer_mode);
+					break;
 			}
 		}
 	}
