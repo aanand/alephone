@@ -283,22 +283,19 @@ void AddFloor(polygon_data *polygon) {
 	
 	float scale = (float) GetTextureScale(surface.transfer_mode, TMgr.get());
 	
-	auto positions = std::vector<simd_int3>(polygon->vertex_count);
-	auto textureCoordinates = std::vector<simd_float2>(polygon->vertex_count);
-
+	auto vertices = std::vector<WorldVertex>(polygon->vertex_count);
+	
 	// Pulled out of RenderRasterize_Shader::render_node_floor_or_ceiling()
 	for (int i = 0; i < polygon->vertex_count; i++) {
 		// For some reason, doing the reverse-order iteration for ceilings (like RenderRasterize_Shader) gets a wrong-looking result, and going forwards in both cases looks right.
 		world_point2d position = get_endpoint_data(polygon->endpoint_indexes[i])->vertex;
-		positions[i] = simd_make_int3(position.x, position.y, surface.height);
-		textureCoordinates[i] = simd_make_float2((position.x + surface.origin.x) / scale,
-												 (position.y + surface.origin.y) / scale);
-	}
-	
-	auto vertices = std::vector<WorldVertex>(polygon->vertex_count);
-	
-	for (int i=0; i < polygon->vertex_count; i++) {
-		vertices[i] = WorldVertex{ positions[i], textureCoordinates[i], surfaceNormal };
+		
+		vertices[i] = {
+			simd_make_int3(position.x, position.y, surface.height),
+			simd_make_float2((position.x + surface.origin.x) / scale,
+							 (position.y + surface.origin.y) / scale),
+			surfaceNormal,
+		};
 	}
 	
 	if (@available(macOS 26.0, *)) {
