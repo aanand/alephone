@@ -61,6 +61,10 @@ float globalLightIntensityInDirection(float3 direction) {
 	return coefficient * globalLightIntensity;
 }
 
+constant uint numSamples = 4;
+constant uint numBounces = 3;
+constant int denoiseRadius = 3;
+
 fragment float4
 initialRenderFragmentShader(RasterizerData in [[stage_in]],
 			   texture2d<half> colorTexture [[ texture(InitialRenderFragmentShaderColorTextureIndex) ]])
@@ -184,8 +188,6 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 	up      = uniforms.rotateDirectionMat * up;
 	forward = uniforms.rotateDirectionMat * forward;
 	
-	uint numSamples = 4;
-	uint numBounces = 3;
 	float3 sumColor = float3(0.0);
 	
 	for (uint s = 0; s < numSamples; s++) {
@@ -241,15 +243,14 @@ finalRenderVertexShader(unsigned short vid [[vertex_id]])
 float4 denoisedSample(texture2d<float> texture,
 					  uint2 textureSize,
 					  sampler sam,
-					  float2 uv,
-					  int radius)
+					  float2 uv)
 {
 	float2 dXY = float2(1.0, 1.0) / float2(textureSize);
 	float4 accumulation = float4(0.0);
 
 	int c = 0;
-	for (int i = -radius; i <= radius; i++) {
-		for (int j = -radius; j <= radius; j++) {
+	for (int i = -denoiseRadius; i <= denoiseRadius; i++) {
+		for (int j = -denoiseRadius; j <= denoiseRadius; j++) {
 			float2 pos = uv + dXY * float2(i, j);
 			accumulation += texture.sample(sam, pos);
 			c++;
@@ -268,7 +269,7 @@ finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
 {
 	constexpr sampler sam(min_filter::nearest, mag_filter::nearest, mip_filter::none);
 
-	float4 rayTracingPassColor = denoisedSample(rayTracingPassTex, uniforms.resolution, sam, in.uv, 3);
+	float4 rayTracingPassColor = denoisedSample(rayTracingPassTex, uniforms.resolution, sam, in.uv);
 
 	float4 initialPassColor = initialPassTex.sample(sam, in.uv);
 	float3 color = clamp(initialPassColor.rgb * rayTracingPassColor.rgb * gain, 0.0, 1.0);
