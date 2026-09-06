@@ -238,15 +238,40 @@ finalRenderVertexShader(unsigned short vid [[vertex_id]])
 	return out;
 }
 
+float4 denoisedSample(texture2d<float> texture,
+					  uint2 textureSize,
+					  sampler sam,
+					  float2 uv,
+					  int radius)
+{
+	float2 dXY = float2(1.0, 1.0) / float2(textureSize);
+	float4 accumulation = float4(0.0);
+
+	int c = 0;
+	for (int i = -radius; i <= radius; i++) {
+		for (int j = -radius; j <= radius; j++) {
+			float2 pos = uv + dXY * float2(i, j);
+			accumulation += texture.sample(sam, pos);
+			c++;
+		}
+	}
+
+	return accumulation/c;
+}
+
 // Adapted from https://developer.apple.com/documentation/metal/accelerating-ray-tracing-using-metal?language=objc
 fragment float4
 finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
+						  constant Uniforms &uniforms [[ buffer(FinalRenderFragmentShaderUniformsIndex) ]],
 						  texture2d<float> initialPassTex [[ texture(FinalRenderFragmentShaderInitialPassTextureIndex) ]],
 						  texture2d<float> rayTracingPassTex [[ texture(FinalRenderFragmentShaderRayTracingPassTextureIndex) ]])
 {
 	constexpr sampler sam(min_filter::nearest, mag_filter::nearest, mip_filter::none);
+
+	float4 rayTracingPassColor = denoisedSample(rayTracingPassTex, uniforms.resolution, sam, in.uv, 3);
+
 	float4 initialPassColor = initialPassTex.sample(sam, in.uv);
-	float4 rayTracingPassColor = rayTracingPassTex.sample(sam, in.uv);
 	float3 color = clamp(initialPassColor.rgb * rayTracingPassColor.rgb * gain, 0.0, 1.0);
+//	return float4(rayTracingPassColor.rgb, 1.0f);
 	return float4(color, 1.0f);
 }

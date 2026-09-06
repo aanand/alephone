@@ -206,6 +206,7 @@ API_AVAILABLE(macos(26.0))
 	
 	MTL4ArgumentTableDescriptor *fragmentArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
 	fragmentArgumentTableDescriptor.maxTextureBindCount = MAX(InitialRenderFragmentShader_NumTextures, FinalRenderFragmentShader_NumTextures);
+	fragmentArgumentTableDescriptor.maxBufferBindCount = FinalRenderFragmentShader_NumBuffers;
 	fragmentArgumentTableDescriptor.label = @"Fragment argument table";
 	fragmentArgumentTable = [device newArgumentTableWithDescriptor:fragmentArgumentTableDescriptor error:&error];
 	if (error) {
@@ -726,6 +727,7 @@ API_AVAILABLE(macos(26.0))
 
 	[encoder setArgumentTable:vertexArgumentTable atStages:MTLRenderStageVertex];
 
+	[fragmentArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:FinalRenderFragmentShaderUniformsIndex];
 	[fragmentArgumentTable setTexture:initialPassTexture.gpuResourceID atIndex:FinalRenderFragmentShaderInitialPassTextureIndex];
 	[fragmentArgumentTable setTexture:rayTracingPassTexture.gpuResourceID atIndex:FinalRenderFragmentShaderRayTracingPassTextureIndex];
 	[encoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
