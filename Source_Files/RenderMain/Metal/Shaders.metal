@@ -117,7 +117,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 	ray.min_distance = 0.1;
 	ray.max_distance = INFINITY;
 
-	float tcol = 0.0;
+	float3 tcol = float3(0.0);
 	float fcol = 1.0;
 	
 	intersector<triangle_data, instancing> i;
@@ -141,7 +141,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 
 			if (length(data->emission) > 0) {
 				// We hit a light source
-				tcol += length(data->emission);
+				tcol += data->emission;
 				break;
 			}
 
