@@ -91,6 +91,7 @@ typedef struct {
 
 typedef struct {
 	vector_float3 surfaceNormal;
+	vector_float3 emission;
 } TriangleRayTracingData;
 
 #endif /* VertexTypes_h */

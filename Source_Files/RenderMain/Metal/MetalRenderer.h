@@ -43,7 +43,10 @@ API_AVAILABLE(macos(26.0))
 /**
  Vertices should be in world-space, i.e. X=east, Y=north, Z=up (away from the ground).
  */
-- (void) addPolygonWithVertices:(WorldVertex *)vertices count:(NSUInteger)vertexCount textureID:(NSString*)textureID;
+- (void) addPolygonWithVertices:(WorldVertex *)vertices
+						  count:(NSUInteger)vertexCount
+					  textureID:(NSString*)textureID
+					   emission:(simd_float3)emission;
 
 - (void) commitGeometry;
 - (void) clearGeometry;

@@ -218,6 +218,27 @@ NSString* LoadFloorOrCeilingTexture(horizontal_surface_data *surface, polygon_da
 
 bool isWorldLoaded = false;
 
+std::unordered_map<std::string, simd_float3> emissiveTextures = {
+	// Light panels (M1)
+	{ "[ShapeDesc=4622/Collection=18/CTable=0/Frame=14/Bitmap=14]", simd_make_float3(1.0, 1.0, 1.0) },
+	
+	// Terminals and pattern buffers (M1)
+	{ "[ShapeDesc=2048/Collection=8/CTable=0/Frame=0/Bitmap=0]", simd_make_float3(0.0, 1.0, 0.0) },
+};
+
+simd_float3 emissionForTextureID(NSString *textureID) {
+	std::string key = textureID.UTF8String;
+	auto iterator = emissiveTextures.find(key);
+	if (iterator != emissiveTextures.end()) {
+		auto matchedKey = iterator->first;
+		auto matchedValue = iterator->second;
+		logWarning("Found emission value for texture %s", matchedKey.data());
+		return matchedValue;
+	}
+	logWarning("No emission value found for texture %s", key.data());
+	return simd_make_float3(0.0, 0.0, 0.0);
+}
+
 void AddWall(polygon_data *polygon, line_data *line, short vertexIdx,
 					world_distance bottom, world_distance top,
 					side_texture_definition texDef,
@@ -261,7 +282,10 @@ void AddWall(polygon_data *polygon, line_data *line, short vertexIdx,
 	};
 	
 	if (@available(macOS 26.0, *)) {
-		[renderer addPolygonWithVertices:vertices count:4 textureID:textureID];
+		[renderer addPolygonWithVertices:vertices
+								   count:4
+							   textureID:textureID
+								emission:emissionForTextureID(textureID)];
 	}
 }
 
@@ -299,7 +323,10 @@ void AddFloorOrCeiling(polygon_data *polygon, bool ceil) {
 	
 	if (@available(macOS 26.0, *)) {
 		if (renderer) {
-			[renderer addPolygonWithVertices:vertices.data() count:polygon->vertex_count textureID:textureID];
+			[renderer addPolygonWithVertices:vertices.data()
+									   count:polygon->vertex_count
+								   textureID:textureID
+									emission:emissionForTextureID(textureID)];
 		}
 	}
 }

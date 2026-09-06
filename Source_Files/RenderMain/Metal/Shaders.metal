@@ -138,6 +138,13 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 
 			const device TriangleRayTracingData *data;
 			data = (const device TriangleRayTracingData*) intersection.primitive_data;
+
+			if (length(data->emission) > 0) {
+				// We hit a light source
+				tcol += length(data->emission);
+				break;
+			}
+
 			float3 normal = data->surfaceNormal;
 			
 			float directLightingProbability = 1 - cos(uniforms.sunRadius);

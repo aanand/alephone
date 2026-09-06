@@ -36,19 +36,29 @@
 @property (nonatomic, readonly) WorldVertex v1;
 @property (nonatomic, readonly) WorldVertex v2;
 @property (nonatomic, readonly) NSNumber* textureID;
+@property (nonatomic, readonly) simd_float3 emission;
 
-- (Triangle *) initWithV0:(WorldVertex)v0 v1:(WorldVertex)v1 v2:(WorldVertex)v2 textureID:(NSNumber*)textureID;
+- (Triangle *) initWithV0:(WorldVertex)v0
+					   v1:(WorldVertex)v1
+					   v2:(WorldVertex)v2
+				textureID:(NSNumber*)textureID
+				 emission:(simd_float3)emission;
 
 @end
 
 @implementation Triangle
 
-- (Triangle *) initWithV0:(WorldVertex)v0 v1:(WorldVertex)v1 v2:(WorldVertex)v2 textureID:(NSNumber *)textureID {
+- (Triangle *) initWithV0:(WorldVertex)v0
+					   v1:(WorldVertex)v1
+					   v2:(WorldVertex)v2
+				textureID:(NSNumber *)textureID
+				 emission:(simd_float3)emission{
 	if (self = [super init]) {
 		_v0 = v0;
 		_v1 = v1;
 		_v2 = v2;
 		_textureID = textureID;
+		_emission = emission;
 	}
 	return self;
 }
@@ -402,7 +412,11 @@ API_AVAILABLE(macos(26.0))
 	yaw = newYaw;
 }
 
-- (void) addPolygonWithVertices:(WorldVertex *)vertices count:(NSUInteger)vertexCount textureID:(NSNumber*)textureID {
+- (void) addPolygonWithVertices:(WorldVertex *)vertices
+						  count:(NSUInteger)vertexCount
+					  textureID:(NSNumber*)textureID
+					   emission:(simd_float3)emission
+{
 	assert(vertexCount > 2);
 	
 	// Triangle fan: draw 0-1-2, 0-2-3, 0-3-4, etc
@@ -410,7 +424,8 @@ API_AVAILABLE(macos(26.0))
 		[triangles addObject:[[Triangle alloc] initWithV0:*(vertices)
 													   v1:*(vertices+j+1)
 													   v2:*(vertices+j+2)
-												textureID:textureID]];
+												textureID:textureID
+												 emission:emission]];
 
 		assert(triangles.count < MAX_TRIANGLES);
 	}
@@ -432,6 +447,7 @@ API_AVAILABLE(macos(26.0))
 		vertices[i*3+2] = simd_make_float3(triangle.v2.position.x, triangle.v2.position.y, triangle.v2.position.z);
 		
 		primitiveData[i].surfaceNormal = triangle.v0.surfaceNormal;
+		primitiveData[i].emission = triangle.emission;
 	}
 	
 	accelerationStructureVertexBuffer = [device newBufferWithBytes:vertices
@@ -573,6 +589,7 @@ API_AVAILABLE(macos(26.0))
 	};
 
 	id<MTLTexture> texture = [device newTextureWithDescriptor:descriptor];
+	texture.label = textureID;
 	[texture replaceRegion:region
 			   mipmapLevel:0
 				 withBytes:image.data.bytes
