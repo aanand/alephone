@@ -141,7 +141,13 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 
 			if (length(data->emission) > 0) {
 				// We hit a light source
-				tcol += data->emission;
+				if (b == 0) {
+					// Desaturate the light value if we haven't bounced yet, so the texture doesn't appear tinted
+					float3 e = data->emission;
+					tcol += float3(e.r + e.g + e.b) / 3.0;
+				} else {
+					tcol += data->emission;
+				}
 				break;
 			}
 
