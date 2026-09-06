@@ -50,18 +50,15 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 	return out;
 }
 
-constant float3 globalLightDirection = float3(0, 1, -0.5);
+constant float3 globalLightDirection = float3(0.1, 1, -0.5);
 constant float globalLightIntensity = 10.0;
+constant float globalLightDiameterDegrees = 30.0; // angle subtended by the sun
+
 constant float ambientLightIntensity = 0.1;
 constant float gain = 1.5;
 constant float defaultAttenuation = 0.6;
 
-float globalLightIntensityInDirection(float3 direction) {
-	float coefficient = 0.5 + 0.5 * dot(direction, -normalize(globalLightDirection));
-	return coefficient * globalLightIntensity;
-}
-
-constant uint numSamples = 4;
+constant uint numSamples = 1;
 constant uint numBounces = 3;
 constant int denoiseRadius = 3;
 
@@ -76,6 +73,14 @@ initialRenderFragmentShader(RasterizerData in [[stage_in]],
 
 float radians(float degrees) {
 	return degrees * 8.0 * atan(1.0) / 360.0;
+}
+
+float globalLightIntensityInDirection(float3 direction) {
+	float cosTheta = dot(direction, -normalize(globalLightDirection));
+	if (acos(cosTheta) < radians(globalLightDiameterDegrees/2)) {
+		return globalLightIntensity;
+	}
+	return 0.0;
 }
 
 // Hash/vector functions by Nimitz and reinder:
@@ -123,7 +128,8 @@ float3 rayTraceSoft(float3 origin, float3 direction, uint numBounces,
 	ray.min_distance = 0.1;
 	ray.max_distance = INFINITY;
 
-	float irradiance = 1.0;
+	float tcol = 0.0;
+	float fcol = 1.0;
 	
 	intersector<triangle_data, instancing> i;
 	typename intersector<triangle_data, instancing>::result_type intersection;
@@ -132,18 +138,27 @@ float3 rayTraceSoft(float3 origin, float3 direction, uint numBounces,
 		intersection = i.intersect(ray, accelerationStructure);
 		
 		if (intersection.type == intersection_type::none) {
-			if (b > 0) {
-				irradiance *= globalLightIntensityInDirection(ray.direction);
-			} else {
-				irradiance = 0.0;
-			}
+			tcol += fcol * globalLightIntensityInDirection(ray.direction);
 			break;
 		} else {
+			float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
+
 			const device TriangleRayTracingData *data;
 			data = (const device TriangleRayTracingData*) intersection.primitive_data;
 			float3 normal = data->surfaceNormal;
 			
-			float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
+			float sunRadius = radians(globalLightDiameterDegrees/2);
+			float directLightingProbability = 1 - cos(sunRadius);
+			float directLightingContribution = directLightingProbability * clamp(dot(normal, -globalLightDirection), 0.0, 1.0);
+
+			ray.origin = hitPoint;
+			ray.direction = -globalLightDirection;
+			if (i.intersect(ray, accelerationStructure).type == intersection_type::none) {
+				// We hit the sun
+				tcol += fcol * globalLightIntensity * directLightingContribution;
+//				fcol *= (1.0 - directLightingContribution);
+			}
+			
 			float3 newDirection = normalize(randomInUnitSphere(seed));
 			if (dot(newDirection, normal) < 0) {
 				newDirection = -newDirection;
@@ -151,16 +166,11 @@ float3 rayTraceSoft(float3 origin, float3 direction, uint numBounces,
 			ray.origin = hitPoint;
 			ray.direction = newDirection;
 			
-			irradiance *= defaultAttenuation;
+			fcol *= defaultAttenuation;
 		}
 	}
 	
-	// We didn't escape
-	if (intersection.type != intersection_type::none) {
-		irradiance = 0.0;
-	}
-	
-	return float3(irradiance);
+	return float3(tcol / fcol);
 }
 
 kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
