@@ -630,7 +630,7 @@ API_AVAILABLE(macos(26.0))
 	MTL4RenderPassDescriptor *configuration = [MTL4RenderPassDescriptor new];
 	configuration.colorAttachments[0].texture = outputTexture;
 	configuration.colorAttachments[0].loadAction = MTLLoadActionClear;
-	configuration.colorAttachments[0].clearColor = MTLClearColorMake(1.0, 1.0, 1.0, 1.0);
+	configuration.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1.0);
 	configuration.colorAttachments[0].storeAction = MTLStoreActionStore;
 
 	id<MTL4RenderCommandEncoder> renderPassEncoder = [commandBuffer renderCommandEncoderWithDescriptor:configuration];
@@ -707,7 +707,7 @@ API_AVAILABLE(macos(26.0))
 	MTL4RenderPassDescriptor *configuration = [MTL4RenderPassDescriptor new];
 	configuration.colorAttachments[0].texture = outputTexture;
 	configuration.colorAttachments[0].loadAction = MTLLoadActionClear;
-	configuration.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0);
+	configuration.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1.0);
 	configuration.colorAttachments[0].storeAction = MTLStoreActionStore;
 
 	id<MTL4RenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:configuration];
