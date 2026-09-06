@@ -78,6 +78,10 @@ simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
 
 uint MAX_TRIANGLES = 10000;
 
+static const simd_float3 sunDirection = { 0.1, 1.0, -0.5 };
+static const float sunIntensity = 10.0;
+static const float sunDiameterDegrees = 30.0;
+
 API_AVAILABLE(macos(26.0))
 @implementation MetalRenderer
 {
@@ -591,6 +595,9 @@ API_AVAILABLE(macos(26.0))
 	uniforms.yawMat = rotationMatrix(-yaw, simd_make_float3(0.0, 1.0, 0.0));
 	uniforms.rotateDirectionMat = simd_mul(rotationMatrix(yaw, simd_make_float3(0.0, 1.0, 0.0)), rotationMatrix(-pitch, simd_make_float3(1.0, 0.0, 0.0)));
 	uniforms.perspectiveMat = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
+	uniforms.sunDirection = simd_normalize(sunDirection);
+	uniforms.sunIntensity = sunIntensity;
+	uniforms.sunRadius = radians(sunDiameterDegrees/2);
 	memcpy(uniformsBuffer.contents, &uniforms, sizeof(Uniforms));
 		
 	id<CAMetalDrawable> currentDrawable = [metalLayer nextDrawable];

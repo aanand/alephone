@@ -53,21 +53,26 @@ typedef struct {
 	
 	// Horizontal FOV
 	float fov;
-
+	
 	// World-space camera position
 	vector_int3 origin;
-
+	
 	// In view-space, rotates the world up or down to match player look
 	matrix_float4x4 pitchMat;
 	
 	// In view-space, rotates the world left or right to match player look
 	matrix_float4x4 yawMat;
-
+	
 	// In view-space, rotates a direction vector to match player look
 	matrix_float4x4 rotateDirectionMat;
 	
 	// Transforms a view-space vector to clip-space
 	matrix_float4x4 perspectiveMat;
+	
+	// Global light parameters
+	vector_float3 sunDirection; // Unit vector pointing away from the sun
+	float sunIntensity;
+	float sunRadius; // Half the angle subtended by the sun, in radians
 } Uniforms;
 
 // A vertex in Marathon world-space: X = east, Y = north, Z = up

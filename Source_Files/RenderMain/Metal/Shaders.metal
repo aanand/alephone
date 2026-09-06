@@ -50,10 +50,6 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 	return out;
 }
 
-constant float3 globalLightDirection = float3(0.1, 1, -0.5);
-constant float globalLightIntensity = 10.0;
-constant float globalLightDiameterDegrees = 30.0; // angle subtended by the sun
-
 constant float ambientLightIntensity = 0.1;
 constant float gain = 1.5;
 constant float defaultAttenuation = 0.6;
@@ -73,14 +69,6 @@ initialRenderFragmentShader(RasterizerData in [[stage_in]],
 
 float radians(float degrees) {
 	return degrees * 8.0 * atan(1.0) / 360.0;
-}
-
-float globalLightIntensityInDirection(float3 direction) {
-	float cosTheta = dot(direction, -normalize(globalLightDirection));
-	if (acos(cosTheta) < radians(globalLightDiameterDegrees/2)) {
-		return globalLightIntensity;
-	}
-	return 0.0;
 }
 
 // Hash/vector functions by Nimitz and reinder:
@@ -118,8 +106,9 @@ float getRandomSeed(float2 xy, float frameNumber) {
 	return float(baseHash(uint2(as_type<uint>(xy.x), as_type<uint>(xy.y)))) / float(0xffffffffU) + (float)frameNumber;
 }
 
-float3 rayTraceSoft(float3 origin, float3 direction, uint numBounces,
+float3 rayTraceSoft(float3 origin, float3 direction,
 				instance_acceleration_structure accelerationStructure,
+				Uniforms uniforms,
 				thread float &seed)
 {
 	ray ray;
@@ -138,7 +127,11 @@ float3 rayTraceSoft(float3 origin, float3 direction, uint numBounces,
 		intersection = i.intersect(ray, accelerationStructure);
 		
 		if (intersection.type == intersection_type::none) {
-			tcol += fcol * globalLightIntensityInDirection(ray.direction);
+			float cosTheta = dot(ray.direction, -uniforms.sunDirection);
+			if (acos(cosTheta) < uniforms.sunRadius) {
+				tcol += fcol * uniforms.sunIntensity;
+			}
+
 			break;
 		} else {
 			float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
@@ -147,16 +140,17 @@ float3 rayTraceSoft(float3 origin, float3 direction, uint numBounces,
 			data = (const device TriangleRayTracingData*) intersection.primitive_data;
 			float3 normal = data->surfaceNormal;
 			
-			float sunRadius = radians(globalLightDiameterDegrees/2);
-			float directLightingProbability = 1 - cos(sunRadius);
-			float directLightingContribution = directLightingProbability * clamp(dot(normal, -globalLightDirection), 0.0, 1.0);
+			float directLightingProbability = 1 - cos(uniforms.sunRadius);
+			float directLightingContribution = directLightingProbability * clamp(dot(normal, -uniforms.sunDirection), 0.0, 1.0);
 
 			ray.origin = hitPoint;
-			ray.direction = -globalLightDirection;
+			ray.direction = -uniforms.sunDirection;
 			if (i.intersect(ray, accelerationStructure).type == intersection_type::none) {
 				// We hit the sun
-				tcol += fcol * globalLightIntensity * directLightingContribution;
-//				fcol *= (1.0 - directLightingContribution);
+				tcol += fcol * uniforms.sunIntensity * directLightingContribution;
+
+				// Feel like we should be doing this to avoid double-counting, but it doesn't look right
+				// fcol *= (1.0 - directLightingContribution);
 			}
 			
 			float3 newDirection = normalize(randomInUnitSphere(seed));
@@ -210,7 +204,7 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 		// Ray direction in world-space
 		float3 direction = normalize(uv.x * right.zxy + uv.y * up.zxy + forward.zxy);
 		
-		sumColor += rayTraceSoft(float3(uniforms.origin), direction, numBounces, accelerationStructure, seed);
+		sumColor += rayTraceSoft(float3(uniforms.origin), direction, accelerationStructure, uniforms, seed);
 	}
 	
 	float3 averageColor = sumColor / (float)numSamples;
