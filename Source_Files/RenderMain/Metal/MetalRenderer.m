@@ -138,7 +138,7 @@ API_AVAILABLE(macos(26.0))
 
 	// Data loaded in from the game
 
-	NSMutableDictionary<NSNumber *, id<MTLTexture>> *textures;
+	NSMutableDictionary<NSString *, id<MTLTexture>> *textures;
 	NSMutableArray<Triangle *> *triangles;
 }
 
@@ -557,11 +557,11 @@ API_AVAILABLE(macos(26.0))
 	}
 }
 
-- (bool) hasTextureWithID:(NSNumber*)textureID {
+- (bool) hasTextureWithID:(NSString*)textureID {
 	return [textures objectForKey:textureID] != nil;
 }
 
-- (void) addTextureWithID:(NSNumber*)textureID image:(MetalImage *)image {
+- (void) addTextureWithID:(NSString*)textureID image:(MetalImage *)image {
 	MTLTextureDescriptor *descriptor = [[MTLTextureDescriptor alloc] init];
 	descriptor.pixelFormat = MTLPixelFormatBGRA8Unorm;
 	descriptor.width = image.width;
