@@ -78,8 +78,9 @@ simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
 
 uint MAX_TRIANGLES = 10000;
 
-static const simd_float3 sunDirection = { 0.1, 1.0, -0.5 };
-static const float sunIntensity = 10.0;
+static const simd_float3 sunDirection    = { -1.0, 1.0, 0.0 }; // sun is to the northwest
+static const simd_float3 sunRotationAxis = {  0.0, 1.0, 0.0 }; // sun rotates around the north-south axis
+static const float sunIntensity = 50.0;
 static const float sunDiameterDegrees = 30.0;
 
 API_AVAILABLE(macos(26.0))
@@ -586,7 +587,7 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (void) end {
-	simd_float4x4 sunRotation = rotationMatrix(fmod(frameNumber, 360.0), simd_make_float3(1.0, 0.0, 0.0));
+	simd_float4x4 sunRotation = rotationMatrix(fmod(frameNumber, 360.0), sunRotationAxis);
 	simd_float3 rotatedSunDirection = simd_mul(sunRotation, simd_make_float4(sunDirection, 1.0)).xyz;
 
 	Uniforms uniforms;
