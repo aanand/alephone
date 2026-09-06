@@ -148,9 +148,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 			if (i.intersect(ray, accelerationStructure).type == intersection_type::none) {
 				// We hit the sun
 				tcol += fcol * uniforms.sunIntensity * directLightingContribution;
-
-				// Feel like we should be doing this to avoid double-counting, but it doesn't look right
-				// fcol *= (1.0 - directLightingContribution);
+				fcol *= (1.0 - directLightingContribution);
 			}
 			
 			float3 newDirection = normalize(randomInUnitSphere(seed));
@@ -164,7 +162,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 		}
 	}
 	
-	return float3(tcol / fcol);
+	return float3(tcol * fcol);
 }
 
 kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
