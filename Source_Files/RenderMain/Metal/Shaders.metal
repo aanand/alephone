@@ -52,10 +52,10 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 
 constant float ambientLightIntensity = 0.1;
 constant float gain = 1.5;
-constant float defaultAttenuation = 0.6;
+constant float defaultAttenuation = 0.99;
 
 constant uint numSamples = 1;
-constant uint numBounces = 3;
+constant uint numBounces = 4;
 constant int denoiseRadius = 3;
 
 fragment float4
