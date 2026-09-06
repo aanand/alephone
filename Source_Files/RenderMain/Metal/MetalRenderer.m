@@ -586,6 +586,9 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (void) end {
+	simd_float4x4 sunRotation = rotationMatrix(fmod(frameNumber, 360.0), simd_make_float3(1.0, 0.0, 0.0));
+	simd_float3 rotatedSunDirection = simd_mul(sunRotation, simd_make_float4(sunDirection, 1.0)).xyz;
+
 	Uniforms uniforms;
 	uniforms.resolution = viewportSize;
 	uniforms.frameNumber = frameNumber;
@@ -595,7 +598,7 @@ API_AVAILABLE(macos(26.0))
 	uniforms.yawMat = rotationMatrix(-yaw, simd_make_float3(0.0, 1.0, 0.0));
 	uniforms.rotateDirectionMat = simd_mul(rotationMatrix(yaw, simd_make_float3(0.0, 1.0, 0.0)), rotationMatrix(-pitch, simd_make_float3(1.0, 0.0, 0.0)));
 	uniforms.perspectiveMat = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
-	uniforms.sunDirection = simd_normalize(sunDirection);
+	uniforms.sunDirection = simd_normalize(rotatedSunDirection);
 	uniforms.sunIntensity = sunIntensity;
 	uniforms.sunRadius = radians(sunDiameterDegrees/2);
 	memcpy(uniformsBuffer.contents, &uniforms, sizeof(Uniforms));
