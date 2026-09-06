@@ -52,7 +52,9 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 
 constant float3 globalLightDirection = float3(0, 1, -0.5);
 constant float globalLightIntensity = 10.0;
-constant float ambientLightIntensity = 0.15;
+constant float ambientLightIntensity = 0.1;
+constant float gain = 1.5;
+constant float defaultAttenuation = 0.6;
 
 float globalLightIntensityInDirection(float3 direction) {
 	float coefficient = 0.5 + 0.5 * dot(direction, -normalize(globalLightDirection));
@@ -145,7 +147,7 @@ float3 rayTraceSoft(float3 origin, float3 direction, uint numBounces,
 			ray.origin = hitPoint;
 			ray.direction = newDirection;
 			
-			irradiance *= 0.9;
+			irradiance *= defaultAttenuation;
 		}
 	}
 	
@@ -245,6 +247,6 @@ finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
 	constexpr sampler sam(min_filter::nearest, mag_filter::nearest, mip_filter::none);
 	float4 initialPassColor = initialPassTex.sample(sam, in.uv);
 	float4 rayTracingPassColor = rayTracingPassTex.sample(sam, in.uv);
-	float3 color = initialPassColor.rgb * rayTracingPassColor.rgb;
+	float3 color = clamp(initialPassColor.rgb * rayTracingPassColor.rgb * gain, 0.0, 1.0);
 	return float4(color, 1.0f);
 }
