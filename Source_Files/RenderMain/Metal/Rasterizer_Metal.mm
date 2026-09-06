@@ -266,11 +266,10 @@ void AddWall(polygon_data *polygon, line_data *line, short vertexIdx,
 }
 
 void AddFloorOrCeiling(polygon_data *polygon, bool ceil) {
-	shape_descriptor shape = polygon->floor_texture;
-	
-	world_point2d origin  = ceil ? polygon->ceiling_origin        : polygon->floor_origin;
-	world_distance height = ceil ? polygon->ceiling_height        : polygon->floor_height;
-	int16 transfer_mode   = ceil ? polygon->ceiling_transfer_mode : polygon->floor_transfer_mode;
+	shape_descriptor shape         = ceil ? polygon->ceiling_texture       : polygon->floor_texture;
+	world_point2d    origin        = ceil ? polygon->ceiling_origin        : polygon->floor_origin;
+	world_distance   height        = ceil ? polygon->ceiling_height        : polygon->floor_height;
+	int16            transfer_mode = ceil ? polygon->ceiling_transfer_mode : polygon->floor_transfer_mode;
 
 	if (transfer_mode == _xfer_landscape) {
 		// Skip adding landscapes for now so the sun can get in
