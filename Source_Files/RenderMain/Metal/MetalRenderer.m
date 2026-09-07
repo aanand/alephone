@@ -511,8 +511,6 @@ API_AVAILABLE(macos(26.0))
 
 	instanceAccelerationStructure = [device newAccelerationStructureWithDescriptor:instanceASDescriptor];
 	
-	[self clearGeometry];
-
 	[rayTracingResidencySet addAllocation:accelerationStructureVertexBuffer];
 	[rayTracingResidencySet addAllocation:accelerationStructurePrimitiveDataBuffer];
 	[rayTracingResidencySet addAllocation:accelerationStructureInstanceBuffer];
@@ -561,6 +559,14 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (void) clearGeometry {
+	[triangles removeAllObjects];
+
+	accelerationStructureVertexBuffer = nil;
+	accelerationStructurePrimitiveDataBuffer = nil;
+	accelerationStructureInstanceBuffer = nil;
+	[primitiveAccelerationStructures removeAllObjects];
+	instanceAccelerationStructure = nil;
+
 	if (instanceAccelerationStructure) {
 		[rayTracingResidencySet removeAllocation:accelerationStructureVertexBuffer];
 		[rayTracingResidencySet removeAllocation:accelerationStructurePrimitiveDataBuffer];

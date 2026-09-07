@@ -216,7 +216,7 @@ NSString* LoadFloorOrCeilingTexture(horizontal_surface_data *surface, polygon_da
 	return textureID;
 }
 
-bool isWorldLoaded = false;
+int16 lastLoadedLevelNumber = -1;
 
 std::unordered_map<std::string, simd_float3> emissiveTextures = {
 	// Light panels (M1)
@@ -338,7 +338,11 @@ void AddFloorOrCeiling(polygon_data *polygon, bool ceil) {
 }
 
 void LoadWorld() {
-	if (isWorldLoaded) return;
+	if (lastLoadedLevelNumber == dynamic_world->current_level_number) return;
+	
+	logWarning("Loading level number %d", dynamic_world->current_level_number);
+	
+	[renderer clearGeometry];
 	
 	for (short polyIdx = 0; polyIdx < dynamic_world->polygon_count; polyIdx++) {
 		polygon_data *polygon = get_polygon_data(polyIdx);
@@ -388,7 +392,7 @@ void LoadWorld() {
 	
 	[renderer commitGeometry];
 	
-	isWorldLoaded = true;
+	lastLoadedLevelNumber = dynamic_world->current_level_number;
 }
 
 /*
