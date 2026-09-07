@@ -26,6 +26,7 @@
 API_AVAILABLE(macos(26.0))
 MetalRenderer *renderer;
 view_data *view;
+int16 lastLoadedLevelNumber = -1;
 
 bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
     logWarning("Metal_InitializeForWindow(window, %d, %d)", width, height);
@@ -172,8 +173,6 @@ NSString* LoadTextureIntoRenderer(TextureManager *TMgr, bool didSetupSucceed) {
 	
 	return textureID;
 }
-
-int16 lastLoadedLevelNumber = -1;
 
 std::unordered_map<std::string, simd_float3> emissiveTextures = {
 	// Light panels (M1)
