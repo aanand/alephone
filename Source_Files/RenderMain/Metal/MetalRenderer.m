@@ -173,16 +173,24 @@ API_AVAILABLE(macos(26.0))
 	id<MTLBuffer> triangleBuffer;
 	id<MTLBuffer> uniformsBuffer;
 
-	NSMutableArray<id<MTLAccelerationStructure>> *primitiveAccelerationStructures;
-	id<MTLAccelerationStructure> instanceAccelerationStructure;
-	id<MTLBuffer> accelerationStructureVertexBuffer;
-	id<MTLBuffer> accelerationStructurePrimitiveDataBuffer;
-	id<MTLBuffer> accelerationStructureInstanceBuffer;
-
-	// Data loaded in from the game
-
+	NSMutableArray<MetalPolygon*> *staticPolygons;
+	NSMutableArray<MetalDynamicObject*> *dynamicObjects;
 	NSMutableDictionary<NSString *, id<MTLTexture>> *textures;
-	NSMutableArray<Triangle *> *triangles;
+
+	// Static geometry (walls, floors, ceilings)
+	id<MTLBuffer> staticPASVertexBuffer;
+	id<MTLBuffer> staticPASPrimitiveDataBuffer;
+	id<MTLBuffer> staticIASInstanceBuffer;
+	NSMutableArray<id<MTLAccelerationStructure>> *staticPASes;
+	NSMutableArray<MTL4AccelerationStructureDescriptor*> *staticPASDescriptors;
+	id<MTLAccelerationStructure> staticIAS;
+	MTL4InstanceAccelerationStructureDescriptor *staticIASDescriptor;
+
+	// TODO: Acceleration structures for dynamic geometry (sprites, doors, platforms)
+
+	id<MTLBuffer> topLevelIASInstanceBuffer;
+	id<MTLAccelerationStructure> topLevelIAS;
+	MTL4InstanceAccelerationStructureDescriptor *topLevelIASDescriptor;
 }
 
 - (MetalRenderer *) initializeWithWindow:(SDL_Window *)sdlWindow width:(int)width height:(int)height {
@@ -235,7 +243,6 @@ API_AVAILABLE(macos(26.0))
 	[finalRenderResidencySet commit];
 	
 	textures = [NSMutableDictionary dictionary];
-	triangles = [NSMutableArray array];
 	
 	return self;
 }
@@ -445,7 +452,7 @@ API_AVAILABLE(macos(26.0))
 	yaw = newYaw;
 }
 
-- (void) addStaticPolygon:(MetalPolygon *)polygon
+- (void) addTrianglesForPolygon:(MetalPolygon *)polygon toArray:(NSMutableArray<Triangle*>*)triangles
 {
 	assert(polygon.vertexCount > 2);
 	
@@ -461,42 +468,33 @@ API_AVAILABLE(macos(26.0))
 	}
 }
 
+- (void)addStaticPolygon:(MetalPolygon *)polygon {
+	[staticPolygons addObject:polygon];
+}
+
 - (void)addDynamicObject:(MetalDynamicObject *)object {
-	for (MetalPolygon *polygon in object.polygons) {
-		for (int j = 0; j < polygon.vertexCount - 2; j++) {
-			WorldVertex v0 = *(polygon.vertices);
-			WorldVertex v1 = *(polygon.vertices+j+1);
-			WorldVertex v2 = *(polygon.vertices+j+2);
-			
-			v0.position += object.worldPosition;
-			v1.position += object.worldPosition;
-			v2.position += object.worldPosition;
-
-			[triangles addObject:[[Triangle alloc] initWithV0:v0
-														   v1:v1
-														   v2:v2
-													textureID:polygon.textureID
-													 emission:polygon.emission]];
-
-			assert(triangles.count < MAX_TRIANGLES);
-		}
-	}
+	[dynamicObjects addObject:object];
 }
 
 - (void)updateDynamicObjectWithID:(NSString *)objectID polygonTextureIDs:(NSArray<NSString *> *)textureIDs worldPosition:(simd_int3)worldPosition facing:(NSInteger)facing {
 }
 
-- (void) commitGeometry {
-	NSUInteger numTriangles = triangles.count;
+- (void) commitStaticGeometry {
+	NSMutableArray *staticTriangles = [NSMutableArray array];
+	for (MetalPolygon *polygon in staticPolygons) {
+		[self addTrianglesForPolygon:polygon toArray:staticTriangles];
+	}
+	
+	NSUInteger numTriangles = staticTriangles.count;
 	NSUInteger trianglesPerBatch = 100;
 	NSUInteger numBatches = numTriangles / trianglesPerBatch;
-
+	
 	simd_float3 vertices[numTriangles * 3];
 	TriangleRayTracingData primitiveData[numTriangles];
-
+	
 	for (int i = 0; i < numTriangles; i++) {
-		Triangle *triangle = [triangles objectAtIndex:i];
-
+		Triangle *triangle = [staticTriangles objectAtIndex:i];
+		
 		vertices[i*3+0] = simd_make_float3(triangle.v0.position.x, triangle.v0.position.y, triangle.v0.position.z);
 		vertices[i*3+1] = simd_make_float3(triangle.v1.position.x, triangle.v1.position.y, triangle.v1.position.z);
 		vertices[i*3+2] = simd_make_float3(triangle.v2.position.x, triangle.v2.position.y, triangle.v2.position.z);
@@ -505,31 +503,31 @@ API_AVAILABLE(macos(26.0))
 		primitiveData[i].emission = triangle.emission;
 	}
 	
-	accelerationStructureVertexBuffer = [device newBufferWithBytes:vertices
-															length:sizeof(vertices)
-														   options:MTLResourceStorageModeShared];
-	accelerationStructureVertexBuffer.label = @"vertexBuffer";
-
-	accelerationStructurePrimitiveDataBuffer = [device newBufferWithBytes:primitiveData
-																   length:sizeof(primitiveData)
-																  options:MTLResourceStorageModeShared];
-	accelerationStructurePrimitiveDataBuffer.label = @"primitiveDataBuffer";
+	staticPASVertexBuffer = [device newBufferWithBytes:vertices
+												length:sizeof(vertices)
+											   options:MTLResourceStorageModeShared];
+	staticPASVertexBuffer.label = @"staticPASVertexBuffer";
 	
-	primitiveAccelerationStructures = [NSMutableArray array];
-	NSMutableArray<MTL4PrimitiveAccelerationStructureDescriptor*> *primitiveASDescriptors = [NSMutableArray array];
+	staticPASPrimitiveDataBuffer = [device newBufferWithBytes:primitiveData
+													   length:sizeof(primitiveData)
+													  options:MTLResourceStorageModeShared];
+	staticPASPrimitiveDataBuffer.label = @"staticPASPrimitiveDataBuffer";
+	
+	staticPASes = [NSMutableArray array];
+	staticPASDescriptors = [NSMutableArray array];
 	MTLIndirectAccelerationStructureInstanceDescriptor instanceDescriptors[numBatches];
 	
 	for (int b = 0; b < numBatches; b++) {
 		NSUInteger batchOffset = b * trianglesPerBatch;
 		NSUInteger trianglesInBatch = MIN(numTriangles - batchOffset, trianglesPerBatch);
-
+		
 		MTL4AccelerationStructureTriangleGeometryDescriptor *geometryDescriptor = [[MTL4AccelerationStructureTriangleGeometryDescriptor alloc] init];
 		geometryDescriptor.triangleCount = trianglesInBatch;
-		geometryDescriptor.vertexBuffer = MTL4BufferRangeMake(accelerationStructureVertexBuffer.gpuAddress + sizeof(simd_float3) * batchOffset * 3,
+		geometryDescriptor.vertexBuffer = MTL4BufferRangeMake(staticPASVertexBuffer.gpuAddress + sizeof(simd_float3) * batchOffset * 3,
 															  sizeof(simd_float3) * trianglesInBatch * 3);
 		geometryDescriptor.vertexFormat = MTLAttributeFormatFloat3;
 		geometryDescriptor.vertexStride = sizeof(simd_float3);
-		geometryDescriptor.primitiveDataBuffer = MTL4BufferRangeMake(accelerationStructurePrimitiveDataBuffer.gpuAddress + sizeof(TriangleRayTracingData) * batchOffset,
+		geometryDescriptor.primitiveDataBuffer = MTL4BufferRangeMake(staticPASPrimitiveDataBuffer.gpuAddress + sizeof(TriangleRayTracingData) * batchOffset,
 																	 sizeof(TriangleRayTracingData) * trianglesInBatch);
 		geometryDescriptor.primitiveDataElementSize = sizeof(TriangleRayTracingData);
 		geometryDescriptor.primitiveDataStride = sizeof(TriangleRayTracingData);
@@ -538,7 +536,7 @@ API_AVAILABLE(macos(26.0))
 		primitiveASDescriptor.geometryDescriptors = @[ geometryDescriptor ];
 		
 		id<MTLAccelerationStructure> primitiveAS = [device newAccelerationStructureWithDescriptor:primitiveASDescriptor];
-		primitiveAS.label = [NSString stringWithFormat:@"Batch %d of %lu (triangles %lu-%lu)", b, (unsigned long)numBatches, (unsigned long)batchOffset, (unsigned long)(batchOffset+trianglesInBatch)];
+		primitiveAS.label = [NSString stringWithFormat:@"Static geometry batch %d of %lu (triangles %lu-%lu)", b, (unsigned long)numBatches, (unsigned long)batchOffset, (unsigned long)(batchOffset+trianglesInBatch)];
 		
 		MTLIndirectAccelerationStructureInstanceDescriptor instanceDescriptor = {};
 		instanceDescriptor.accelerationStructureID = primitiveAS.gpuResourceID;
@@ -550,38 +548,110 @@ API_AVAILABLE(macos(26.0))
 		instanceDescriptor.transformationMatrix.columns[2] = MTLPackedFloat3Make(0.0, 0.0, 1.0);
 		instanceDescriptor.transformationMatrix.columns[3] = MTLPackedFloat3Make(0.0, 0.0, 0.0);
 		
-		[primitiveAccelerationStructures addObject:primitiveAS];
-		[primitiveASDescriptors addObject:primitiveASDescriptor];
+		[staticPASes addObject:primitiveAS];
+		[staticPASDescriptors addObject:primitiveASDescriptor];
 		instanceDescriptors[b] = instanceDescriptor;
 	}
-
-	accelerationStructureInstanceBuffer = [device newBufferWithBytes:&instanceDescriptors
-															  length:sizeof(MTLIndirectAccelerationStructureInstanceDescriptor) * numBatches
-															 options:MTLResourceStorageModeShared];
-	accelerationStructureInstanceBuffer.label = @"instanceBuffer";
 	
-	MTL4InstanceAccelerationStructureDescriptor *instanceASDescriptor = [[MTL4InstanceAccelerationStructureDescriptor alloc] init];
-	instanceASDescriptor.instanceCount = numBatches;
-	instanceASDescriptor.instanceDescriptorBuffer = MTL4BufferRangeMake(accelerationStructureInstanceBuffer.gpuAddress, accelerationStructureInstanceBuffer.length);
-
-	instanceAccelerationStructure = [device newAccelerationStructureWithDescriptor:instanceASDescriptor];
+	staticIASInstanceBuffer = [device newBufferWithBytes:&instanceDescriptors
+												  length:sizeof(MTLIndirectAccelerationStructureInstanceDescriptor) * numBatches
+												 options:MTLResourceStorageModeShared];
+	staticIASInstanceBuffer.label = @"staticIASInstanceBuffer";
 	
-	[rayTracingResidencySet addAllocation:accelerationStructureVertexBuffer];
-	[rayTracingResidencySet addAllocation:accelerationStructurePrimitiveDataBuffer];
-	[rayTracingResidencySet addAllocation:accelerationStructureInstanceBuffer];
-	for (id<MTLAccelerationStructure> primitiveAS in primitiveAccelerationStructures) {
-		[rayTracingResidencySet addAllocation:primitiveAS];
+	staticIASDescriptor = [[MTL4InstanceAccelerationStructureDescriptor alloc] init];
+	staticIASDescriptor.instanceCount = staticPASes.count;
+	staticIASDescriptor.instanceDescriptorBuffer = MTL4BufferRangeMake(staticIASInstanceBuffer.gpuAddress, staticIASInstanceBuffer.length);
+	
+	staticIAS = [device newAccelerationStructureWithDescriptor:staticIASDescriptor];
+	
+	[rayTracingResidencySet addAllocation:staticPASVertexBuffer];
+	[rayTracingResidencySet addAllocation:staticPASPrimitiveDataBuffer];
+	for (id<MTLAccelerationStructure> staticPAS in staticPASes) {
+		[rayTracingResidencySet addAllocation:staticPAS];
 	}
-	[rayTracingResidencySet addAllocation:instanceAccelerationStructure];
-	[rayTracingResidencySet commit];
+
+	[rayTracingResidencySet addAllocation:staticIASInstanceBuffer];
+	[rayTracingResidencySet addAllocation:staticIAS];
+}
+
+- (void) clearStaticGeometry {
+	if (staticPASVertexBuffer) [rayTracingResidencySet removeAllocation:staticPASVertexBuffer];
+	if (staticPASPrimitiveDataBuffer) [rayTracingResidencySet removeAllocation:staticPASPrimitiveDataBuffer];
+	if (staticIASInstanceBuffer) [rayTracingResidencySet removeAllocation:staticIASInstanceBuffer];
+	for (id<MTLAllocation> staticPAS in staticPASes) {
+		[rayTracingResidencySet removeAllocation:staticPAS];
+	}
+	if (staticIAS) [rayTracingResidencySet removeAllocation:staticIAS];
+
+	staticPolygons = [NSMutableArray array];
+
+	staticPASVertexBuffer = nil;
+	staticPASPrimitiveDataBuffer = nil;
+	staticIASInstanceBuffer = nil;
+	staticPASes = [NSMutableArray array];
+	staticPASDescriptors = [NSMutableArray array];
+	staticIAS = nil;
+	staticIASDescriptor = nil;
+}
+
+- (void) initializeTopLevelIAS {
+	MTLIndirectAccelerationStructureInstanceDescriptor staticInstanceDescriptor = {};
+	staticInstanceDescriptor.accelerationStructureID = staticIAS.gpuResourceID;
+	staticInstanceDescriptor.options = MTLAccelerationStructureInstanceOptionNone;
+	staticInstanceDescriptor.intersectionFunctionTableOffset = 0;
+	staticInstanceDescriptor.mask = 0xFF;
+	staticInstanceDescriptor.transformationMatrix.columns[0] = MTLPackedFloat3Make(1.0, 0.0, 0.0);
+	staticInstanceDescriptor.transformationMatrix.columns[1] = MTLPackedFloat3Make(0.0, 1.0, 0.0);
+	staticInstanceDescriptor.transformationMatrix.columns[2] = MTLPackedFloat3Make(0.0, 0.0, 1.0);
+	staticInstanceDescriptor.transformationMatrix.columns[3] = MTLPackedFloat3Make(0.0, 0.0, 0.0);
 	
-	NSUInteger scratchSize = [device accelerationStructureSizesWithDescriptor:instanceASDescriptor].buildScratchBufferSize;
-	for (MTL4PrimitiveAccelerationStructureDescriptor *primitiveASD in primitiveASDescriptors) {
-		NSUInteger primSize = [device accelerationStructureSizesWithDescriptor:primitiveASD].buildScratchBufferSize;
+	topLevelIASInstanceBuffer = [device newBufferWithBytes:&staticInstanceDescriptor
+													length:sizeof(MTLIndirectAccelerationStructureInstanceDescriptor)
+												   options:MTLResourceStorageModeShared];
+	topLevelIASInstanceBuffer.label = @"topLevelIASInstanceBuffer";
+	
+	topLevelIASDescriptor = [[MTL4InstanceAccelerationStructureDescriptor alloc] init];
+	topLevelIASDescriptor.instanceCount = 1;
+	topLevelIASDescriptor.instanceDescriptorBuffer = MTL4BufferRangeMake(topLevelIASInstanceBuffer.gpuAddress, topLevelIASInstanceBuffer.length);
+	
+	topLevelIAS = [device newAccelerationStructureWithDescriptor:topLevelIASDescriptor];
+	
+	[rayTracingResidencySet addAllocation:topLevelIASInstanceBuffer];
+	[rayTracingResidencySet addAllocation:topLevelIAS];
+}
+
+- (void) clearGeometry {
+	[self clearStaticGeometry];
+	
+	if (topLevelIASInstanceBuffer) [rayTracingResidencySet removeAllocation:topLevelIASInstanceBuffer];
+	if (topLevelIAS) [rayTracingResidencySet removeAllocation:topLevelIAS];
+	
+	topLevelIASInstanceBuffer = nil;
+	topLevelIAS = nil;
+}
+
+- (void) commitGeometry {
+	// Build 3rd- and 2nd-level acceleration structures
+
+	[self commitStaticGeometry];
+	[self initializeTopLevelIAS];
+	[rayTracingResidencySet commit];
+
+	// Calculate largest scratch size needed
+	
+	NSMutableArray<MTL4AccelerationStructureDescriptor*> *allDescriptors = [NSMutableArray arrayWithArray:staticPASDescriptors];
+	[allDescriptors addObject:staticIASDescriptor];
+	[allDescriptors addObject:topLevelIASDescriptor];
+	
+	NSUInteger scratchSize = 0;
+	for (MTL4AccelerationStructureDescriptor *asd in allDescriptors) {
+		NSUInteger primSize = [device accelerationStructureSizesWithDescriptor:asd].buildScratchBufferSize;
 		if (primSize > scratchSize) {
 			scratchSize = primSize;
 		}
 	}
+	
+	// Build everything
 	
 	id<MTLBuffer> scratchBuffer = [device newBufferWithLength:scratchSize options:MTLResourceStorageModePrivate];
 	
@@ -590,9 +660,9 @@ API_AVAILABLE(macos(26.0))
 	id<MTL4ComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
 	encoder.label = @"Build acceleration structures";
 	
-	for (int i = 0; i < numBatches; i++) {
-		[encoder buildAccelerationStructure:[primitiveAccelerationStructures objectAtIndex:i]
-								 descriptor:[primitiveASDescriptors objectAtIndex:i]
+	for (int i = 0; i < staticPASes.count; i++) {
+		[encoder buildAccelerationStructure:[staticPASes objectAtIndex:i]
+								 descriptor:[staticPASDescriptors objectAtIndex:i]
 							  scratchBuffer:MTL4BufferRangeMake(scratchBuffer.gpuAddress, scratchBuffer.length)];
 	}
 	
@@ -600,10 +670,18 @@ API_AVAILABLE(macos(26.0))
 				   beforeEncoderStages:MTLStageAccelerationStructure
 					 visibilityOptions:MTL4VisibilityOptionDevice];
 	
-	[encoder buildAccelerationStructure:instanceAccelerationStructure
-							 descriptor:instanceASDescriptor
+	[encoder buildAccelerationStructure:staticIAS
+							 descriptor:staticIASDescriptor
 						  scratchBuffer:MTL4BufferRangeMake(scratchBuffer.gpuAddress, scratchBuffer.length)];
 	
+	[encoder barrierAfterEncoderStages:MTLStageAccelerationStructure
+				   beforeEncoderStages:MTLStageAccelerationStructure
+					 visibilityOptions:MTL4VisibilityOptionDevice];
+
+	[encoder buildAccelerationStructure:topLevelIAS
+							 descriptor:topLevelIASDescriptor
+						  scratchBuffer:MTL4BufferRangeMake(scratchBuffer.gpuAddress, scratchBuffer.length)];
+
 	[encoder endEncoding];
 	[commandBuffer endCommandBuffer];
 	
@@ -611,27 +689,6 @@ API_AVAILABLE(macos(26.0))
 	[commandQueue commit:&commandBuffer count:1];
 	[commandQueue signalEvent:sharedEvent value:buildSignalValue];
 	[sharedEvent waitUntilSignaledValue:buildSignalValue timeoutMS:5000];
-}
-
-- (void) clearGeometry {
-	[triangles removeAllObjects];
-
-	accelerationStructureVertexBuffer = nil;
-	accelerationStructurePrimitiveDataBuffer = nil;
-	accelerationStructureInstanceBuffer = nil;
-	[primitiveAccelerationStructures removeAllObjects];
-	instanceAccelerationStructure = nil;
-
-	if (instanceAccelerationStructure) {
-		[rayTracingResidencySet removeAllocation:accelerationStructureVertexBuffer];
-		[rayTracingResidencySet removeAllocation:accelerationStructurePrimitiveDataBuffer];
-		[rayTracingResidencySet removeAllocation:accelerationStructureInstanceBuffer];
-		for (id<MTLAccelerationStructure> primitiveAS in primitiveAccelerationStructures) {
-			[rayTracingResidencySet removeAllocation:primitiveAS];
-		}
-		[rayTracingResidencySet removeAllocation:instanceAccelerationStructure];
-		[rayTracingResidencySet commit];
-	}
 }
 
 - (bool) hasTextureWithID:(NSString*)textureID {
@@ -741,9 +798,13 @@ API_AVAILABLE(macos(26.0))
 	WorldVertex *target = (WorldVertex*)triangleBuffer.contents;
 	NSUInteger offset = 0;
 	
-	for (int i = 0; i < triangles.count; i++) {
-		Triangle *triangle = [triangles objectAtIndex:i];
+	// FIXME: this should be built once in commitGeometry, not per-frame
+	NSMutableArray *staticTriangles = [NSMutableArray array];
+	for (MetalPolygon *polygon in staticPolygons) {
+		[self addTrianglesForPolygon:polygon toArray:staticTriangles];
+	}
 
+	for (Triangle *triangle in staticTriangles) {
 		target[offset] = triangle.v0;
 		target[offset+1] = triangle.v1;
 		target[offset+2] = triangle.v2;
@@ -775,7 +836,7 @@ API_AVAILABLE(macos(26.0))
 	
 	[encoder setComputePipelineState:rayTracingPipeline];
 	
-	[computeArgumentTable setResource:instanceAccelerationStructure.gpuResourceID atBufferIndex:RayTracingKernelAccelerationStructureIndex];
+	[computeArgumentTable setResource:topLevelIAS.gpuResourceID atBufferIndex:RayTracingKernelAccelerationStructureIndex];
 	[computeArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:RayTracingKernelCameraIndex];
 	[computeArgumentTable setTexture:outputTexture.gpuResourceID atIndex:RayTracingKernelOutImageIndex];
 	[encoder setArgumentTable:computeArgumentTable];
