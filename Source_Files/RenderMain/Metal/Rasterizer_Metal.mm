@@ -173,49 +173,6 @@ NSString* LoadTextureIntoRenderer(TextureManager *TMgr, bool didSetupSucceed) {
 	return textureID;
 }
 
-NSString* LoadWallTexture(vertical_surface_data *surface, simd_float3 *viewSpacePositions, simd_float2 *textureCoordinates) {
-	shape_descriptor shape = surface->texture_definition->texture;
-
-	auto TMgr = std::make_unique<TextureManager>();
-	NSString* textureID = LoadTextureIntoRenderer(TMgr.get(), SetupPolygonTexture(TMgr.get(), shape));
-	
-	// Pulled out of RenderRasterize_Shader::render_node_side()
-	int div = GetTextureScale(surface->transfer_mode, TMgr.get());
-	
-	world_distance x0 = surface->texture_definition->x0 % div;
-	world_distance y0 = surface->texture_definition->y0 % div;
-
-	double tOffset = surface->h1 + y0;
-	
-	for (int i = 0; i < 4; i++) {
-		world_distance p2 = (i == 1 || i == 2) ? surface->length : 0;
-		
-		textureCoordinates[i] = simd_make_float2((tOffset - viewSpacePositions[i].y) / static_cast<float>(div),
-												 (x0 + p2) / static_cast<float>(div));
-	}
-
-	return textureID;
-}
-
-NSString* LoadFloorOrCeilingTexture(horizontal_surface_data *surface, polygon_data *polygon, std::vector<simd_float2> &textureCoordinates) {
-	shape_descriptor shape = surface->texture;
-	
-	auto TMgr = std::make_unique<TextureManager>();
-	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupPolygonTexture(TMgr.get(), shape));
-	
-	float scale = (float) GetTextureScale(surface->transfer_mode, TMgr.get());
-	
-	// Pulled out of RenderRasterize_Shader::render_node_floor_or_ceiling()
-	for (int i = 0; i < polygon->vertex_count; i++) {
-		// For some reason, doing the reverse-order iteration for ceilings (like RenderRasterize_Shader) gets a wrong-looking result, and going forwards in both cases looks right.
-		world_point2d vertex = get_endpoint_data(polygon->endpoint_indexes[i])->vertex;
-		textureCoordinates[i] = simd_make_float2((vertex.x + surface->origin.x) / scale,
-												 (vertex.y + surface->origin.y) / scale);
-	}
-	
-	return textureID;
-}
-
 int16 lastLoadedLevelNumber = -1;
 
 std::unordered_map<std::string, simd_float3> emissiveTextures = {
@@ -396,70 +353,6 @@ void LoadWorld() {
 }
 
 /*
-void RenderRasterize_Metal::render_node_floor_or_ceiling(clipping_window_data *window, polygon_data *polygon, horizontal_surface_data *surface,
-														 bool void_present, bool ceil, RenderStep renderStep)
-{
-	auto viewSpacePositions = std::vector<simd_int3>(polygon->vertex_count);
-
-	for (int i=0; i < polygon->vertex_count; i++) {
-		endpoint_data *data = get_endpoint_data(polygon->endpoint_indexes[i]);
-		viewSpacePositions[i] = simd_make_int3(data->vertex.x, data->vertex.y, surface->height - view->origin.z);
-	}
-	
-	auto textureCoordinates = std::vector<simd_float2>(polygon->vertex_count);
-	NSString* textureID = LoadFloorOrCeilingTexture(surface, polygon, textureCoordinates);
-	
-	simd_float3 surfaceNormal = simd_make_float3(0.0, ceil ? -1.0 : 1.0, 0.0);
-	
-	auto vertices = std::vector<WorldVertex>(polygon->vertex_count);
-	
-	for (int i=0; i < polygon->vertex_count; i++) {
-		vertices[i] = WorldVertex{ viewSpacePositions[i], textureCoordinates[i], surfaceNormal };
-	}
-	
-	if (@available(macOS 26.0, *)) {
-		if (renderer) {
-			[renderer addPolygonWithVertices:vertices.data() count:polygon->vertex_count textureID:textureID];
-		}
-	}
-}
-
-void RenderRasterize_Metal::render_node_side(clipping_window_data *window, vertical_surface_data *surface,
-											 bool void_present, RenderStep renderStep)
-{
-	// surface->pN.i maps to viewspace Z (near to far)
-	// surface->pN.j maps to viewspace X (left to right)
-	// surface->hN   maps to viewspace Y (low to high)
-	
-	long bottom = surface->h0;
-	long top = MIN(surface->h1, surface->hmax);
-	
-	simd_float3 viewSpacePositions[] = {
-		simd_make_float3(surface->p0.j, top,    surface->p0.i),
-		simd_make_float3(surface->p1.j, top,    surface->p1.i),
-		simd_make_float3(surface->p1.j, bottom, surface->p1.i),
-		simd_make_float3(surface->p0.j, bottom, surface->p0.i),
-	};
-	
-	simd_float3 surfaceNormal = simd_normalize(simd_make_float3(surface->p0.j - surface->p1.j, 0.0, surface->p1.i - surface->p0.i));
-	
-	simd_float2 textureCoordinates[4];
-	NSString *textureID = LoadWallTexture(surface, viewSpacePositions, textureCoordinates);
-	
-	Vertex vertices[] = {
-		{ viewSpacePositions[0], textureCoordinates[0], surfaceNormal },
-		{ viewSpacePositions[1], textureCoordinates[1], surfaceNormal },
-		{ viewSpacePositions[2], textureCoordinates[2], surfaceNormal },
-		{ viewSpacePositions[3], textureCoordinates[3], surfaceNormal },
-	};
-
-	if (@available(macOS 26.0, *)) {
-		if (renderer) {
-			[renderer addPolygonWithVertices:vertices count:4 textureID:textureID];
-		}
-	}
-}
-
 float radians(float degrees) {
 	return degrees * 8.0 * atan(1.0) / 360.0;
 }
