@@ -35,13 +35,13 @@
 @property (nonatomic, readonly) WorldVertex v0;
 @property (nonatomic, readonly) WorldVertex v1;
 @property (nonatomic, readonly) WorldVertex v2;
-@property (nonatomic, readonly) NSNumber* textureID;
+@property (nonatomic, readonly) NSString* textureID;
 @property (nonatomic, readonly) simd_float3 emission;
 
 - (Triangle *) initWithV0:(WorldVertex)v0
 					   v1:(WorldVertex)v1
 					   v2:(WorldVertex)v2
-				textureID:(NSNumber*)textureID
+				textureID:(NSString*)textureID
 				 emission:(simd_float3)emission;
 
 @end
@@ -51,7 +51,7 @@
 - (Triangle *) initWithV0:(WorldVertex)v0
 					   v1:(WorldVertex)v1
 					   v2:(WorldVertex)v2
-				textureID:(NSNumber *)textureID
+				textureID:(NSString *)textureID
 				 emission:(simd_float3)emission{
 	if (self = [super init]) {
 		_v0 = v0;
@@ -414,7 +414,7 @@ API_AVAILABLE(macos(26.0))
 
 - (void) addPolygonWithVertices:(WorldVertex *)vertices
 						  count:(NSUInteger)vertexCount
-					  textureID:(NSNumber*)textureID
+					  textureID:(NSString*)textureID
 					   emission:(simd_float3)emission
 {
 	assert(vertexCount > 2);
