@@ -240,12 +240,8 @@ simd_float3 emissionForTextureID(NSString *textureID) {
 	std::string key = textureID.UTF8String;
 	auto iterator = emissiveTextures.find(key);
 	if (iterator != emissiveTextures.end()) {
-		auto matchedKey = iterator->first;
-		auto matchedValue = iterator->second;
-		logWarning("Found emission value for texture %s", matchedKey.data());
-		return matchedValue;
+		return iterator->second;
 	}
-	logWarning("No emission value found for texture %s", key.data());
 	return simd_make_float3(0.0, 0.0, 0.0);
 }
 
