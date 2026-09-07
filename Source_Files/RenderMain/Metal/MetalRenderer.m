@@ -34,12 +34,17 @@
 
 - (MetalPolygon*) initWithVertices:(WorldVertex *)vertices vertexCount:(NSUInteger)vertexCount textureID:(NSString *)textureID emission:(simd_float3)emission {
 	if (self = [super init]) {
-		_vertices = vertices;
+		_vertices = malloc(sizeof(WorldVertex) * vertexCount);
+		memcpy(_vertices, vertices, sizeof(WorldVertex) * vertexCount);
 		_vertexCount = vertexCount;
 		_textureID = textureID;
 		_emission = emission;
 	}
 	return self;
+}
+
+- (void)dealloc {
+	free(_vertices);
 }
 
 @end

@@ -63,6 +63,10 @@ API_AVAILABLE(macos(26.0))
 								 width:(int)width
 								height:(int)height;
 
+/**
+ Rendering
+ */
+
 - (void) updateViewWithOrigin:(simd_int3)origin
 						pitch:(float)pitch
 						  yaw:(float)yaw
@@ -71,15 +75,24 @@ API_AVAILABLE(macos(26.0))
 - (void) begin;
 - (void) end;
 
+/**
+ Geometry
+ clearGeometry MUST be called before adding any geometry.
+ */
+
+- (void) clearGeometry;
 - (void) addStaticPolygon:(MetalPolygon*)polygon;
 - (void) addDynamicObject:(MetalDynamicObject*)object;
+- (void) commitGeometry;
+
 - (void) updateDynamicObjectWithID:(NSString*)objectID
 				 polygonTextureIDs:(NSArray<NSString*>*)textureIDs
 					 worldPosition:(simd_int3)worldPosition
 							facing:(NSInteger)facing;
 
-- (void) commitGeometry;
-- (void) clearGeometry;
+/**
+ Textures
+ */
 
 - (bool) hasTextureWithID:(NSString*)textureID;
 - (void) addTextureWithID:(NSString*)textureID image:(MetalImage*)image;
