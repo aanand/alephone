@@ -30,6 +30,20 @@
 
 @end
 
+@implementation MetalPolygon
+
+- (MetalPolygon*) initWithVertices:(WorldVertex *)vertices vertexCount:(NSUInteger)vertexCount textureID:(NSString *)textureID emission:(simd_float3)emission {
+	if (self = [super init]) {
+		_vertices = vertices;
+		_vertexCount = vertexCount;
+		_textureID = textureID;
+		_emission = emission;
+	}
+	return self;
+}
+
+@end
+
 @interface Triangle : NSObject
 
 @property (nonatomic, readonly) WorldVertex v0;
@@ -412,20 +426,17 @@ API_AVAILABLE(macos(26.0))
 	yaw = newYaw;
 }
 
-- (void) addPolygonWithVertices:(WorldVertex *)vertices
-						  count:(NSUInteger)vertexCount
-					  textureID:(NSString*)textureID
-					   emission:(simd_float3)emission
+- (void) addStaticPolygon:(MetalPolygon *)polygon
 {
-	assert(vertexCount > 2);
+	assert(polygon.vertexCount > 2);
 	
 	// Triangle fan: draw 0-1-2, 0-2-3, 0-3-4, etc
-	for (int j = 0; j < vertexCount-2; j++) {
-		[triangles addObject:[[Triangle alloc] initWithV0:*(vertices)
-													   v1:*(vertices+j+1)
-													   v2:*(vertices+j+2)
-												textureID:textureID
-												 emission:emission]];
+	for (int j = 0; j < polygon.vertexCount - 2; j++) {
+		[triangles addObject:[[Triangle alloc] initWithV0:*(polygon.vertices)
+													   v1:*(polygon.vertices+j+1)
+													   v2:*(polygon.vertices+j+2)
+												textureID:polygon.textureID
+												 emission:polygon.emission]];
 
 		assert(triangles.count < MAX_TRIANGLES);
 	}

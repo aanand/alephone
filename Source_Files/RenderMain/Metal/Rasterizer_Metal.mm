@@ -244,10 +244,10 @@ void AddWall(polygon_data *polygon, line_data *line, short vertexIdx,
 	};
 	
 	if (@available(macOS 26.0, *)) {
-		[renderer addPolygonWithVertices:vertices
-								   count:4
-							   textureID:textureID
-								emission:emissionForTextureID(textureID)];
+		[renderer addStaticPolygon:[[MetalPolygon alloc] initWithVertices:vertices
+															  vertexCount:4
+															 textureID:textureID
+															  emission:emissionForTextureID(textureID)]];
 	}
 }
 
@@ -285,15 +285,15 @@ void AddFloorOrCeiling(polygon_data *polygon, bool ceil) {
 	
 	if (@available(macOS 26.0, *)) {
 		if (renderer) {
-			[renderer addPolygonWithVertices:vertices.data()
-									   count:polygon->vertex_count
-								   textureID:textureID
-									emission:emissionForTextureID(textureID)];
+			[renderer addStaticPolygon:[[MetalPolygon alloc] initWithVertices:vertices.data()
+																  vertexCount:polygon->vertex_count
+																	textureID:textureID
+																	 emission:emissionForTextureID(textureID)]];
 		}
 	}
 }
 
-void LoadWorld() {
+void LoadStaticData() {
 	if (lastLoadedLevelNumber == dynamic_world->current_level_number) return;
 	
 	logWarning("Loading level number %d", dynamic_world->current_level_number);
@@ -349,6 +349,10 @@ void LoadWorld() {
 	[renderer commitGeometry];
 	
 	lastLoadedLevelNumber = dynamic_world->current_level_number;
+}
+
+void LoadWorld() {
+	LoadStaticData();
 }
 
 /*

@@ -25,6 +25,23 @@
 
 @end
 
+@interface MetalPolygon : NSObject
+
+/**
+ Vertices should be in world-space, i.e. X=east, Y=north, Z=up (away from the ground).
+ */
+@property (nonatomic, readonly) WorldVertex* vertices;
+@property (nonatomic, readonly) NSUInteger vertexCount;
+@property (nonatomic, readonly) NSString* textureID;
+@property (nonatomic, readonly) simd_float3 emission;
+
+- (MetalPolygon*) initWithVertices:(WorldVertex *)vertices
+					   vertexCount:(NSUInteger)vertexCount
+						 textureID:(NSString*)textureID
+						  emission:(simd_float3)emission;
+
+@end
+
 API_AVAILABLE(macos(26.0))
 @interface MetalRenderer : NSObject
 
@@ -40,13 +57,7 @@ API_AVAILABLE(macos(26.0))
 - (void) begin;
 - (void) end;
 
-/**
- Vertices should be in world-space, i.e. X=east, Y=north, Z=up (away from the ground).
- */
-- (void) addPolygonWithVertices:(WorldVertex *)vertices
-						  count:(NSUInteger)vertexCount
-					  textureID:(NSString*)textureID
-					   emission:(simd_float3)emission;
+- (void) addStaticPolygon:(MetalPolygon*)polygon;
 
 - (void) commitGeometry;
 - (void) clearGeometry;
