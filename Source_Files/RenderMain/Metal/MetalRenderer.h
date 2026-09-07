@@ -42,6 +42,20 @@
 
 @end
 
+@interface MetalDynamicObject : NSObject
+
+@property (nonatomic, readonly) NSString* objectId;
+@property (nonatomic, readonly) NSArray<MetalPolygon*> *polygons;
+@property (nonatomic, readonly) simd_int3 worldPosition;
+@property (nonatomic, readonly) NSInteger facing;
+
+- (MetalDynamicObject*) initWithID:(NSString*)objectId
+						  polygons:(NSArray<MetalPolygon*>*)polygons
+					 worldPosition:(simd_int3)worldPosition
+							facing:(NSInteger)facing;
+
+@end
+
 API_AVAILABLE(macos(26.0))
 @interface MetalRenderer : NSObject
 
@@ -58,6 +72,11 @@ API_AVAILABLE(macos(26.0))
 - (void) end;
 
 - (void) addStaticPolygon:(MetalPolygon*)polygon;
+- (void) addDynamicObject:(MetalDynamicObject*)object;
+- (void) updateDynamicObjectWithID:(NSString*)objectID
+				 polygonTextureIDs:(NSArray<NSString*>*)textureIDs
+					 worldPosition:(simd_int3)worldPosition
+							facing:(NSInteger)facing;
 
 - (void) commitGeometry;
 - (void) clearGeometry;

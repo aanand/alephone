@@ -44,6 +44,20 @@
 
 @end
 
+@implementation MetalDynamicObject
+
+- (MetalDynamicObject*) initWithID:(NSString *)objectId polygons:(NSArray<MetalPolygon *> *)polygons worldPosition:(simd_int3)worldPosition facing:(NSInteger)facing {
+	if (self = [super init]) {
+		_objectId = objectId;
+		_polygons = polygons;
+		_worldPosition = worldPosition;
+		_facing = facing;
+	}
+	return self;
+}
+
+@end
+
 @interface Triangle : NSObject
 
 @property (nonatomic, readonly) WorldVertex v0;
@@ -440,6 +454,31 @@ API_AVAILABLE(macos(26.0))
 
 		assert(triangles.count < MAX_TRIANGLES);
 	}
+}
+
+- (void)addDynamicObject:(MetalDynamicObject *)object {
+	for (MetalPolygon *polygon in object.polygons) {
+		for (int j = 0; j < polygon.vertexCount - 2; j++) {
+			WorldVertex v0 = *(polygon.vertices);
+			WorldVertex v1 = *(polygon.vertices+j+1);
+			WorldVertex v2 = *(polygon.vertices+j+2);
+			
+			v0.position += object.worldPosition;
+			v1.position += object.worldPosition;
+			v2.position += object.worldPosition;
+
+			[triangles addObject:[[Triangle alloc] initWithV0:v0
+														   v1:v1
+														   v2:v2
+													textureID:polygon.textureID
+													 emission:polygon.emission]];
+
+			assert(triangles.count < MAX_TRIANGLES);
+		}
+	}
+}
+
+- (void)updateDynamicObjectWithID:(NSString *)objectID polygonTextureIDs:(NSArray<NSString *> *)textureIDs worldPosition:(simd_int3)worldPosition facing:(NSInteger)facing {
 }
 
 - (void) commitGeometry {

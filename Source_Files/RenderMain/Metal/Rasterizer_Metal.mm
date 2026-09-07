@@ -58,7 +58,7 @@ bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
 // Copied from RenderRasterize_Shader.cpp
 const float FixedAngleToDegrees = 360.0/(float(FIXED_ONE)*float(FULL_CIRCLE));
 
-void LoadWorld();
+void UpdateWorld();
 
 void Rasterizer_Metal_Class::SetView(view_data &View) {
 	view = &View;
@@ -75,7 +75,7 @@ void Rasterizer_Metal_Class::SetView(view_data &View) {
 
 void Rasterizer_Metal_Class::Begin() {
 	if (@available(macOS 26.0, *)) {
-		LoadWorld();
+		UpdateWorld();
 
 		if (renderer) {
 			[renderer begin];
@@ -103,15 +103,20 @@ bool SetupPolygonTexture(TextureManager *TMgr, shape_descriptor ShapeDesc) {
 	return TMgr->Setup();
 }
 
-bool SetupSpriteTexture(TextureManager *TMgr, rectangle_definition rect) {
-	TMgr->ShapeDesc = rect.ShapeDesc;
-	TMgr->LowLevelShape = rect.LowLevelShape;
-	TMgr->ShadingTables = rect.shading_tables;
-	TMgr->Texture = rect.texture;
-	TMgr->TransferMode = rect.transfer_mode;
-	TMgr->TransferData = rect.transfer_data;
-	TMgr->IsShadeless = (rect.flags&_SHADELESS_BIT) != 0;
-	TMgr->TextureType = OGL_Txtr_Inhabitant;
+bool SetupSpriteTexture(TextureManager *TMgr,
+						shape_descriptor ShapeDesc,
+						uint16 LowLevelShape,
+						short TransferMode,
+						short TransferData,
+						bool IsShadeless,
+						short TextureType)
+{
+	TMgr->ShapeDesc = ShapeDesc;
+	TMgr->LowLevelShape = LowLevelShape;
+	TMgr->TransferMode = TransferMode;
+	TMgr->TransferData = TransferData;
+	TMgr->IsShadeless = IsShadeless;
+	TMgr->TextureType = TextureType;
 
 	struct bitmap_definition* dummy;
 	extended_get_shape_bitmap_and_shading_table(GET_DESCRIPTOR_COLLECTION(TMgr->ShapeDesc), TMgr->LowLevelShape, &dummy, &TMgr->ShadingTables, _shading_normal);
@@ -293,66 +298,143 @@ void AddFloorOrCeiling(polygon_data *polygon, bool ceil) {
 	}
 }
 
-void LoadStaticData() {
-	if (lastLoadedLevelNumber == dynamic_world->current_level_number) return;
+void AddWalls(polygon_data *polygon) {
+	for (short vertexIdx=0; vertexIdx < polygon->vertex_count; vertexIdx++) {
+		short sideIdx = polygon->side_indexes[vertexIdx];
+		if (sideIdx == NONE) continue;;
+		
+		side_data *side = get_side_data(sideIdx);
+		line_data *line = get_line_data(polygon->line_indexes[vertexIdx]);
+
+		switch (side->type) {
+			case _full_side:
+				AddWall(polygon, line, vertexIdx,
+						polygon->floor_height, polygon->ceiling_height,
+						side->primary_texture,
+						side->primary_transfer_mode);
+				break;
+			case _low_side:
+				AddWall(polygon, line, vertexIdx,
+						polygon->floor_height, line->highest_adjacent_floor,
+						side->primary_texture,
+						side->primary_transfer_mode);
+				break;
+			case _high_side:
+				AddWall(polygon, line, vertexIdx,
+						line->lowest_adjacent_ceiling, polygon->ceiling_height,
+						side->primary_texture,
+						side->primary_transfer_mode);
+				break;
+			case _split_side:
+				AddWall(polygon, line, vertexIdx,
+						line->lowest_adjacent_ceiling, polygon->ceiling_height,
+						side->primary_texture,
+						side->primary_transfer_mode);
+				AddWall(polygon, line, vertexIdx,
+						polygon->floor_height, line->highest_adjacent_floor,
+						side->secondary_texture,
+						side->secondary_transfer_mode);
+				break;
+		}
+	}
+}
+
+void AddObject(short objectIdx, object_data *object) {
+	shape_and_transfer_mode data;
+	get_object_shape_and_transfer_mode(&view->origin, object, &data);
+	if (data.collection_code == NONE) {
+		return;
+	}
+
+	shape_information_data *shape_information = extended_get_shape_information(data.collection_code, data.low_level_shape_index);
 	
-	logWarning("Loading level number %d", dynamic_world->current_level_number);
+	auto TMgr = std::make_unique<TextureManager>();
+
+	bool didSetup = SetupSpriteTexture(TMgr.get(),
+									   object->shape,
+									   data.low_level_shape_index,
+									   data.transfer_mode,
+									   0,
+									   false,
+									   OGL_Txtr_Inhabitant);
+
+	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), didSetup);
+
+	NSLog(@"textureID=%@", textureID);
+	NSLog(@"position=(%d, %d, %d), facing=%d", object->location.x, object->location.y, object->location.z, object->facing);
+	NSLog(@"left=%d, right=%d, top=%d, bottom=%d", shape_information->world_left, shape_information->world_right, shape_information->world_top, shape_information->world_bottom);
 	
-	[renderer clearGeometry];
+	simd_float3 surfaceNormal = simd_make_float3(1.0, 0.0, 0.0);
 	
+	float spriteL = shape_information->world_left;
+	float spriteR = shape_information->world_right;
+	float spriteT = shape_information->world_top;
+	float spriteB = shape_information->world_bottom;
+	
+	float texL = TMgr->V_Offset;
+	float texR = TMgr->V_Scale+TMgr->V_Offset;
+	float texT = TMgr->U_Offset;
+	float texB = TMgr->U_Scale+TMgr->U_Offset;
+
+	WorldVertex vertices[] = {
+		{ simd_make_int3(0.0, spriteL, spriteB), simd_make_float2(texB, texL), surfaceNormal },
+		{ simd_make_int3(0.0, spriteL, spriteT), simd_make_float2(texT, texL), surfaceNormal },
+		{ simd_make_int3(0.0, spriteR, spriteT), simd_make_float2(texT, texR), surfaceNormal },
+		{ simd_make_int3(0.0, spriteR, spriteB), simd_make_float2(texB, texR), surfaceNormal },
+	};
+	
+	MetalPolygon *polygon = [[MetalPolygon alloc] initWithVertices:vertices
+													   vertexCount:4
+														 textureID:textureID
+														  emission:emissionForTextureID(textureID)];
+	
+	MetalDynamicObject *dynamicObject = [[MetalDynamicObject alloc] initWithID:[NSString stringWithFormat:@"[Object #%d]", objectIdx]
+																	  polygons:@[polygon]
+																 worldPosition:simd_make_int3(object->location.x, object->location.y, object->location.z)
+																		facing:object->facing];
+	
+	if (@available(macOS 26.0, *)) {
+		[renderer addDynamicObject:dynamicObject];
+	}
+}
+
+void LoadAllData() {
 	for (short polyIdx = 0; polyIdx < dynamic_world->polygon_count; polyIdx++) {
 		polygon_data *polygon = get_polygon_data(polyIdx);
 		
 		AddFloorOrCeiling(polygon, true);
 		AddFloorOrCeiling(polygon, false);
+		AddWalls(polygon);
 		
-		for (short vertexIdx=0; vertexIdx < polygon->vertex_count; vertexIdx++) {
-			short sideIdx = polygon->side_indexes[vertexIdx];
-			if (sideIdx == NONE) continue;;
-			
-			side_data *side = get_side_data(sideIdx);
-			line_data *line = get_line_data(polygon->line_indexes[vertexIdx]);
-
-			switch (side->type) {
-				case _full_side:
-					AddWall(polygon, line, vertexIdx,
-							polygon->floor_height, polygon->ceiling_height,
-							side->primary_texture,
-							side->primary_transfer_mode);
-					break;
-				case _low_side:
-					AddWall(polygon, line, vertexIdx,
-							polygon->floor_height, line->highest_adjacent_floor,
-							side->primary_texture,
-							side->primary_transfer_mode);
-					break;
-				case _high_side:
-					AddWall(polygon, line, vertexIdx,
-							line->lowest_adjacent_ceiling, polygon->ceiling_height,
-							side->primary_texture,
-							side->primary_transfer_mode);
-					break;
-				case _split_side:
-					AddWall(polygon, line, vertexIdx,
-							line->lowest_adjacent_ceiling, polygon->ceiling_height,
-							side->primary_texture,
-							side->primary_transfer_mode);
-					AddWall(polygon, line, vertexIdx,
-							polygon->floor_height, line->highest_adjacent_floor,
-							side->secondary_texture,
-							side->secondary_transfer_mode);
-					break;
-			}
+		short objectIdx = polygon->first_object;
+		
+		while (objectIdx != NONE) {
+			object_data *object = get_object_data(objectIdx);
+			AddObject(objectIdx, object);
+			objectIdx = object->next_object;
 		}
 	}
+}
+
+void UpdateDynamicData() {
 	
+}
+
+void LoadWorld() {
+	if (lastLoadedLevelNumber == dynamic_world->current_level_number) return;
+	
+	logWarning("Loading level number %d", dynamic_world->current_level_number);
+	
+	[renderer clearGeometry];
+	LoadAllData();
 	[renderer commitGeometry];
 	
 	lastLoadedLevelNumber = dynamic_world->current_level_number;
 }
 
-void LoadWorld() {
-	LoadStaticData();
+void UpdateWorld() {
+	LoadWorld();
+	UpdateDynamicData();
 }
 
 /*
