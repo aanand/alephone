@@ -104,7 +104,7 @@ bool SetupPolygonTexture(TextureManager *TMgr, shape_descriptor ShapeDesc) {
 }
 
 bool SetupSpriteTexture(TextureManager *TMgr,
-						shape_descriptor ShapeDesc,
+						object_data *object,
 						shape_and_transfer_mode ShapeAndTransferMode,
 						shape_information_data *ShapeInformationData)
 {
@@ -112,11 +112,11 @@ bool SetupSpriteTexture(TextureManager *TMgr,
 	void *shading_tables;
 	extended_get_shape_bitmap_and_shading_table(ShapeAndTransferMode.collection_code, ShapeAndTransferMode.low_level_shape_index, &texture, &shading_tables, view->shading_mode);
 
-	TMgr->ShapeDesc = ShapeDesc;
+	TMgr->ShapeDesc = BUILD_DESCRIPTOR(ShapeAndTransferMode.collection_code, 0);
 	TMgr->LowLevelShape = ShapeAndTransferMode.low_level_shape_index;
 	TMgr->ShadingTables = shading_tables;
 	TMgr->Texture = texture;
-	TMgr->TransferMode = ShapeAndTransferMode.transfer_mode;
+	TMgr->TransferMode = _textured_transfer; // TODO: support other transfer modes
 	TMgr->TransferData = 0; // TODO: support the transfer modes that use data (invisibility, static)
 	TMgr->IsShadeless = (view->shading_mode == _shading_infravision);
 	TMgr->TextureType = OGL_Txtr_Inhabitant; // TODO: support non-world sprites (weapons in hand, anything else?)
@@ -357,8 +357,7 @@ MetalPolygon* GetObjectPolygon(short objectIdx, object_data *object) {
 	shape_information_data *shape_information = extended_get_shape_information(data.collection_code, data.low_level_shape_index);
 	
 	auto TMgr = std::make_unique<TextureManager>();
-	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupSpriteTexture(TMgr.get(), object->shape, data, shape_information));
-	NSLog(@"textureID=%@", textureID);
+	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupSpriteTexture(TMgr.get(), object, data, shape_information));
 
 	simd_float3 surfaceNormal = simd_make_float3(1.0, 0.0, 0.0);
 	
