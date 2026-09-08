@@ -100,6 +100,59 @@
 
 @end
 
+@interface StaticTriangleBatch : NSObject <ASTrianglePrimitive>
+
+- (StaticTriangleBatch*) initWithTriangles:(NSArray<Triangle*>*)triangles;
+
+@end
+
+@implementation StaticTriangleBatch
+{
+	NSArray<Triangle*> *_triangles;
+	simd_float3 *vertices;
+	TriangleRayTracingData *primitiveData;
+}
+
+- (StaticTriangleBatch*) initWithTriangles:(NSArray<Triangle *> *)triangles {
+	if (self = [super init]) {
+		_triangles = triangles;
+		
+		vertices = malloc(sizeof(simd_float3) * _triangles.count * 3);
+		primitiveData = malloc(sizeof(TriangleRayTracingData) * _triangles.count);
+
+		for (int i = 0; i < _triangles.count; i++) {
+			Triangle *triangle = [_triangles objectAtIndex:i];
+
+			vertices[i*3+0] = simd_make_float3(triangle.v0.position.x, triangle.v0.position.y, triangle.v0.position.z);
+			vertices[i*3+1] = simd_make_float3(triangle.v1.position.x, triangle.v1.position.y, triangle.v1.position.z);
+			vertices[i*3+2] = simd_make_float3(triangle.v2.position.x, triangle.v2.position.y, triangle.v2.position.z);
+
+			primitiveData[i].surfaceNormal = triangle.v0.surfaceNormal;
+			primitiveData[i].emission = triangle.emission;
+		}
+	}
+	return self;
+}
+
+- (void) dealloc {
+	free(vertices);
+	free(primitiveData);
+}
+
+- (NSUInteger) numTriangles {
+	return _triangles.count;
+}
+
+- (void *)primitiveData { 
+	return primitiveData;
+}
+
+- (simd_float3 *)vertices { 
+	return vertices;
+}
+
+@end
+
 float radians(float degrees) {
 	return degrees * 8.0 * atan(1.0) / 360.0;
 }
@@ -230,7 +283,9 @@ API_AVAILABLE(macos(26.0))
 	[self setupBuffers];
 	
 	NSError *error;
-	staticIASManager = [[IASManager alloc] initWithPipeline:pipeline error:&error];
+	staticIASManager = [[IASManager alloc] initWithPipeline:pipeline
+								   primitiveDataElementSize:sizeof(TriangleRayTracingData)
+													  error:&error];
 	if (!staticIASManager) {
 		NSLog(@"%@", error);
 		return nil;
@@ -485,26 +540,14 @@ API_AVAILABLE(macos(26.0))
 
 	NSUInteger numTriangles = staticTriangles.count;
 	NSUInteger trianglesPerBatch = 100;
-
-	simd_float3 vertices[numTriangles * 3];
-	TriangleRayTracingData primitiveData[numTriangles];
-
-	for (int i = 0; i < numTriangles; i++) {
-		Triangle *triangle = [staticTriangles objectAtIndex:i];
-
-		vertices[i*3+0] = simd_make_float3(triangle.v0.position.x, triangle.v0.position.y, triangle.v0.position.z);
-		vertices[i*3+1] = simd_make_float3(triangle.v1.position.x, triangle.v1.position.y, triangle.v1.position.z);
-		vertices[i*3+2] = simd_make_float3(triangle.v2.position.x, triangle.v2.position.y, triangle.v2.position.z);
-
-		primitiveData[i].surfaceNormal = triangle.v0.surfaceNormal;
-		primitiveData[i].emission = triangle.emission;
+	
+	NSMutableArray<StaticTriangleBatch*> *batches = [NSMutableArray array];
+	for (int b = 0; b < numTriangles; b += trianglesPerBatch) {
+		NSArray *triangles = [staticTriangles subarrayWithRange:NSMakeRange(b, MIN(trianglesPerBatch, numTriangles - b))];
+		[batches addObject:[[StaticTriangleBatch alloc] initWithTriangles:triangles]];
 	}
 	
-	[staticIASManager commitGeometryWithVertices:vertices
-									numTriangles:numTriangles
-							   trianglesPerBatch:trianglesPerBatch
-								   primitiveData:primitiveData
-							   primitiveDataElementSize:sizeof(TriangleRayTracingData)];
+	[staticIASManager commitGeometry:batches];
 }
 
 - (void) initializeTopLevelIAS {

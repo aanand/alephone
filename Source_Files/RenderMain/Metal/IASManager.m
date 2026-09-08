@@ -11,9 +11,13 @@
 #import "IASManager.h"
 #import "MetalPipeline.h"
 
+static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
+
 @implementation IASManager
 {
 	MetalPipeline* pipeline;
+	NSUInteger primitiveDataElementSize;
+	
 	id<MTLResidencySet> residencySet;
 	id<MTLBuffer> PASVertexBuffer;
 	id<MTLBuffer> PASPrimitiveDataBuffer;
@@ -24,9 +28,13 @@
 	MTL4InstanceAccelerationStructureDescriptor *IASDescriptor;
 }
 
-- (IASManager*) initWithPipeline:(MetalPipeline*)p error:(NSError *__nullable*)error {
+- (IASManager*) initWithPipeline:(MetalPipeline *)p
+		primitiveDataElementSize:(NSUInteger)pdes
+						   error:(NSError *__autoreleasing *)error
+{
 	if (self = [super init]) {
 		pipeline = p;
+		primitiveDataElementSize = pdes;
 
 		MTLResidencySetDescriptor *residencySetDescriptor = [MTLResidencySetDescriptor new];
 		residencySet = [pipeline.device newResidencySetWithDescriptor:residencySetDescriptor error:error];
@@ -38,48 +46,64 @@
 	return self;
 }
 
-- (void) commitGeometryWithVertices:(simd_float3*)vertices
-					   numTriangles:(NSUInteger)numTriangles
-				  trianglesPerBatch:(NSUInteger)trianglesPerBatch
-					  primitiveData:(void*)primitiveData
-				  primitiveDataElementSize:(NSUInteger)primitiveDataSize
+- (void) copyDataToBuffers:(NSArray<id<ASTrianglePrimitive>> *)primitives
 {
-	NSUInteger numBatches = numTriangles / trianglesPerBatch;
-
-	PASVertexBuffer = [pipeline.device newBufferWithBytes:vertices
-												length:sizeof(simd_float3) * numTriangles * 3
-											   options:MTLResourceStorageModeShared];
+	NSUInteger numTriangles = 0;
+	for (id<ASTrianglePrimitive> primitive in primitives) {
+		numTriangles += primitive.numTriangles;
+	}
+	
+	PASVertexBuffer = [pipeline.device newBufferWithLength:verticesElementSize * numTriangles
+												   options:MTLResourceStorageModeShared];
 	PASVertexBuffer.label = @"staticPASVertexBuffer";
 	
-	PASPrimitiveDataBuffer = [pipeline.device newBufferWithBytes:primitiveData
-													   length:primitiveDataSize * numTriangles
-													  options:MTLResourceStorageModeShared];
+	PASPrimitiveDataBuffer = [pipeline.device newBufferWithLength:primitiveDataElementSize * numTriangles
+														  options:MTLResourceStorageModeShared];
 	PASPrimitiveDataBuffer.label = @"staticPASPrimitiveDataBuffer";
+
+	NSUInteger triangleIndex = 0;
+	for (id<ASTrianglePrimitive> primitive in primitives) {
+		memcpy(PASVertexBuffer.contents + triangleIndex * verticesElementSize,
+			   primitive.vertices,
+			   primitive.numTriangles * verticesElementSize);
+
+		memcpy(PASPrimitiveDataBuffer.contents + triangleIndex * primitiveDataElementSize,
+			   primitive.primitiveData,
+			   primitive.numTriangles * primitiveDataElementSize);
+
+		triangleIndex += primitive.numTriangles;
+	}
+}
+
+- (void) commitGeometry:(NSArray<id<ASTrianglePrimitive>> *)primitives
+{
+	[self copyDataToBuffers:primitives];
 	
 	PASes = [NSMutableArray array];
 	PASDescriptors = [NSMutableArray array];
-	MTLIndirectAccelerationStructureInstanceDescriptor instanceDescriptors[numBatches];
-	
-	for (int b = 0; b < numBatches; b++) {
-		NSUInteger batchOffset = b * trianglesPerBatch;
-		NSUInteger trianglesInBatch = MIN(numTriangles - batchOffset, trianglesPerBatch);
-		
+	MTLIndirectAccelerationStructureInstanceDescriptor instanceDescriptors[primitives.count];
+
+	NSUInteger triangleIndex = 0;
+	for (int i = 0; i < primitives.count; i++) {
+		NSUInteger trianglesInPrimitive = [primitives objectAtIndex:i].numTriangles;
+
 		MTL4AccelerationStructureTriangleGeometryDescriptor *geometryDescriptor = [[MTL4AccelerationStructureTriangleGeometryDescriptor alloc] init];
-		geometryDescriptor.triangleCount = trianglesInBatch;
-		geometryDescriptor.vertexBuffer = MTL4BufferRangeMake(PASVertexBuffer.gpuAddress + sizeof(simd_float3) * batchOffset * 3,
-															  sizeof(simd_float3) * trianglesInBatch * 3);
+		geometryDescriptor.triangleCount = trianglesInPrimitive;
+		geometryDescriptor.vertexBuffer = MTL4BufferRangeMake(PASVertexBuffer.gpuAddress + verticesElementSize * triangleIndex,
+															  verticesElementSize * trianglesInPrimitive);
 		geometryDescriptor.vertexFormat = MTLAttributeFormatFloat3;
 		geometryDescriptor.vertexStride = sizeof(simd_float3);
-		geometryDescriptor.primitiveDataBuffer = MTL4BufferRangeMake(PASPrimitiveDataBuffer.gpuAddress + primitiveDataSize * batchOffset,
-																	 primitiveDataSize * trianglesInBatch);
-		geometryDescriptor.primitiveDataElementSize = primitiveDataSize;
-		geometryDescriptor.primitiveDataStride = primitiveDataSize;
+		geometryDescriptor.primitiveDataBuffer = MTL4BufferRangeMake(PASPrimitiveDataBuffer.gpuAddress + primitiveDataElementSize * triangleIndex,
+																	 primitiveDataElementSize * trianglesInPrimitive);
+		geometryDescriptor.primitiveDataElementSize = primitiveDataElementSize;
+		geometryDescriptor.primitiveDataStride = primitiveDataElementSize;
 		
 		MTL4PrimitiveAccelerationStructureDescriptor *primitiveASDescriptor = [[MTL4PrimitiveAccelerationStructureDescriptor alloc] init];
 		primitiveASDescriptor.geometryDescriptors = @[ geometryDescriptor ];
 		
 		id<MTLAccelerationStructure> primitiveAS = [pipeline.device newAccelerationStructureWithDescriptor:primitiveASDescriptor];
-		primitiveAS.label = [NSString stringWithFormat:@"Static geometry batch %d of %lu (triangles %lu-%lu)", b, (unsigned long)numBatches, (unsigned long)batchOffset, (unsigned long)(batchOffset+trianglesInBatch)];
+		primitiveAS.label = [NSString stringWithFormat:@"Primitive %d of %lu (triangles %lu-%lu)",
+							 i, (unsigned long)primitives.count, (unsigned long)triangleIndex, (unsigned long)(triangleIndex + trianglesInPrimitive)];
 		
 		MTLIndirectAccelerationStructureInstanceDescriptor instanceDescriptor = {};
 		instanceDescriptor.accelerationStructureID = primitiveAS.gpuResourceID;
@@ -93,11 +117,13 @@
 		
 		[PASes addObject:primitiveAS];
 		[PASDescriptors addObject:primitiveASDescriptor];
-		instanceDescriptors[b] = instanceDescriptor;
+		instanceDescriptors[i] = instanceDescriptor;
+		
+		triangleIndex += trianglesInPrimitive;
 	}
 	
 	IASInstanceBuffer = [pipeline.device newBufferWithBytes:&instanceDescriptors
-												  length:sizeof(MTLIndirectAccelerationStructureInstanceDescriptor) * numBatches
+												  length:sizeof(MTLIndirectAccelerationStructureInstanceDescriptor) * primitives.count
 												 options:MTLResourceStorageModeShared];
 	IASInstanceBuffer.label = @"staticIASInstanceBuffer";
 	
