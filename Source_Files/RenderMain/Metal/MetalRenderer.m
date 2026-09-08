@@ -15,6 +15,7 @@
 #include <dispatch/dispatch.h>
 
 #include "VertexTypes.h"
+#include "MetalPipeline.h"
 #include "MetalRenderer.h"
 
 @implementation MetalImage
@@ -145,12 +146,7 @@ API_AVAILABLE(macos(26.0))
 	
 	// Metal pipeline internals
 	
-	id<MTLDevice> device;
-	id<MTL4CommandQueue> commandQueue;
-	id<MTL4CommandBuffer> commandBuffer;
-	id<MTLLibrary> defaultLibrary;
-	id<MTL4CommandAllocator> commandAllocator;
-	id<MTLSharedEvent> sharedEvent;
+	MetalPipeline *pipeline;
 
 	id<MTLRenderPipelineState> initialRenderPipeline;
 	id<MTLComputePipelineState> rayTracingPipeline;
@@ -203,13 +199,13 @@ API_AVAILABLE(macos(26.0))
 	
 	metalLayer = (__bridge CAMetalLayer*)SDL_RenderGetMetalLayer(renderer);
 
-	device = metalLayer.device;
-
-	commandQueue = [device newMTL4CommandQueue];
-	commandBuffer = [device newCommandBuffer];
-	defaultLibrary = [device newDefaultLibrary];
-	commandAllocator = [device newCommandAllocator];
-	sharedEvent = [device newSharedEvent];
+	pipeline = [[MetalPipeline alloc] init];
+	pipeline.device = metalLayer.device;
+	pipeline.commandQueue = [pipeline.device newMTL4CommandQueue];
+	pipeline.commandBuffer = [pipeline.device newCommandBuffer];
+	pipeline.defaultLibrary = [pipeline.device newDefaultLibrary];
+	pipeline.commandAllocator = [pipeline.device newCommandAllocator];
+	pipeline.sharedEvent = [pipeline.device newSharedEvent];
 
 	initialRenderPipeline = [self compileInitialRenderPipeline:metalLayer.pixelFormat];
 	if (!initialRenderPipeline) {
@@ -253,7 +249,7 @@ API_AVAILABLE(macos(26.0))
 	MTL4ArgumentTableDescriptor *vertexArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
 	vertexArgumentTableDescriptor.maxBufferBindCount = MAX(InitialRenderVertexShader_NumBuffers, FinalRenderVertexShader_NumBuffers);
 	vertexArgumentTableDescriptor.label = @"Vertex argument table";
-	vertexArgumentTable = [device newArgumentTableWithDescriptor:vertexArgumentTableDescriptor error:&error];
+	vertexArgumentTable = [pipeline.device newArgumentTableWithDescriptor:vertexArgumentTableDescriptor error:&error];
 	if (error) {
 		NSLog(@"%@", error);
 		return false;
@@ -263,7 +259,7 @@ API_AVAILABLE(macos(26.0))
 	fragmentArgumentTableDescriptor.maxTextureBindCount = MAX(InitialRenderFragmentShader_NumTextures, FinalRenderFragmentShader_NumTextures);
 	fragmentArgumentTableDescriptor.maxBufferBindCount = FinalRenderFragmentShader_NumBuffers;
 	fragmentArgumentTableDescriptor.label = @"Fragment argument table";
-	fragmentArgumentTable = [device newArgumentTableWithDescriptor:fragmentArgumentTableDescriptor error:&error];
+	fragmentArgumentTable = [pipeline.device newArgumentTableWithDescriptor:fragmentArgumentTableDescriptor error:&error];
 	if (error) {
 		NSLog(@"%@", error);
 		return false;
@@ -273,7 +269,7 @@ API_AVAILABLE(macos(26.0))
 	computeArgumentTableDescriptor.maxBufferBindCount = RayTracingKernel_NumBuffers;
 	computeArgumentTableDescriptor.maxTextureBindCount = RayTracingKernel_NumTextures;
 	computeArgumentTableDescriptor.label = @"Compute argument table";
-	computeArgumentTable = [device newArgumentTableWithDescriptor:computeArgumentTableDescriptor error:&error];
+	computeArgumentTable = [pipeline.device newArgumentTableWithDescriptor:computeArgumentTableDescriptor error:&error];
 	if (error) {
 		NSLog(@"%@", error);
 		return false;
@@ -286,40 +282,40 @@ API_AVAILABLE(macos(26.0))
 	NSError *error;
 
 	MTLResidencySetDescriptor *residencySetDescriptor = [MTLResidencySetDescriptor new];
-	initialRenderResidencySet = [device newResidencySetWithDescriptor:residencySetDescriptor
+	initialRenderResidencySet = [pipeline.device newResidencySetWithDescriptor:residencySetDescriptor
 												   error:&error];
 	if (error) {
 		NSLog(@"%@", error);
 		return false;
 	}
 	
-	rayTracingResidencySet = [device newResidencySetWithDescriptor:residencySetDescriptor
+	rayTracingResidencySet = [pipeline.device newResidencySetWithDescriptor:residencySetDescriptor
 															 error:&error];
 	if (error) {
 		NSLog(@"%@", error);
 		return false;
 	}
 
-	finalRenderResidencySet = [device newResidencySetWithDescriptor:residencySetDescriptor
+	finalRenderResidencySet = [pipeline.device newResidencySetWithDescriptor:residencySetDescriptor
 															  error:&error];
 	if (error) {
 		NSLog(@"%@", error);
 		return false;
 	}
 	
-	[commandQueue addResidencySet:initialRenderResidencySet];
-	[commandQueue addResidencySet:rayTracingResidencySet];
-	[commandQueue addResidencySet:finalRenderResidencySet];
-	[commandQueue addResidencySet:metalLayer.residencySet];
+	[pipeline.commandQueue addResidencySet:initialRenderResidencySet];
+	[pipeline.commandQueue addResidencySet:rayTracingResidencySet];
+	[pipeline.commandQueue addResidencySet:finalRenderResidencySet];
+	[pipeline.commandQueue addResidencySet:metalLayer.residencySet];
 
 	return true;
 }
 
 - (void) setupBuffers {
-	uniformsBuffer = [device newBufferWithLength:sizeof(Uniforms) options:MTLResourceStorageModeShared];
+	uniformsBuffer = [pipeline.device newBufferWithLength:sizeof(Uniforms) options:MTLResourceStorageModeShared];
 	[initialRenderResidencySet addAllocation:uniformsBuffer];
 	
-	triangleBuffer = [device newBufferWithLength:(sizeof(WorldVertex) * MAX_TRIANGLES * 3) options:MTLResourceStorageModeShared];
+	triangleBuffer = [pipeline.device newBufferWithLength:(sizeof(WorldVertex) * MAX_TRIANGLES * 3) options:MTLResourceStorageModeShared];
 	[initialRenderResidencySet addAllocation:triangleBuffer];
 }
 
@@ -330,7 +326,7 @@ API_AVAILABLE(macos(26.0))
 																							 mipmapped:NO];
 	initial.storageMode = MTLStorageModePrivate;
 	initial.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
-	initialRenderOutputTexture = [device newTextureWithDescriptor:initial];
+	initialRenderOutputTexture = [pipeline.device newTextureWithDescriptor:initial];
 
 	MTLTextureDescriptor *raytrace = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:metalLayer.pixelFormat
 																								 width:viewportSize.x
@@ -338,7 +334,7 @@ API_AVAILABLE(macos(26.0))
 																							 mipmapped:NO];
 	raytrace.storageMode = MTLStorageModePrivate;
 	raytrace.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
-	rayTracingOutputTexture = [device newTextureWithDescriptor:raytrace];
+	rayTracingOutputTexture = [pipeline.device newTextureWithDescriptor:raytrace];
 	
 	[rayTracingResidencySet addAllocation:rayTracingOutputTexture];
 	[finalRenderResidencySet addAllocation:initialRenderOutputTexture];
@@ -347,7 +343,7 @@ API_AVAILABLE(macos(26.0))
 
 - (id<MTLRenderPipelineState>) compileInitialRenderPipeline:(MTLPixelFormat) colorPixelFormat {
 	NSError *error;
-	id<MTL4Compiler> compiler = [device newCompilerWithDescriptor:[MTL4CompilerDescriptor new]
+	id<MTL4Compiler> compiler = [pipeline.device newCompilerWithDescriptor:[MTL4CompilerDescriptor new]
 															error:&error];
 
 	if (error) {
@@ -356,11 +352,11 @@ API_AVAILABLE(macos(26.0))
 	}
 
 	MTL4LibraryFunctionDescriptor *vertexFunction = [MTL4LibraryFunctionDescriptor new];
-	vertexFunction.library = defaultLibrary;
+	vertexFunction.library = pipeline.defaultLibrary;
 	vertexFunction.name = @"initialRenderVertexShader";
 	
 	MTL4LibraryFunctionDescriptor *fragmentFunction = [MTL4LibraryFunctionDescriptor new];
-	fragmentFunction.library = defaultLibrary;
+	fragmentFunction.library = pipeline.defaultLibrary;
 	fragmentFunction.name = @"initialRenderFragmentShader";
 
 	MTL4RenderPipelineDescriptor *descriptor = [MTL4RenderPipelineDescriptor new];
@@ -389,7 +385,7 @@ API_AVAILABLE(macos(26.0))
 
 - (id<MTLRenderPipelineState>) compileFinalRenderPipeline:(MTLPixelFormat) colorPixelFormat {
 	NSError *error;
-	id<MTL4Compiler> compiler = [device newCompilerWithDescriptor:[MTL4CompilerDescriptor new]
+	id<MTL4Compiler> compiler = [pipeline.device newCompilerWithDescriptor:[MTL4CompilerDescriptor new]
 															error:&error];
 	
 	if (error) {
@@ -398,11 +394,11 @@ API_AVAILABLE(macos(26.0))
 	}
 
 	MTL4LibraryFunctionDescriptor *vertexFunction = [MTL4LibraryFunctionDescriptor new];
-	vertexFunction.library = defaultLibrary;
+	vertexFunction.library = pipeline.defaultLibrary;
 	vertexFunction.name = @"finalRenderVertexShader";
 	
 	MTL4LibraryFunctionDescriptor *fragmentFunction = [MTL4LibraryFunctionDescriptor new];
-	fragmentFunction.library = defaultLibrary;
+	fragmentFunction.library = pipeline.defaultLibrary;
 	fragmentFunction.name = @"finalRenderFragmentShader";
 	
 	MTL4RenderPipelineDescriptor *descriptor = [MTL4RenderPipelineDescriptor new];
@@ -428,14 +424,14 @@ API_AVAILABLE(macos(26.0))
 	MTLDepthStencilDescriptor *depthDescriptor = [MTLDepthStencilDescriptor new];
 	depthDescriptor.depthCompareFunction = MTLCompareFunctionLessEqual;
 	depthDescriptor.depthWriteEnabled = YES;
-	return [device newDepthStencilStateWithDescriptor:depthDescriptor];
+	return [pipeline.device newDepthStencilStateWithDescriptor:depthDescriptor];
 }
 
 - (id<MTLComputePipelineState>) compileRayTracingPipeline {
 	NSError *error;
-	id<MTLFunction> function = [defaultLibrary newFunctionWithName:@"rayTracingKernel"];
+	id<MTLFunction> function = [pipeline.defaultLibrary newFunctionWithName:@"rayTracingKernel"];
 	
-	id<MTLComputePipelineState> state = [device newComputePipelineStateWithFunction:function
+	id<MTLComputePipelineState> state = [pipeline.device newComputePipelineStateWithFunction:function
 																			  error:&error];
 	
 	if (error) {
@@ -503,12 +499,12 @@ API_AVAILABLE(macos(26.0))
 		primitiveData[i].emission = triangle.emission;
 	}
 	
-	staticPASVertexBuffer = [device newBufferWithBytes:vertices
+	staticPASVertexBuffer = [pipeline.device newBufferWithBytes:vertices
 												length:sizeof(vertices)
 											   options:MTLResourceStorageModeShared];
 	staticPASVertexBuffer.label = @"staticPASVertexBuffer";
 	
-	staticPASPrimitiveDataBuffer = [device newBufferWithBytes:primitiveData
+	staticPASPrimitiveDataBuffer = [pipeline.device newBufferWithBytes:primitiveData
 													   length:sizeof(primitiveData)
 													  options:MTLResourceStorageModeShared];
 	staticPASPrimitiveDataBuffer.label = @"staticPASPrimitiveDataBuffer";
@@ -535,7 +531,7 @@ API_AVAILABLE(macos(26.0))
 		MTL4PrimitiveAccelerationStructureDescriptor *primitiveASDescriptor = [[MTL4PrimitiveAccelerationStructureDescriptor alloc] init];
 		primitiveASDescriptor.geometryDescriptors = @[ geometryDescriptor ];
 		
-		id<MTLAccelerationStructure> primitiveAS = [device newAccelerationStructureWithDescriptor:primitiveASDescriptor];
+		id<MTLAccelerationStructure> primitiveAS = [pipeline.device newAccelerationStructureWithDescriptor:primitiveASDescriptor];
 		primitiveAS.label = [NSString stringWithFormat:@"Static geometry batch %d of %lu (triangles %lu-%lu)", b, (unsigned long)numBatches, (unsigned long)batchOffset, (unsigned long)(batchOffset+trianglesInBatch)];
 		
 		MTLIndirectAccelerationStructureInstanceDescriptor instanceDescriptor = {};
@@ -553,7 +549,7 @@ API_AVAILABLE(macos(26.0))
 		instanceDescriptors[b] = instanceDescriptor;
 	}
 	
-	staticIASInstanceBuffer = [device newBufferWithBytes:&instanceDescriptors
+	staticIASInstanceBuffer = [pipeline.device newBufferWithBytes:&instanceDescriptors
 												  length:sizeof(MTLIndirectAccelerationStructureInstanceDescriptor) * numBatches
 												 options:MTLResourceStorageModeShared];
 	staticIASInstanceBuffer.label = @"staticIASInstanceBuffer";
@@ -562,7 +558,7 @@ API_AVAILABLE(macos(26.0))
 	staticIASDescriptor.instanceCount = staticPASes.count;
 	staticIASDescriptor.instanceDescriptorBuffer = MTL4BufferRangeMake(staticIASInstanceBuffer.gpuAddress, staticIASInstanceBuffer.length);
 	
-	staticIAS = [device newAccelerationStructureWithDescriptor:staticIASDescriptor];
+	staticIAS = [pipeline.device newAccelerationStructureWithDescriptor:staticIASDescriptor];
 	
 	[rayTracingResidencySet addAllocation:staticPASVertexBuffer];
 	[rayTracingResidencySet addAllocation:staticPASPrimitiveDataBuffer];
@@ -605,7 +601,7 @@ API_AVAILABLE(macos(26.0))
 	staticInstanceDescriptor.transformationMatrix.columns[2] = MTLPackedFloat3Make(0.0, 0.0, 1.0);
 	staticInstanceDescriptor.transformationMatrix.columns[3] = MTLPackedFloat3Make(0.0, 0.0, 0.0);
 	
-	topLevelIASInstanceBuffer = [device newBufferWithBytes:&staticInstanceDescriptor
+	topLevelIASInstanceBuffer = [pipeline.device newBufferWithBytes:&staticInstanceDescriptor
 													length:sizeof(MTLIndirectAccelerationStructureInstanceDescriptor)
 												   options:MTLResourceStorageModeShared];
 	topLevelIASInstanceBuffer.label = @"topLevelIASInstanceBuffer";
@@ -614,7 +610,7 @@ API_AVAILABLE(macos(26.0))
 	topLevelIASDescriptor.instanceCount = 1;
 	topLevelIASDescriptor.instanceDescriptorBuffer = MTL4BufferRangeMake(topLevelIASInstanceBuffer.gpuAddress, topLevelIASInstanceBuffer.length);
 	
-	topLevelIAS = [device newAccelerationStructureWithDescriptor:topLevelIASDescriptor];
+	topLevelIAS = [pipeline.device newAccelerationStructureWithDescriptor:topLevelIASDescriptor];
 	
 	[rayTracingResidencySet addAllocation:topLevelIASInstanceBuffer];
 	[rayTracingResidencySet addAllocation:topLevelIAS];
@@ -645,7 +641,7 @@ API_AVAILABLE(macos(26.0))
 	
 	NSUInteger scratchSize = 0;
 	for (MTL4AccelerationStructureDescriptor *asd in allDescriptors) {
-		NSUInteger primSize = [device accelerationStructureSizesWithDescriptor:asd].buildScratchBufferSize;
+		NSUInteger primSize = [pipeline.device accelerationStructureSizesWithDescriptor:asd].buildScratchBufferSize;
 		if (primSize > scratchSize) {
 			scratchSize = primSize;
 		}
@@ -653,11 +649,12 @@ API_AVAILABLE(macos(26.0))
 	
 	// Build everything
 	
-	id<MTLBuffer> scratchBuffer = [device newBufferWithLength:scratchSize options:MTLResourceStorageModePrivate];
+	id<MTLBuffer> scratchBuffer = [pipeline.device newBufferWithLength:scratchSize options:MTLResourceStorageModePrivate];
 	
-	[commandBuffer beginCommandBufferWithAllocator:commandAllocator];
+	id<MTL4CommandBuffer> commandBuffer = pipeline.commandBuffer;
+	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
 	
-	id<MTL4ComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
+	id<MTL4ComputeCommandEncoder> encoder = [pipeline.commandBuffer computeCommandEncoder];
 	encoder.label = @"Build acceleration structures";
 	
 	for (int i = 0; i < staticPASes.count; i++) {
@@ -685,10 +682,10 @@ API_AVAILABLE(macos(26.0))
 	[encoder endEncoding];
 	[commandBuffer endCommandBuffer];
 	
-	uint64_t buildSignalValue = sharedEvent.signaledValue + 1;
-	[commandQueue commit:&commandBuffer count:1];
-	[commandQueue signalEvent:sharedEvent value:buildSignalValue];
-	[sharedEvent waitUntilSignaledValue:buildSignalValue timeoutMS:5000];
+	uint64_t buildSignalValue = pipeline.sharedEvent.signaledValue + 1;
+	[pipeline.commandQueue commit:&commandBuffer count:1];
+	[pipeline.commandQueue signalEvent:pipeline.sharedEvent value:buildSignalValue];
+	[pipeline.sharedEvent waitUntilSignaledValue:buildSignalValue timeoutMS:5000];
 }
 
 - (bool) hasTextureWithID:(NSString*)textureID {
@@ -706,7 +703,7 @@ API_AVAILABLE(macos(26.0))
 		{ image.width, image.height, 1 }
 	};
 
-	id<MTLTexture> texture = [device newTextureWithDescriptor:descriptor];
+	id<MTLTexture> texture = [pipeline.device newTextureWithDescriptor:descriptor];
 	texture.label = textureID;
 	[texture replaceRegion:region
 			   mipmapLevel:0
@@ -741,11 +738,12 @@ API_AVAILABLE(macos(26.0))
 		
 	id<CAMetalDrawable> currentDrawable = [metalLayer nextDrawable];
 
-	[commandBuffer beginCommandBufferWithAllocator:commandAllocator];
+	id<MTL4CommandBuffer> commandBuffer = pipeline.commandBuffer;
+	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
 	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu", frameNumber];
 	
-	id<MTLFence> initialPassFence = [device newFence];
-	id<MTLFence> computePassFence = [device newFence];
+	id<MTLFence> initialPassFence = [pipeline.device newFence];
+	id<MTLFence> computePassFence = [pipeline.device newFence];
 	
 	[self encodeInitialRenderToOutputTexture:initialRenderOutputTexture updatingFence:initialPassFence];
 	[self encodeRayTracingPassToOutputTexture:rayTracingOutputTexture updatingFence:computePassFence];
@@ -759,15 +757,15 @@ API_AVAILABLE(macos(26.0))
 	// Block until rendering has completed. This is inefficient, but Marathon is locked to 30fps,
 	// so it probably doesn't slow us down and it simplifies things to not have to worry about concurrent
 	// reads/writes to buffers and textures
-	uint64_t renderSignalValue = sharedEvent.signaledValue + 1;
+	uint64_t renderSignalValue = pipeline.sharedEvent.signaledValue + 1;
 	
-	[commandQueue waitForDrawable:currentDrawable];
-	[commandQueue commit:&commandBuffer count:1];
-	[commandQueue signalDrawable:currentDrawable];
+	[pipeline.commandQueue waitForDrawable:currentDrawable];
+	[pipeline.commandQueue commit:&commandBuffer count:1];
+	[pipeline.commandQueue signalDrawable:currentDrawable];
 	[currentDrawable present];
 	
-	[commandQueue signalEvent:sharedEvent value:renderSignalValue];
-	[sharedEvent waitUntilSignaledValue:renderSignalValue timeoutMS:5000];
+	[pipeline.commandQueue signalEvent:pipeline.sharedEvent value:renderSignalValue];
+	[pipeline.sharedEvent waitUntilSignaledValue:renderSignalValue timeoutMS:5000];
 }
 
 - (void) encodeInitialRenderToOutputTexture:(id<MTLTexture>)outputTexture updatingFence:(id<MTLFence>)fence {
@@ -781,7 +779,7 @@ API_AVAILABLE(macos(26.0))
 	configuration.colorAttachments[0].clearColor = MTLClearColorMake(1.0, 1.0, 1.0, 1.0);
 	configuration.colorAttachments[0].storeAction = MTLStoreActionStore;
 
-	id<MTL4RenderCommandEncoder> renderPassEncoder = [commandBuffer renderCommandEncoderWithDescriptor:configuration];
+	id<MTL4RenderCommandEncoder> renderPassEncoder = [pipeline.commandBuffer renderCommandEncoderWithDescriptor:configuration];
 	if (!renderPassEncoder) {
 		NSLog(@"Failed to create render command encoder");
 		return;
@@ -827,7 +825,7 @@ API_AVAILABLE(macos(26.0))
 }
 
 -(void) encodeRayTracingPassToOutputTexture:(id<MTLTexture>)outputTexture updatingFence:(id<MTLFence>)fence {
-	id<MTL4ComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
+	id<MTL4ComputeCommandEncoder> encoder = [pipeline.commandBuffer computeCommandEncoder];
 	if (!encoder) {
 		NSLog(@"Failed to create compute command encoder");
 		return;
@@ -862,7 +860,7 @@ API_AVAILABLE(macos(26.0))
 	configuration.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1.0);
 	configuration.colorAttachments[0].storeAction = MTLStoreActionStore;
 
-	id<MTL4RenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:configuration];
+	id<MTL4RenderCommandEncoder> encoder = [pipeline.commandBuffer renderCommandEncoderWithDescriptor:configuration];
 	if (!encoder) {
 		NSLog(@"Failed to create render command encoder");
 		return;
