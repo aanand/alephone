@@ -539,7 +539,15 @@ API_AVAILABLE(macos(26.0))
 	[dynamicObjects addObject:object];
 }
 
-- (void)updateDynamicObjectWithID:(NSString *)objectID polygonTextureIDs:(NSArray<NSString *> *)textureIDs worldPosition:(simd_int3)worldPosition facing:(NSInteger)facing {
+- (void)updateDynamicObjectWithID:(NSString *)objectID
+					worldPosition:(simd_int3)worldPosition
+						   facing:(NSInteger)facing {
+	for (MetalDynamicObject *dynamicObject in dynamicObjects) {
+		if ([dynamicObject.objectId isEqual:objectID]) {
+			dynamicObject.worldPosition = worldPosition;
+			dynamicObject.facing = facing;
+		}
+	}
 }
 
 - (void) commitStaticGeometry {

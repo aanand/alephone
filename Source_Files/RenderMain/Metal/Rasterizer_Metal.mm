@@ -339,6 +339,14 @@ void AddWalls(polygon_data *polygon) {
 	}
 }
 
+NSString *objectID(short objectIdx) {
+	return [NSString stringWithFormat:@"[Object #%d]", objectIdx];
+}
+
+simd_int3 objectWorldPosition(object_data *object) {
+	return simd_make_int3(object->location.x, object->location.y, object->location.z);
+}
+
 void AddObject(short objectIdx, object_data *object) {
 	shape_and_transfer_mode data;
 	get_object_shape_and_transfer_mode(&view->origin, object, &data);
@@ -388,13 +396,21 @@ void AddObject(short objectIdx, object_data *object) {
 														 textureID:textureID
 														  emission:emissionForTextureID(textureID)];
 	
-	MetalDynamicObject *dynamicObject = [[MetalDynamicObject alloc] initWithID:[NSString stringWithFormat:@"[Object #%d]", objectIdx]
+	MetalDynamicObject *dynamicObject = [[MetalDynamicObject alloc] initWithID:objectID(objectIdx)
 																	  polygons:@[polygon]
-																 worldPosition:simd_make_int3(object->location.x, object->location.y, object->location.z)
+																 worldPosition:objectWorldPosition(object)
 																		facing:object->facing];
 	
 	if (@available(macOS 26.0, *)) {
 		[renderer addDynamicObject:dynamicObject];
+	}
+}
+
+void UpdateObject(short objectIdx, object_data *object) {
+	if (@available(macOS 26.0, *)) {
+		[renderer updateDynamicObjectWithID:objectID(objectIdx)
+							  worldPosition:objectWorldPosition(object)
+									 facing:object->facing];
 	}
 }
 
@@ -417,7 +433,16 @@ void LoadAllData() {
 }
 
 void UpdateDynamicData() {
-	
+	for (short polyIdx = 0; polyIdx < dynamic_world->polygon_count; polyIdx++) {
+		polygon_data *polygon = get_polygon_data(polyIdx);
+		short objectIdx = polygon->first_object;
+		
+		while (objectIdx != NONE) {
+			object_data *object = get_object_data(objectIdx);
+			UpdateObject(objectIdx, object);
+			objectIdx = object->next_object;
+		}
+	}
 }
 
 void LoadWorld() {

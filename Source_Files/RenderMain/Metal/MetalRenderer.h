@@ -46,8 +46,8 @@
 
 @property (nonatomic, readonly) NSString* objectId;
 @property (nonatomic, readonly) NSArray<MetalPolygon*> *polygons;
-@property (nonatomic, readonly) simd_int3 worldPosition;
-@property (nonatomic, readonly) NSInteger facing;
+@property (nonatomic, assign) simd_int3 worldPosition;
+@property (nonatomic, assign) NSInteger facing;
 
 - (MetalDynamicObject*) initWithID:(NSString*)objectId
 						  polygons:(NSArray<MetalPolygon*>*)polygons
@@ -86,7 +86,6 @@ API_AVAILABLE(macos(26.0))
 - (void) commitGeometry;
 
 - (void) updateDynamicObjectWithID:(NSString*)objectID
-				 polygonTextureIDs:(NSArray<NSString*>*)textureIDs
 					 worldPosition:(simd_int3)worldPosition
 							facing:(NSInteger)facing;
 
