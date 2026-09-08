@@ -505,15 +505,25 @@ API_AVAILABLE(macos(26.0))
 	yaw = newYaw;
 }
 
-- (void) addTrianglesForPolygon:(MetalPolygon *)polygon toArray:(NSMutableArray<Triangle*>*)triangles
+- (void) addTrianglesForPolygon:(MetalPolygon *)polygon
+						toArray:(NSMutableArray<Triangle*>*)triangles
+					 withOrigin:(simd_int3)origin
 {
 	assert(polygon.vertexCount > 2);
 	
 	// Triangle fan: draw 0-1-2, 0-2-3, 0-3-4, etc
 	for (int j = 0; j < polygon.vertexCount - 2; j++) {
-		[triangles addObject:[[Triangle alloc] initWithV0:*(polygon.vertices)
-													   v1:*(polygon.vertices+j+1)
-													   v2:*(polygon.vertices+j+2)
+		WorldVertex v0 = *(polygon.vertices);
+		WorldVertex v1 = *(polygon.vertices+j+1);
+		WorldVertex v2 = *(polygon.vertices+j+2);
+
+		v0.position += origin;
+		v1.position += origin;
+		v2.position += origin;
+
+		[triangles addObject:[[Triangle alloc] initWithV0:v0
+													   v1:v1
+													   v2:v2
 												textureID:polygon.textureID
 												 emission:polygon.emission]];
 
@@ -535,7 +545,7 @@ API_AVAILABLE(macos(26.0))
 - (void) commitStaticGeometry {
 	NSMutableArray *staticTriangles = [NSMutableArray array];
 	for (MetalPolygon *polygon in staticPolygons) {
-		[self addTrianglesForPolygon:polygon toArray:staticTriangles];
+		[self addTrianglesForPolygon:polygon toArray:staticTriangles withOrigin:simd_make_int3(0, 0, 0)];
 	}
 
 	NSUInteger numTriangles = staticTriangles.count;
@@ -580,6 +590,8 @@ API_AVAILABLE(macos(26.0))
 - (void) clearGeometry {
 	staticPolygons = [NSMutableArray array];
 	[staticIASManager clearGeometry];
+	
+	dynamicObjects = [NSMutableArray array];
 	
 	if (topLevelIASInstanceBuffer) [rayTracingResidencySet removeAllocation:topLevelIASInstanceBuffer];
 	if (topLevelIAS) [rayTracingResidencySet removeAllocation:topLevelIAS];
@@ -755,12 +767,17 @@ API_AVAILABLE(macos(26.0))
 	NSUInteger offset = 0;
 	
 	// FIXME: this should be built once in commitGeometry, not per-frame
-	NSMutableArray *staticTriangles = [NSMutableArray array];
+	NSMutableArray *triangles = [NSMutableArray array];
 	for (MetalPolygon *polygon in staticPolygons) {
-		[self addTrianglesForPolygon:polygon toArray:staticTriangles];
+		[self addTrianglesForPolygon:polygon toArray:triangles withOrigin:simd_make_int3(0, 0, 0)];
+	}
+	for (MetalDynamicObject *dynamicObject in dynamicObjects) {
+		for (MetalPolygon *polygon in dynamicObject.polygons) {
+			[self addTrianglesForPolygon:polygon toArray:triangles withOrigin:dynamicObject.worldPosition];
+		}
 	}
 
-	for (Triangle *triangle in staticTriangles) {
+	for (Triangle *triangle in triangles) {
 		target[offset] = triangle.v0;
 		target[offset+1] = triangle.v1;
 		target[offset+2] = triangle.v2;
