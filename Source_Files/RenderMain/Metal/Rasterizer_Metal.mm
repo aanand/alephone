@@ -358,11 +358,8 @@ MetalPolygon* GetObjectPolygon(short objectIdx, object_data *object) {
 	
 	auto TMgr = std::make_unique<TextureManager>();
 	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupSpriteTexture(TMgr.get(), object->shape, data, shape_information));
-	
 	NSLog(@"textureID=%@", textureID);
-	NSLog(@"position=(%d, %d, %d), facing=%d", object->location.x, object->location.y, object->location.z, object->facing);
-	NSLog(@"left=%d, right=%d, top=%d, bottom=%d", shape_information->world_left, shape_information->world_right, shape_information->world_top, shape_information->world_bottom);
-	
+
 	simd_float3 surfaceNormal = simd_make_float3(1.0, 0.0, 0.0);
 	
 	float spriteL = shape_information->world_left;
