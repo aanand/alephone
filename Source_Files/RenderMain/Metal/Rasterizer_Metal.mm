@@ -105,21 +105,21 @@ bool SetupPolygonTexture(TextureManager *TMgr, shape_descriptor ShapeDesc) {
 
 bool SetupSpriteTexture(TextureManager *TMgr,
 						shape_descriptor ShapeDesc,
-						uint16 LowLevelShape,
-						short TransferMode,
-						short TransferData,
-						bool IsShadeless,
-						short TextureType)
+						shape_and_transfer_mode ShapeAndTransferMode,
+						shape_information_data *ShapeInformationData)
 {
-	TMgr->ShapeDesc = ShapeDesc;
-	TMgr->LowLevelShape = LowLevelShape;
-	TMgr->TransferMode = TransferMode;
-	TMgr->TransferData = TransferData;
-	TMgr->IsShadeless = IsShadeless;
-	TMgr->TextureType = TextureType;
+	bitmap_definition *texture;
+	void *shading_tables;
+	extended_get_shape_bitmap_and_shading_table(ShapeAndTransferMode.collection_code, ShapeAndTransferMode.low_level_shape_index, &texture, &shading_tables, view->shading_mode);
 
-	struct bitmap_definition* dummy;
-	extended_get_shape_bitmap_and_shading_table(GET_DESCRIPTOR_COLLECTION(TMgr->ShapeDesc), TMgr->LowLevelShape, &dummy, &TMgr->ShadingTables, _shading_normal);
+	TMgr->ShapeDesc = ShapeDesc;
+	TMgr->LowLevelShape = ShapeAndTransferMode.low_level_shape_index;
+	TMgr->ShadingTables = shading_tables;
+	TMgr->Texture = texture;
+	TMgr->TransferMode = ShapeAndTransferMode.transfer_mode;
+	TMgr->TransferData = 0; // TODO: support the transfer modes that use data (invisibility, static)
+	TMgr->IsShadeless = (view->shading_mode == _shading_infravision);
+	TMgr->TextureType = OGL_Txtr_Inhabitant; // TODO: support non-world sprites (weapons in hand, anything else?)
 
 	return TMgr->Setup();
 }
@@ -347,27 +347,18 @@ simd_int3 objectWorldPosition(object_data *object) {
 	return simd_make_int3(object->location.x, object->location.y, object->location.z);
 }
 
-void AddObject(short objectIdx, object_data *object) {
+MetalPolygon* GetObjectPolygon(short objectIdx, object_data *object) {
 	shape_and_transfer_mode data;
 	get_object_shape_and_transfer_mode(&view->origin, object, &data);
 	if (data.collection_code == NONE) {
-		return;
+		return nil;
 	}
-
+	
 	shape_information_data *shape_information = extended_get_shape_information(data.collection_code, data.low_level_shape_index);
 	
 	auto TMgr = std::make_unique<TextureManager>();
-
-	bool didSetup = SetupSpriteTexture(TMgr.get(),
-									   object->shape,
-									   data.low_level_shape_index,
-									   data.transfer_mode,
-									   0,
-									   false,
-									   OGL_Txtr_Inhabitant);
-
-	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), didSetup);
-
+	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupSpriteTexture(TMgr.get(), object->shape, data, shape_information));
+	
 	NSLog(@"textureID=%@", textureID);
 	NSLog(@"position=(%d, %d, %d), facing=%d", object->location.x, object->location.y, object->location.z, object->facing);
 	NSLog(@"left=%d, right=%d, top=%d, bottom=%d", shape_information->world_left, shape_information->world_right, shape_information->world_top, shape_information->world_bottom);
@@ -383,7 +374,7 @@ void AddObject(short objectIdx, object_data *object) {
 	float texR = TMgr->V_Scale+TMgr->V_Offset;
 	float texT = TMgr->U_Offset;
 	float texB = TMgr->U_Scale+TMgr->U_Offset;
-
+	
 	WorldVertex vertices[] = {
 		{ simd_make_int3(0.0, spriteL, spriteB), simd_make_float2(texB, texL), surfaceNormal },
 		{ simd_make_int3(0.0, spriteL, spriteT), simd_make_float2(texT, texL), surfaceNormal },
@@ -396,6 +387,13 @@ void AddObject(short objectIdx, object_data *object) {
 														 textureID:textureID
 														  emission:emissionForTextureID(textureID)];
 	
+	return polygon;
+}
+
+void AddObject(short objectIdx, object_data *object) {
+	MetalPolygon *polygon = GetObjectPolygon(objectIdx, object);
+	if (!polygon) return;
+
 	MetalDynamicObject *dynamicObject = [[MetalDynamicObject alloc] initWithID:objectID(objectIdx)
 																	  polygons:@[polygon]
 																 worldPosition:objectWorldPosition(object)
@@ -407,8 +405,12 @@ void AddObject(short objectIdx, object_data *object) {
 }
 
 void UpdateObject(short objectIdx, object_data *object) {
+	MetalPolygon *polygon = GetObjectPolygon(objectIdx, object);
+	if (!polygon) return;
+
 	if (@available(macOS 26.0, *)) {
 		[renderer updateDynamicObjectWithID:objectID(objectIdx)
+								   polygons:@[polygon]
 							  worldPosition:objectWorldPosition(object)
 									 facing:object->facing];
 	}

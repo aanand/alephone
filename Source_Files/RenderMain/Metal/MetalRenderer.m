@@ -540,10 +540,12 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (void)updateDynamicObjectWithID:(NSString *)objectID
+						 polygons:(NSArray<MetalPolygon*>*)polygons
 					worldPosition:(simd_int3)worldPosition
 						   facing:(NSInteger)facing {
 	for (MetalDynamicObject *dynamicObject in dynamicObjects) {
 		if ([dynamicObject.objectId isEqual:objectID]) {
+			dynamicObject.polygons = polygons;
 			dynamicObject.worldPosition = worldPosition;
 			dynamicObject.facing = facing;
 		}
