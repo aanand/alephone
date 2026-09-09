@@ -842,40 +842,42 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 	WorldVertex *target = (WorldVertex*)triangleBuffer.contents;
 	NSUInteger offset = 0;
-	
-	// FIXME: this should be built once in commitGeometry, not per-frame
-	NSMutableArray *triangles = [NSMutableArray array];
-	for (MetalPolygon *polygon in staticPolygons) {
-		[self addTrianglesForPolygon:polygon
-							 toArray:triangles
-						  withOrigin:simd_make_int3(0, 0, 0)
-							rotation:0.0];
-	}
-	for (MetalDynamicObject *dynamicObject in dynamicObjects) {
-		for (MetalPolygon *polygon in dynamicObject.polygons) {
+
+	@autoreleasepool {
+		// FIXME: this should be built once in commitGeometry, not per-frame
+		NSMutableArray *triangles = [NSMutableArray array];
+		for (MetalPolygon *polygon in staticPolygons) {
 			[self addTrianglesForPolygon:polygon
 								 toArray:triangles
-							  withOrigin:dynamicObject.worldPosition
-								rotation:dynamicObject.rotation];
+							  withOrigin:simd_make_int3(0, 0, 0)
+								rotation:0.0];
 		}
-	}
-
-	for (Triangle *triangle in triangles) {
-		target[offset] = triangle.v0;
-		target[offset+1] = triangle.v1;
-		target[offset+2] = triangle.v2;
+		for (MetalDynamicObject *dynamicObject in dynamicObjects) {
+			for (MetalPolygon *polygon in dynamicObject.polygons) {
+				[self addTrianglesForPolygon:polygon
+									 toArray:triangles
+								  withOrigin:dynamicObject.worldPosition
+									rotation:dynamicObject.rotation];
+			}
+		}
 		
-		MTLGPUAddress address = triangleBuffer.gpuAddress + (offset * sizeof(WorldVertex));
-		[vertexArgumentTable setAddress:address atIndex:InitialRenderVertexShaderVertexDataIndex];
-		[renderPassEncoder setArgumentTable:vertexArgumentTable atStages:MTLRenderStageVertex];
-
-		id<MTLTexture> texture = [textures objectForKey:triangle.textureID];
-		[fragmentArgumentTable setTexture:texture.gpuResourceID atIndex:InitialRenderFragmentShaderColorTextureIndex];
-		[renderPassEncoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
-		
-		[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
-		
-		offset += 3;
+		for (Triangle *triangle in triangles) {
+			target[offset] = triangle.v0;
+			target[offset+1] = triangle.v1;
+			target[offset+2] = triangle.v2;
+			
+			MTLGPUAddress address = triangleBuffer.gpuAddress + (offset * sizeof(WorldVertex));
+			[vertexArgumentTable setAddress:address atIndex:InitialRenderVertexShaderVertexDataIndex];
+			[renderPassEncoder setArgumentTable:vertexArgumentTable atStages:MTLRenderStageVertex];
+			
+			id<MTLTexture> texture = [textures objectForKey:triangle.textureID];
+			[fragmentArgumentTable setTexture:texture.gpuResourceID atIndex:InitialRenderFragmentShaderColorTextureIndex];
+			[renderPassEncoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
+			
+			[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+			
+			offset += 3;
+		}
 	}
 	
 	[renderPassEncoder updateFence:fence afterEncoderStages:MTLStageFragment];
