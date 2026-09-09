@@ -347,6 +347,11 @@ simd_int3 objectWorldPosition(object_data *object) {
 	return simd_make_int3(object->location.x, object->location.y, object->location.z);
 }
 
+// Angle (in degrees) about the world-Z axis by which to rotate the object so it faces the player
+float objectRotation(object_data *object) {
+	return view->virtual_yaw * FixedAngleToDegrees;
+}
+
 MetalPolygon* GetObjectPolygon(short objectIdx, object_data *object) {
 	shape_and_transfer_mode data;
 	get_object_shape_and_transfer_mode(&view->origin, object, &data);
@@ -393,7 +398,7 @@ void AddObject(short objectIdx, object_data *object) {
 	MetalDynamicObject *dynamicObject = [[MetalDynamicObject alloc] initWithID:objectID(objectIdx)
 																	  polygons:@[polygon]
 																 worldPosition:objectWorldPosition(object)
-																		facing:object->facing];
+																	  rotation:objectRotation(object)];
 	
 	if (@available(macOS 26.0, *)) {
 		[renderer addDynamicObject:dynamicObject];
@@ -408,7 +413,7 @@ void UpdateObject(short objectIdx, object_data *object) {
 		[renderer updateDynamicObjectWithID:objectID(objectIdx)
 								   polygons:@[polygon]
 							  worldPosition:objectWorldPosition(object)
-									 facing:object->facing];
+								   rotation:objectRotation(object)];
 	}
 }
 

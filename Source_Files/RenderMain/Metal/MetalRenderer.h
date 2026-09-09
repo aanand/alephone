@@ -47,12 +47,12 @@
 @property (nonatomic, readonly) NSString* objectId;
 @property (nonatomic, strong) NSArray<MetalPolygon*> *polygons;
 @property (nonatomic, assign) simd_int3 worldPosition;
-@property (nonatomic, assign) NSInteger facing;
+@property (nonatomic, assign) float rotation;
 
 - (MetalDynamicObject*) initWithID:(NSString*)objectId
 						  polygons:(NSArray<MetalPolygon*>*)polygons
 					 worldPosition:(simd_int3)worldPosition
-							facing:(NSInteger)facing;
+						  rotation:(float)rotation;
 
 @end
 
@@ -88,7 +88,7 @@ API_AVAILABLE(macos(26.0))
 - (void) updateDynamicObjectWithID:(NSString*)objectID
 						  polygons:(NSArray<MetalPolygon*>*)polygons
 					 worldPosition:(simd_int3)worldPosition
-							facing:(NSInteger)facing;
+						  rotation:(float)rotation;
 
 /**
  Textures

@@ -53,12 +53,16 @@
 
 @implementation MetalDynamicObject
 
-- (MetalDynamicObject*) initWithID:(NSString *)objectId polygons:(NSArray<MetalPolygon *> *)polygons worldPosition:(simd_int3)worldPosition facing:(NSInteger)facing {
+- (MetalDynamicObject*) initWithID:(NSString *)objectId
+						  polygons:(NSArray<MetalPolygon *> *)polygons
+					 worldPosition:(simd_int3)worldPosition
+						  rotation:(float)rotation
+{
 	if (self = [super init]) {
 		_objectId = objectId;
 		_polygons = polygons;
 		_worldPosition = worldPosition;
-		_facing = facing;
+		_rotation = rotation;
 	}
 	return self;
 }
@@ -505,17 +509,29 @@ API_AVAILABLE(macos(26.0))
 	yaw = newYaw;
 }
 
+simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
+	simd_float4 transformed = simd_mul(matrix, simd_make_float4(position.x, position.y, position.z, 1.0));
+	return simd_make_int3(transformed.x, transformed.y, transformed.z);
+}
+
 - (void) addTrianglesForPolygon:(MetalPolygon *)polygon
 						toArray:(NSMutableArray<Triangle*>*)triangles
 					 withOrigin:(simd_int3)origin
+					   rotation:(float)rotation
 {
 	assert(polygon.vertexCount > 2);
+	
+	simd_float4x4 rotationMat = rotationMatrix(rotation, simd_make_float3(0.0, 0.0, 1.0));
 	
 	// Triangle fan: draw 0-1-2, 0-2-3, 0-3-4, etc
 	for (int j = 0; j < polygon.vertexCount - 2; j++) {
 		WorldVertex v0 = *(polygon.vertices);
 		WorldVertex v1 = *(polygon.vertices+j+1);
 		WorldVertex v2 = *(polygon.vertices+j+2);
+		
+		v0.position = transform(v0.position, rotationMat);
+		v1.position = transform(v1.position, rotationMat);
+		v2.position = transform(v2.position, rotationMat);
 
 		v0.position += origin;
 		v1.position += origin;
@@ -542,12 +558,13 @@ API_AVAILABLE(macos(26.0))
 - (void)updateDynamicObjectWithID:(NSString *)objectID
 						 polygons:(NSArray<MetalPolygon*>*)polygons
 					worldPosition:(simd_int3)worldPosition
-						   facing:(NSInteger)facing {
+						 rotation:(float)rotation
+{
 	for (MetalDynamicObject *dynamicObject in dynamicObjects) {
 		if ([dynamicObject.objectId isEqual:objectID]) {
 			dynamicObject.polygons = polygons;
 			dynamicObject.worldPosition = worldPosition;
-			dynamicObject.facing = facing;
+			dynamicObject.rotation = rotation;
 		}
 	}
 }
@@ -555,7 +572,10 @@ API_AVAILABLE(macos(26.0))
 - (void) commitStaticGeometry {
 	NSMutableArray *staticTriangles = [NSMutableArray array];
 	for (MetalPolygon *polygon in staticPolygons) {
-		[self addTrianglesForPolygon:polygon toArray:staticTriangles withOrigin:simd_make_int3(0, 0, 0)];
+		[self addTrianglesForPolygon:polygon
+							 toArray:staticTriangles
+						  withOrigin:simd_make_int3(0, 0, 0)
+							rotation:0.0];
 	}
 
 	NSUInteger numTriangles = staticTriangles.count;
@@ -779,11 +799,17 @@ API_AVAILABLE(macos(26.0))
 	// FIXME: this should be built once in commitGeometry, not per-frame
 	NSMutableArray *triangles = [NSMutableArray array];
 	for (MetalPolygon *polygon in staticPolygons) {
-		[self addTrianglesForPolygon:polygon toArray:triangles withOrigin:simd_make_int3(0, 0, 0)];
+		[self addTrianglesForPolygon:polygon
+							 toArray:triangles
+						  withOrigin:simd_make_int3(0, 0, 0)
+							rotation:0.0];
 	}
 	for (MetalDynamicObject *dynamicObject in dynamicObjects) {
 		for (MetalPolygon *polygon in dynamicObject.polygons) {
-			[self addTrianglesForPolygon:polygon toArray:triangles withOrigin:dynamicObject.worldPosition];
+			[self addTrianglesForPolygon:polygon
+								 toArray:triangles
+							  withOrigin:dynamicObject.worldPosition
+								rotation:dynamicObject.rotation];
 		}
 	}
 
