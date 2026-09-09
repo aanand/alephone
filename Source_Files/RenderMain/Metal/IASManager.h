@@ -33,7 +33,11 @@
  clearGeometry MUST be called before the first commitGeometry
  */
 - (void) clearGeometry;
-- (void) commitGeometry:(NSArray<id<ASTrianglePrimitive>>*)primitives;
+- (void) addPrimitive:(id<ASTrianglePrimitive>)primitive;
+- (void) addInstanceOfPrimitive:(id<ASTrianglePrimitive>)primitive
+				  withTransform:(MTLPackedFloat4x3)transform
+					 instanceID:(uint32_t)instanceID;
+- (void) commitGeometry;
 
 - (MTLResourceID) IASResourceID;
 - (NSArray<MTL4AccelerationStructureDescriptor*>*) allASDescriptors;

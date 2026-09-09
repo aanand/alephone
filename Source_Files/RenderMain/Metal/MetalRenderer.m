@@ -593,20 +593,27 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	NSUInteger numTriangles = staticTriangles.count;
 	NSUInteger trianglesPerBatch = 100;
 	
-	NSMutableArray<TriangleBatch*> *batches = [NSMutableArray array];
 	for (int b = 0; b < numTriangles; b += trianglesPerBatch) {
 		NSArray *triangles = [staticTriangles subarrayWithRange:NSMakeRange(b, MIN(trianglesPerBatch, numTriangles - b))];
-		[batches addObject:[[TriangleBatch alloc] initWithTriangles:triangles]];
+		TriangleBatch *batch = [[TriangleBatch alloc] initWithTriangles:triangles];
+		[staticIASManager addPrimitive:batch];
+		MTLPackedFloat4x3 transform = {
+			.columns = {
+				{ 1.0, 0.0, 0.0 },
+				{ 0.0, 1.0, 0.0 },
+				{ 0.0, 0.0, 1.0 },
+				{ 0.0, 0.0, 0.0 },
+			}
+		};
+		[staticIASManager addInstanceOfPrimitive:batch withTransform:transform instanceID:0];
 	}
 	
-	[staticIASManager commitGeometry:batches];
+	[staticIASManager commitGeometry];
 }
 
 - (void) commitDynamicGeometry {
 	// TODO: for sprites, make a single quad primitive, instanced per-sprite with translation/rotation/scaling
 	// (or don't, if this is good/fast enough)
-
-	NSMutableArray<TriangleBatch*> *batches = [NSMutableArray array];
 
 	for (MetalDynamicObject *dynamicObject in dynamicObjects) {
 		for (MetalPolygon *polygon in dynamicObject.polygons) {
@@ -617,11 +624,21 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 							  withOrigin:dynamicObject.worldPosition
 								rotation:dynamicObject.rotation];
 
-			[batches addObject:[[TriangleBatch alloc] initWithTriangles:triangles]];
+			TriangleBatch *batch = [[TriangleBatch alloc] initWithTriangles:triangles];
+			[dynamicIASManager addPrimitive:batch];
+			MTLPackedFloat4x3 transform = {
+				.columns = {
+					{ 1.0, 0.0, 0.0 },
+					{ 0.0, 1.0, 0.0 },
+					{ 0.0, 0.0, 1.0 },
+					{ 0.0, 0.0, 0.0 },
+				}
+			};
+			[dynamicIASManager addInstanceOfPrimitive:batch withTransform:transform instanceID:0];
 		}
 	}
 	
-	[dynamicIASManager commitGeometry:batches];
+	[dynamicIASManager commitGeometry];
 }
 
 - (void) initializeTopLevelIAS {
