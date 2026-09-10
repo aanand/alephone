@@ -42,17 +42,19 @@
 
 @end
 
-@interface MetalDynamicObject : NSObject
+@interface MetalSprite : NSObject
 
-@property (nonatomic, readonly) NSString* objectId;
-@property (nonatomic, strong) NSArray<MetalPolygon*> *polygons;
-@property (nonatomic, assign) simd_int3 worldPosition;
-@property (nonatomic, assign) float rotation;
+@property (nonatomic, readonly) NSInteger index;
+@property (nonatomic, readonly) NSString* textureID;
+@property (nonatomic, readonly) simd_float4x2 uv;
+@property (nonatomic, readonly) simd_int2 size;
+@property (nonatomic, readonly) simd_int3 position;
 
-- (MetalDynamicObject*) initWithID:(NSString*)objectId
-						  polygons:(NSArray<MetalPolygon*>*)polygons
-					 worldPosition:(simd_int3)worldPosition
-						  rotation:(float)rotation;
+- (MetalSprite*) initWithIndex:(NSInteger)index
+					 textureID:(NSString*)textureID
+							uv:(simd_float4x2)uv
+						  size:(simd_int2)size
+					  position:(simd_int3)position;
 
 @end
 
@@ -77,18 +79,15 @@ API_AVAILABLE(macos(26.0))
 
 /**
  Geometry
- clearGeometry MUST be called before adding any geometry.
  */
 
-- (void) clearGeometry;
-- (void) addStaticPolygon:(MetalPolygon*)polygon;
-- (void) addDynamicObject:(MetalDynamicObject*)object;
-- (void) commitGeometry;
+- (void) startUpdatingAllGeometry;
+- (void) finishUpdatingAllGeometry;
+- (void) startUpdatingDynamicGeometry;
+- (void) finishUpdatingDynamicGeometry;
 
-- (void) updateDynamicObjectWithID:(NSString*)objectID
-						  polygons:(NSArray<MetalPolygon*>*)polygons
-					 worldPosition:(simd_int3)worldPosition
-						  rotation:(float)rotation;
+- (void) addStaticPolygon:(MetalPolygon*)polygon;
+- (void) updateSprite:(MetalSprite*)sprite;
 
 /**
  Textures

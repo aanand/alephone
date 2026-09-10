@@ -51,18 +51,20 @@
 
 @end
 
-@implementation MetalDynamicObject
+@implementation MetalSprite
 
-- (MetalDynamicObject*) initWithID:(NSString *)objectId
-						  polygons:(NSArray<MetalPolygon *> *)polygons
-					 worldPosition:(simd_int3)worldPosition
-						  rotation:(float)rotation
+-(MetalSprite *)initWithIndex:(NSInteger)index
+					textureID:(NSString *)textureID
+						   uv:(simd_float4x2)uv
+						 size:(simd_int2)size
+					 position:(simd_int3)position
 {
 	if (self = [super init]) {
-		_objectId = objectId;
-		_polygons = polygons;
-		_worldPosition = worldPosition;
-		_rotation = rotation;
+		_index = index;
+		_textureID = textureID;
+		_uv = uv;
+		_size = size;
+		_position = position;
 	}
 	return self;
 }
@@ -157,6 +159,46 @@
 
 @end
 
+@interface SpriteQuad : NSObject <ASTrianglePrimitive>
+@end
+
+@implementation SpriteQuad
+{
+	simd_float3 vertices[6];
+	TriangleRayTracingData primitiveData[2];
+}
+
+-(SpriteQuad*) init {
+	if (self = [super init]) {
+		vertices[0] = (simd_float3){ 0.0, -0.5, 0.0 };
+		vertices[1] = (simd_float3){ 0.0, -0.5, 1.0 };
+		vertices[2] = (simd_float3){ 0.0,  0.5, 1.0 };
+
+		vertices[3] = (simd_float3){ 0.0, -0.5, 0.0 };
+		vertices[4] = (simd_float3){ 0.0,  0.5, 1.0 };
+		vertices[5] = (simd_float3){ 0.0,  0.5, 0.0 };
+		
+		// Normals here are wrong, because rotation is applied to instances, but this needs to go away anyway
+		primitiveData[0] = (TriangleRayTracingData){ .surfaceNormal = { -1.0, 0.0, 0.0 }, .emission = { 0.0, 0.0, 0.0 } };
+		primitiveData[1] = (TriangleRayTracingData){ .surfaceNormal = { -1.0, 0.0, 0.0 }, .emission = { 0.0, 0.0, 0.0 } };
+	}
+	return self;
+}
+
+-(NSUInteger) numTriangles {
+	return 2;
+}
+
+-(simd_float3 *) vertices {
+	return vertices;
+}
+
+-(void *) primitiveData {
+	return primitiveData;
+}
+
+@end
+
 float radians(float degrees) {
 	return degrees * 8.0 * atan(1.0) / 360.0;
 }
@@ -228,7 +270,7 @@ API_AVAILABLE(macos(26.0))
 	id<MTLBuffer> uniformsBuffer;
 
 	NSMutableArray<MetalPolygon*> *staticPolygons;
-	NSMutableArray<MetalDynamicObject*> *dynamicObjects;
+	NSMutableDictionary<NSNumber*, MetalSprite*> *sprites;
 	NSMutableDictionary<NSString *, id<MTLTexture>> *textures;
 
 	// Static geometry (walls, floors, ceilings)
@@ -559,25 +601,11 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[staticPolygons addObject:polygon];
 }
 
-- (void)addDynamicObject:(MetalDynamicObject *)object {
-	[dynamicObjects addObject:object];
+- (void) updateSprite:(MetalSprite *)sprite {
+	[sprites setObject:sprite forKey:[NSNumber numberWithInteger:sprite.index]];
 }
 
-- (void)updateDynamicObjectWithID:(NSString *)objectID
-						 polygons:(NSArray<MetalPolygon*>*)polygons
-					worldPosition:(simd_int3)worldPosition
-						 rotation:(float)rotation
-{
-	for (MetalDynamicObject *dynamicObject in dynamicObjects) {
-		if ([dynamicObject.objectId isEqual:objectID]) {
-			dynamicObject.polygons = polygons;
-			dynamicObject.worldPosition = worldPosition;
-			dynamicObject.rotation = rotation;
-		}
-	}
-}
-
-- (void) commitStaticGeometry {
+- (void) writeStaticPolygonsToStaticIAS {
 	// TODO: make a primitive for each floor+ceiling, translated to the appropriate height
 	// TODO: make a single vertical quad primitive, translated/rotated/scaled per-wall
 	// (or don't, if this is good/fast enough)
@@ -611,31 +639,28 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[staticIASManager commitGeometry];
 }
 
-- (void) commitDynamicGeometry {
-	// TODO: for sprites, make a single quad primitive, instanced per-sprite with translation/rotation/scaling
-	// (or don't, if this is good/fast enough)
+- (void) writeSpritesToDynamicIAS {
+	SpriteQuad *spriteQuad = [[SpriteQuad alloc] init];
+	[dynamicIASManager addPrimitive:spriteQuad];
 
-	for (MetalDynamicObject *dynamicObject in dynamicObjects) {
-		for (MetalPolygon *polygon in dynamicObject.polygons) {
-			NSMutableArray *triangles = [NSMutableArray array];
+	float theta = radians(yaw);
 
-			[self addTrianglesForPolygon:polygon
-								 toArray:triangles
-							  withOrigin:dynamicObject.worldPosition
-								rotation:dynamicObject.rotation];
+	for (MetalSprite *sprite in [sprites allValues]) {
+		float x = sprite.position.x, y = sprite.position.y, z = sprite.position.z;
+		float w = sprite.size.x, h = sprite.size.y;
 
-			TriangleBatch *batch = [[TriangleBatch alloc] initWithTriangles:triangles];
-			[dynamicIASManager addPrimitive:batch];
-			MTLPackedFloat4x3 transform = {
-				.columns = {
-					{ 1.0, 0.0, 0.0 },
-					{ 0.0, 1.0, 0.0 },
-					{ 0.0, 0.0, 1.0 },
-					{ 0.0, 0.0, 0.0 },
-				}
-			};
-			[dynamicIASManager addInstanceOfPrimitive:batch withTransform:transform instanceID:0];
-		}
+		MTLPackedFloat4x3 transform = {
+			.columns = {
+				{ w*cos(theta), w*sin(theta), 0.0 },
+				{ -w*sin(theta),  w*cos(theta), 0.0 },
+				{          0.0,           0.0,   h },
+				{            x,             y,   z },
+			}
+		};
+
+		[dynamicIASManager addInstanceOfPrimitive:spriteQuad
+									withTransform:transform
+									   instanceID:(uint32_t)sprite.index];
 	}
 	
 	[dynamicIASManager commitGeometry];
@@ -674,34 +699,49 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[rayTracingResidencySet commit];
 }
 
-- (void) clearGeometry {
-	staticPolygons = [NSMutableArray array];
-	dynamicObjects = [NSMutableArray array];
-
-	[staticIASManager clearGeometry];
-	[dynamicIASManager clearGeometry];
-	
+- (void) clearTopLevelIAS {
 	if (topLevelIASInstanceBuffer) [rayTracingResidencySet removeAllocation:topLevelIASInstanceBuffer];
 	if (topLevelIAS) [rayTracingResidencySet removeAllocation:topLevelIAS];
-	
 	topLevelIASInstanceBuffer = nil;
 	topLevelIAS = nil;
 }
 
-- (void) commitGeometry {
-	// Build 3rd- and 2nd-level acceleration structures
-	[self commitStaticGeometry];
-	[self commitDynamicGeometry];
-	
-	// Build 1st-level acceleration structure
-	[self initializeTopLevelIAS];
+- (void) startUpdatingAllGeometry {
+	staticPolygons = [NSMutableArray array];
+	sprites = [NSMutableDictionary dictionary];
 
-	// Calculate largest scratch size needed
+	[staticIASManager clearGeometry];
+	[dynamicIASManager clearGeometry];
+	[self clearTopLevelIAS];
+}
+
+- (void) finishUpdatingAllGeometry {
+	[self writeStaticPolygonsToStaticIAS];
+	[self writeSpritesToDynamicIAS];
+	[self initializeTopLevelIAS];
 	
+	[self buildAccelerationStructureWithChangesTo:@[staticIASManager, dynamicIASManager]];
+}
+
+- (void) startUpdatingDynamicGeometry {
+	sprites = [NSMutableDictionary dictionary];
+	[dynamicIASManager clearGeometry];
+	[self clearTopLevelIAS];
+}
+
+- (void) finishUpdatingDynamicGeometry {
+	[self writeSpritesToDynamicIAS];
+	[self initializeTopLevelIAS];
+	[self buildAccelerationStructureWithChangesTo:@[dynamicIASManager]];
+}
+
+- (void) buildAccelerationStructureWithChangesTo:(NSArray<IASManager*>*)iasManagers {
+	// Calculate largest scratch size needed
 	NSMutableArray<MTL4AccelerationStructureDescriptor*> *allDescriptors = [NSMutableArray array];
 	[allDescriptors addObject:topLevelIASDescriptor];
-	[allDescriptors addObjectsFromArray:staticIASManager.allASDescriptors];
-	[allDescriptors addObjectsFromArray:dynamicIASManager.allASDescriptors];
+	for (IASManager *iasm in iasManagers) {
+		[allDescriptors addObjectsFromArray:iasm.allASDescriptors];
+	}
 	
 	NSUInteger scratchSize = 0;
 	for (MTL4AccelerationStructureDescriptor *asd in allDescriptors) {
@@ -717,23 +757,24 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	
 	id<MTL4CommandBuffer> commandBuffer = pipeline.commandBuffer;
 	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
-	
+	commandBuffer.label = [NSString stringWithFormat:@"Build %lu acceleration structures", iasManagers.count];
+
 	id<MTL4ComputeCommandEncoder> encoder = [pipeline.commandBuffer computeCommandEncoder];
 	encoder.label = @"Build acceleration structures";
 	
-	[staticIASManager encodeBuildCommandsForPASes:encoder
-									scratchBuffer:MTL4BufferRangeMake(scratchBuffer.gpuAddress, scratchBuffer.length)];
-	[dynamicIASManager encodeBuildCommandsForPASes:encoder
-									 scratchBuffer:MTL4BufferRangeMake(scratchBuffer.gpuAddress, scratchBuffer.length)];
+	for (IASManager *iasm in iasManagers) {
+		[iasm encodeBuildCommandsForPASes:encoder
+							scratchBuffer:MTL4BufferRangeMake(scratchBuffer.gpuAddress, scratchBuffer.length)];
+	}
 	
 	[encoder barrierAfterEncoderStages:MTLStageAccelerationStructure
 				   beforeEncoderStages:MTLStageAccelerationStructure
 					 visibilityOptions:MTL4VisibilityOptionDevice];
 	
-	[staticIASManager encodeBuildCommandsForIAS:encoder
-								  scratchBuffer:MTL4BufferRangeMake(scratchBuffer.gpuAddress, scratchBuffer.length)];
-	[dynamicIASManager encodeBuildCommandsForIAS:encoder
-								   scratchBuffer:MTL4BufferRangeMake(scratchBuffer.gpuAddress, scratchBuffer.length)];
+	for (IASManager *iasm in iasManagers) {
+		[iasm encodeBuildCommandsForIAS:encoder
+						  scratchBuffer:MTL4BufferRangeMake(scratchBuffer.gpuAddress, scratchBuffer.length)];
+	}
 
 	[encoder barrierAfterEncoderStages:MTLStageAccelerationStructure
 				   beforeEncoderStages:MTLStageAccelerationStructure
@@ -869,13 +910,26 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 							  withOrigin:simd_make_int3(0, 0, 0)
 								rotation:0.0];
 		}
-		for (MetalDynamicObject *dynamicObject in dynamicObjects) {
-			for (MetalPolygon *polygon in dynamicObject.polygons) {
-				[self addTrianglesForPolygon:polygon
-									 toArray:triangles
-								  withOrigin:dynamicObject.worldPosition
-									rotation:dynamicObject.rotation];
-			}
+
+		for (MetalSprite *sprite in [sprites allValues]) {
+			simd_float3 surfaceNormal = { 0.0, 0.0, -1.0 };
+
+			WorldVertex vertices[] = {
+				(WorldVertex){ .position = { 0, -sprite.size.x/2,             0 }, .textureCoordinate = sprite.uv.columns[0], .surfaceNormal = surfaceNormal },
+				(WorldVertex){ .position = { 0, -sprite.size.x/2, sprite.size.y }, .textureCoordinate = sprite.uv.columns[1], .surfaceNormal = surfaceNormal },
+				(WorldVertex){ .position = { 0,  sprite.size.x/2, sprite.size.y }, .textureCoordinate = sprite.uv.columns[2], .surfaceNormal = surfaceNormal },
+				(WorldVertex){ .position = { 0,  sprite.size.x/2,             0 }, .textureCoordinate = sprite.uv.columns[3], .surfaceNormal = surfaceNormal },
+			};
+
+			MetalPolygon *spritePolygon = [[MetalPolygon alloc] initWithVertices:vertices
+																	 vertexCount:4
+																	   textureID:sprite.textureID
+																		emission:simd_make_float3(0.0, 0.0, 0.0)];
+
+			[self addTrianglesForPolygon:spritePolygon
+								 toArray:triangles
+							  withOrigin:sprite.position
+								rotation:yaw];
 		}
 		
 		for (Triangle *triangle in triangles) {

@@ -339,20 +339,11 @@ void AddWalls(polygon_data *polygon) {
 	}
 }
 
-NSString *objectID(short objectIdx) {
-	return [NSString stringWithFormat:@"[Object #%d]", objectIdx];
+float radians(float degrees) {
+	return degrees * 8.0 * atan(1.0) / 360.0;
 }
 
-simd_int3 objectWorldPosition(object_data *object) {
-	return simd_make_int3(object->location.x, object->location.y, object->location.z);
-}
-
-// Angle (in degrees) about the world-Z axis by which to rotate the object so it faces the player
-float objectRotation(object_data *object) {
-	return view->virtual_yaw * FixedAngleToDegrees;
-}
-
-MetalPolygon* GetObjectPolygon(short objectIdx, object_data *object) {
+MetalSprite* GetSprite(short objectIdx, object_data *object) {
 	shape_and_transfer_mode data;
 	get_object_shape_and_transfer_mode(&view->origin, object, &data);
 	if (data.collection_code == NONE) {
@@ -364,78 +355,50 @@ MetalPolygon* GetObjectPolygon(short objectIdx, object_data *object) {
 	auto TMgr = std::make_unique<TextureManager>();
 	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupSpriteTexture(TMgr.get(), object, data, shape_information));
 
-	simd_float3 surfaceNormal = simd_make_float3(1.0, 0.0, 0.0);
+	simd_int3 position = { object->location.x, object->location.y, object->location.z };
+
+	short spriteL = shape_information->world_left;
+	short spriteR = shape_information->world_right;
+	short spriteT = shape_information->world_top;
+	short spriteB = shape_information->world_bottom;
 	
-	float spriteL = shape_information->world_left;
-	float spriteR = shape_information->world_right;
-	float spriteT = shape_information->world_top;
-	float spriteB = shape_information->world_bottom;
+	simd_int2 size = { spriteR - spriteL, spriteT - spriteB };
 	
 	float texL = TMgr->V_Offset;
 	float texR = TMgr->V_Scale+TMgr->V_Offset;
 	float texT = TMgr->U_Offset;
 	float texB = TMgr->U_Scale+TMgr->U_Offset;
 	
-	WorldVertex vertices[] = {
-		{ simd_make_int3(0.0, spriteL, spriteB), simd_make_float2(texB, texL), surfaceNormal },
-		{ simd_make_int3(0.0, spriteL, spriteT), simd_make_float2(texT, texL), surfaceNormal },
-		{ simd_make_int3(0.0, spriteR, spriteT), simd_make_float2(texT, texR), surfaceNormal },
-		{ simd_make_int3(0.0, spriteR, spriteB), simd_make_float2(texB, texR), surfaceNormal },
+	simd_float4x2 uv = {
+		(simd_float2){ texB, texL },
+		(simd_float2){ texT, texL },
+		(simd_float2){ texT, texR },
+		(simd_float2){ texB, texR },
 	};
 	
-	MetalPolygon *polygon = [[MetalPolygon alloc] initWithVertices:vertices
-													   vertexCount:4
-														 textureID:textureID
-														  emission:emissionForTextureID(textureID)];
-	
-	return polygon;
-}
-
-void AddObject(short objectIdx, object_data *object) {
-	MetalPolygon *polygon = GetObjectPolygon(objectIdx, object);
-	if (!polygon) return;
-
-	MetalDynamicObject *dynamicObject = [[MetalDynamicObject alloc] initWithID:objectID(objectIdx)
-																	  polygons:@[polygon]
-																 worldPosition:objectWorldPosition(object)
-																	  rotation:objectRotation(object)];
-	
-	if (@available(macOS 26.0, *)) {
-		[renderer addDynamicObject:dynamicObject];
-	}
+	return [[MetalSprite alloc] initWithIndex:objectIdx textureID:textureID uv:uv size:size position:position];
 }
 
 void UpdateObject(short objectIdx, object_data *object) {
-	MetalPolygon *polygon = GetObjectPolygon(objectIdx, object);
-	if (!polygon) return;
+	MetalSprite *sprite = GetSprite(objectIdx, object);
+	if (!sprite) return;
 
 	if (@available(macOS 26.0, *)) {
-		[renderer updateDynamicObjectWithID:objectID(objectIdx)
-								   polygons:@[polygon]
-							  worldPosition:objectWorldPosition(object)
-								   rotation:objectRotation(object)];
+		[renderer updateSprite:sprite];
 	}
 }
 
-void LoadAllData() {
+void LoadStaticGeometry() {
 	for (short polyIdx = 0; polyIdx < dynamic_world->polygon_count; polyIdx++) {
 		polygon_data *polygon = get_polygon_data(polyIdx);
 		
 		AddFloorOrCeiling(polygon, true);
 		AddFloorOrCeiling(polygon, false);
 		AddWalls(polygon);
-		
-		short objectIdx = polygon->first_object;
-		
-		while (objectIdx != NONE) {
-			object_data *object = get_object_data(objectIdx);
-			AddObject(objectIdx, object);
-			objectIdx = object->next_object;
-		}
 	}
 }
 
-void UpdateDynamicData() {
+void UpdateDynamicGeometry() {
 	for (short polyIdx = 0; polyIdx < dynamic_world->polygon_count; polyIdx++) {
 		polygon_data *polygon = get_polygon_data(polyIdx);
 		short objectIdx = polygon->first_object;
@@ -448,21 +411,21 @@ void UpdateDynamicData() {
 	}
 }
 
-void LoadWorld() {
-	if (lastLoadedLevelNumber == dynamic_world->current_level_number) return;
-	
-	logWarning("Loading level number %d", dynamic_world->current_level_number);
-	
-	[renderer clearGeometry];
-	LoadAllData();
-	[renderer commitGeometry];
-	
-	lastLoadedLevelNumber = dynamic_world->current_level_number;
-}
-
 void UpdateWorld() {
-	LoadWorld();
-	UpdateDynamicData();
+	if (lastLoadedLevelNumber != dynamic_world->current_level_number) {
+		logWarning("Loading level number %d", dynamic_world->current_level_number);
+
+		[renderer startUpdatingAllGeometry];
+		LoadStaticGeometry();
+		UpdateDynamicGeometry();
+		[renderer finishUpdatingAllGeometry];
+
+		lastLoadedLevelNumber = dynamic_world->current_level_number;
+	} else {
+		[renderer startUpdatingDynamicGeometry];
+		UpdateDynamicGeometry();
+		[renderer finishUpdatingDynamicGeometry];
+	}
 }
 
 /*
