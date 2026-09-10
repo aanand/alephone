@@ -79,7 +79,6 @@ typedef struct {
 typedef struct {
 	vector_int3 position;
 	vector_float2 textureCoordinate;
-	vector_float3 surfaceNormal;
 } WorldVertex;
 
 typedef struct {

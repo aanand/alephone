@@ -34,11 +34,13 @@
 @property (nonatomic, readonly) NSUInteger vertexCount;
 @property (nonatomic, readonly) NSString* textureID;
 @property (nonatomic, readonly) simd_float3 emission;
+@property (nonatomic, readonly) simd_float3 normal;
 
 - (MetalPolygon*) initWithVertices:(WorldVertex *)vertices
 					   vertexCount:(NSUInteger)vertexCount
 						 textureID:(NSString*)textureID
-						  emission:(simd_float3)emission;
+						  emission:(simd_float3)emission
+						  normal:(simd_float3)normal;
 
 @end
 

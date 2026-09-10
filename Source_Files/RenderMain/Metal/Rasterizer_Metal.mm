@@ -242,17 +242,18 @@ void AddWall(polygon_data *polygon, line_data *line, short vertexIdx,
 	simd_float2 uv3 = simd_make_float2((tOffset - bottom) / (float) div, (x0               ) / (float) div);
 	
 	WorldVertex vertices[4] = {
-		{ p0, uv0, normal },
-		{ p1, uv1, normal },
-		{ p2, uv2, normal },
-		{ p3, uv3, normal },
+		{ p0, uv0 },
+		{ p1, uv1 },
+		{ p2, uv2 },
+		{ p3, uv3 },
 	};
 	
 	if (@available(macOS 26.0, *)) {
 		[renderer addStaticPolygon:[[MetalPolygon alloc] initWithVertices:vertices
 															  vertexCount:4
 															 textureID:textureID
-															  emission:emissionForTextureID(textureID)]];
+															  emission:emissionForTextureID(textureID)
+																   normal:normal]];
 	}
 }
 
@@ -284,7 +285,6 @@ void AddFloorOrCeiling(polygon_data *polygon, bool ceil) {
 			simd_make_int3(position.x, position.y, height),
 			simd_make_float2((position.x + origin.x) / scale,
 							 (position.y + origin.y) / scale),
-			surfaceNormal,
 		};
 	}
 	
@@ -293,7 +293,8 @@ void AddFloorOrCeiling(polygon_data *polygon, bool ceil) {
 			[renderer addStaticPolygon:[[MetalPolygon alloc] initWithVertices:vertices.data()
 																  vertexCount:polygon->vertex_count
 																	textureID:textureID
-																	 emission:emissionForTextureID(textureID)]];
+																	 emission:emissionForTextureID(textureID)
+																	   normal:surfaceNormal]];
 		}
 	}
 }

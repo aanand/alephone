@@ -34,13 +34,19 @@
 
 @implementation MetalPolygon
 
-- (MetalPolygon*) initWithVertices:(WorldVertex *)vertices vertexCount:(NSUInteger)vertexCount textureID:(NSString *)textureID emission:(simd_float3)emission {
+- (MetalPolygon*) initWithVertices:(WorldVertex *)vertices
+					   vertexCount:(NSUInteger)vertexCount
+						 textureID:(NSString *)textureID
+						  emission:(simd_float3)emission
+							normal:(simd_float3)normal
+{
 	if (self = [super init]) {
 		_vertices = malloc(sizeof(WorldVertex) * vertexCount);
 		memcpy(_vertices, vertices, sizeof(WorldVertex) * vertexCount);
 		_vertexCount = vertexCount;
 		_textureID = textureID;
 		_emission = emission;
+		_normal = normal;
 	}
 	return self;
 }
@@ -78,12 +84,14 @@
 @property (nonatomic, readonly) WorldVertex v2;
 @property (nonatomic, readonly) NSString* textureID;
 @property (nonatomic, readonly) simd_float3 emission;
+@property (nonatomic, readonly) simd_float3 normal;
 
 - (Triangle *) initWithV0:(WorldVertex)v0
 					   v1:(WorldVertex)v1
 					   v2:(WorldVertex)v2
 				textureID:(NSString*)textureID
-				 emission:(simd_float3)emission;
+				 emission:(simd_float3)emission
+				   normal:(simd_float3)normal;
 
 @end
 
@@ -93,13 +101,16 @@
 					   v1:(WorldVertex)v1
 					   v2:(WorldVertex)v2
 				textureID:(NSString *)textureID
-				 emission:(simd_float3)emission{
+				 emission:(simd_float3)emission
+				   normal:(simd_float3)normal
+{
 	if (self = [super init]) {
 		_v0 = v0;
 		_v1 = v1;
 		_v2 = v2;
 		_textureID = textureID;
 		_emission = emission;
+		_normal = normal;
 	}
 	return self;
 }
@@ -133,7 +144,7 @@
 			vertices[i*3+1] = simd_make_float3(triangle.v1.position.x, triangle.v1.position.y, triangle.v1.position.z);
 			vertices[i*3+2] = simd_make_float3(triangle.v2.position.x, triangle.v2.position.y, triangle.v2.position.z);
 
-			primitiveData[i].surfaceNormal = triangle.v0.surfaceNormal;
+			primitiveData[i].surfaceNormal = triangle.normal;
 			primitiveData[i].emission = triangle.emission;
 		}
 	}
@@ -594,7 +605,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 													   v1:v1
 													   v2:v2
 												textureID:polygon.textureID
-												 emission:polygon.emission]];
+												 emission:polygon.emission
+												   normal:polygon.normal]];
 
 		assert(triangles.count < MAX_TRIANGLES);
 	}
@@ -920,16 +932,17 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 			simd_float3 surfaceNormal = { 0.0, 0.0, -1.0 };
 
 			WorldVertex vertices[] = {
-				(WorldVertex){ .position = { 0, -sprite.size.x/2,             0 }, .textureCoordinate = sprite.uv.columns[0], .surfaceNormal = surfaceNormal },
-				(WorldVertex){ .position = { 0, -sprite.size.x/2, sprite.size.y }, .textureCoordinate = sprite.uv.columns[1], .surfaceNormal = surfaceNormal },
-				(WorldVertex){ .position = { 0,  sprite.size.x/2, sprite.size.y }, .textureCoordinate = sprite.uv.columns[2], .surfaceNormal = surfaceNormal },
-				(WorldVertex){ .position = { 0,  sprite.size.x/2,             0 }, .textureCoordinate = sprite.uv.columns[3], .surfaceNormal = surfaceNormal },
+				(WorldVertex){ .position = { 0, -sprite.size.x/2,             0 }, .textureCoordinate = sprite.uv.columns[0] },
+				(WorldVertex){ .position = { 0, -sprite.size.x/2, sprite.size.y }, .textureCoordinate = sprite.uv.columns[1] },
+				(WorldVertex){ .position = { 0,  sprite.size.x/2, sprite.size.y }, .textureCoordinate = sprite.uv.columns[2] },
+				(WorldVertex){ .position = { 0,  sprite.size.x/2,             0 }, .textureCoordinate = sprite.uv.columns[3] },
 			};
 
 			MetalPolygon *spritePolygon = [[MetalPolygon alloc] initWithVertices:vertices
 																	 vertexCount:4
 																	   textureID:sprite.textureID
-																		emission:simd_make_float3(0.0, 0.0, 0.0)];
+																		emission:simd_make_float3(0.0, 0.0, 0.0)
+																		  normal:surfaceNormal];
 
 			[self addTrianglesForPolygon:spritePolygon
 								 toArray:triangles

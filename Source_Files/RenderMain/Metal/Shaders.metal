@@ -15,7 +15,6 @@ using namespace raytracing;
 struct RasterizerData {
 	float4 position [[position]];
 	float2 textureCoordinate;
-	float3 surfaceNormal;
 };
 
 // Reorient a world-space position to view-space.
@@ -45,7 +44,6 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 
 	out.position = result;
 	out.textureCoordinate = v.textureCoordinate;
-	out.surfaceNormal = float4(fromWorldSpace(v.surfaceNormal), 1.0).xyz;
 	
 	return out;
 }
