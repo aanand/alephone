@@ -82,13 +82,6 @@ typedef struct {
 	vector_float3 surfaceNormal;
 } WorldVertex;
 
-// A vertex in view- or clip-space: X = right, Y = up, Z = far
-typedef struct {
-	vector_float3 position;
-	vector_float2 textureCoordinate;
-	vector_float3 surfaceNormal;
-} Vertex;
-
 typedef struct {
 	vector_float3 surfaceNormal;
 	vector_float3 emission;
