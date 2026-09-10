@@ -46,8 +46,11 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 	if (self = [super init]) {
 		pipeline = p;
 		primitiveDataElementSize = pdes;
+		
+		_label = [NSString stringWithFormat:@"%@", self];
 
 		MTLResidencySetDescriptor *residencySetDescriptor = [MTLResidencySetDescriptor new];
+		residencySetDescriptor.label = [NSString stringWithFormat:@"[%@] residencySet", _label];
 		residencySet = [pipeline.device newResidencySetWithDescriptor:residencySetDescriptor error:error];
 		if (!residencySet) {
 			return nil;
@@ -85,11 +88,11 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 	
 	PASVertexBuffer = [pipeline.device newBufferWithLength:verticesElementSize * numTriangles
 												   options:MTLResourceStorageModeShared];
-	PASVertexBuffer.label = @"staticPASVertexBuffer";
+	PASVertexBuffer.label = [NSString stringWithFormat:@"[%@] PASVertexBuffer", _label];
 	
 	PASPrimitiveDataBuffer = [pipeline.device newBufferWithLength:primitiveDataElementSize * numTriangles
 														  options:MTLResourceStorageModeShared];
-	PASPrimitiveDataBuffer.label = @"staticPASPrimitiveDataBuffer";
+	PASVertexBuffer.label = [NSString stringWithFormat:@"[%@] PASPrimitiveDataBuffer", _label];
 
 	NSUInteger triangleIndex = 0;
 	for (id<ASTrianglePrimitive> primitive in primitives) {
@@ -128,7 +131,7 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 		primitiveASDescriptor.geometryDescriptors = @[ geometryDescriptor ];
 		
 		id<MTLAccelerationStructure> primitiveAS = [pipeline.device newAccelerationStructureWithDescriptor:primitiveASDescriptor];
-		primitiveAS.label = [NSString stringWithFormat:@"Primitive %d of %lu (%lu triangles)", i, (unsigned long)primitives.count, trianglesInPrimitive];
+		primitiveAS.label = [NSString stringWithFormat:@"[%@] PAS %d of %lu (%lu triangles)", _label, i+1, primitives.count, trianglesInPrimitive];
 		
 		[PASes addObject:primitiveAS];
 		[PASDescriptors addObject:primitiveASDescriptor];
@@ -154,13 +157,14 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 	IASInstanceBuffer = [pipeline.device newBufferWithBytes:&instanceDescriptors
 												  length:sizeof(MTLIndirectAccelerationStructureInstanceDescriptor) * instances.count
 												 options:MTLResourceStorageModeShared];
-	IASInstanceBuffer.label = @"staticIASInstanceBuffer";
-	
+	IASInstanceBuffer.label = [NSString stringWithFormat:@"[%@] IASInstanceBuffer", _label];
+
 	IASDescriptor = [[MTL4InstanceAccelerationStructureDescriptor alloc] init];
 	IASDescriptor.instanceCount = instances.count;
 	IASDescriptor.instanceDescriptorBuffer = MTL4BufferRangeMake(IASInstanceBuffer.gpuAddress, IASInstanceBuffer.length);
 	
 	IAS = [pipeline.device newAccelerationStructureWithDescriptor:IASDescriptor];
+	IAS.label = [NSString stringWithFormat:@"[%@] IAS", _label];
 }
 
 - (void) commitGeometry
@@ -185,8 +189,8 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 	if (PASVertexBuffer) [residencySet removeAllocation:PASVertexBuffer];
 	if (PASPrimitiveDataBuffer) [residencySet removeAllocation:PASPrimitiveDataBuffer];
 	if (IASInstanceBuffer) [residencySet removeAllocation:IASInstanceBuffer];
-	for (id<MTLAllocation> staticPAS in PASes) {
-		[residencySet removeAllocation:staticPAS];
+	for (id<MTLAllocation> PAS in PASes) {
+		[residencySet removeAllocation:PAS];
 	}
 	if (IAS) [residencySet removeAllocation:IAS];
 	

@@ -29,6 +29,8 @@
 		primitiveDataElementSize:(NSUInteger)primitiveDataElementSize
 						   error:(NSError**)error;
 
+@property (nonatomic, strong) NSString *label;
+
 /**
  clearGeometry MUST be called before the first commitGeometry
  */

@@ -337,6 +337,8 @@ API_AVAILABLE(macos(26.0))
 		NSLog(@"%@", error);
 		return nil;
 	}
+	staticIASManager.label = @"staticIASManager";
+
 	dynamicIASManager = [[IASManager alloc] initWithPipeline:pipeline
 									primitiveDataElementSize:sizeof(TriangleRayTracingData)
 													   error:&error];
@@ -344,6 +346,7 @@ API_AVAILABLE(macos(26.0))
 		NSLog(@"%@", error);
 		return nil;
 	}
+	dynamicIASManager.label = @"dynamicIASManager";
 	
 	[initialRenderResidencySet commit];
 	[rayTracingResidencySet commit];
@@ -720,7 +723,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[self writeSpritesToDynamicIAS];
 	[self initializeTopLevelIAS];
 	
-	[self buildAccelerationStructureWithChangesTo:@[staticIASManager, dynamicIASManager]];
+	[self buildAccelerationStructureWithChangesTo:@[staticIASManager, dynamicIASManager]
+											label:@"Full IAS build"];
 }
 
 - (void) startUpdatingDynamicGeometry {
@@ -732,10 +736,11 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 - (void) finishUpdatingDynamicGeometry {
 	[self writeSpritesToDynamicIAS];
 	[self initializeTopLevelIAS];
-	[self buildAccelerationStructureWithChangesTo:@[dynamicIASManager]];
+	[self buildAccelerationStructureWithChangesTo:@[dynamicIASManager]
+											label:[NSString stringWithFormat:@"Dynamic IAS build (frame #%llu)", frameNumber]];
 }
 
-- (void) buildAccelerationStructureWithChangesTo:(NSArray<IASManager*>*)iasManagers {
+- (void) buildAccelerationStructureWithChangesTo:(NSArray<IASManager*>*)iasManagers label:(NSString*)label {
 	// Calculate largest scratch size needed
 	NSMutableArray<MTL4AccelerationStructureDescriptor*> *allDescriptors = [NSMutableArray array];
 	[allDescriptors addObject:topLevelIASDescriptor];
@@ -757,7 +762,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	
 	id<MTL4CommandBuffer> commandBuffer = pipeline.commandBuffer;
 	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
-	commandBuffer.label = [NSString stringWithFormat:@"Build %lu acceleration structures", iasManagers.count];
+	commandBuffer.label = label;
 
 	id<MTL4ComputeCommandEncoder> encoder = [pipeline.commandBuffer computeCommandEncoder];
 	encoder.label = @"Build acceleration structures";
@@ -845,7 +850,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 	id<MTL4CommandBuffer> commandBuffer = pipeline.commandBuffer;
 	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
-	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu", frameNumber];
+	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu (render)", frameNumber];
 	
 	id<MTLFence> initialPassFence = [pipeline.device newFence];
 	id<MTLFence> computePassFence = [pipeline.device newFence];
