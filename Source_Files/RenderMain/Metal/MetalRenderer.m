@@ -280,7 +280,7 @@ API_AVAILABLE(macos(26.0))
 	id<MTLBuffer> triangleBuffer;
 	id<MTLBuffer> uniformsBuffer;
 
-	NSMutableArray<MetalPolygon*> *staticPolygons;
+	NSMutableArray<Triangle*> *staticTriangles;
 	NSMutableDictionary<NSNumber*, MetalSprite*> *sprites;
 	NSMutableDictionary<NSString *, id<MTLTexture>> *textures;
 
@@ -613,7 +613,10 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 - (void)addStaticPolygon:(MetalPolygon *)polygon {
-	[staticPolygons addObject:polygon];
+	[self addTrianglesForPolygon:polygon
+						 toArray:staticTriangles
+					  withOrigin:simd_make_int3(0, 0, 0)
+						rotation:0.0];
 }
 
 - (void) updateSprite:(MetalSprite *)sprite {
@@ -624,14 +627,6 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	// TODO: make a primitive for each floor+ceiling, translated to the appropriate height
 	// TODO: make a single vertical quad primitive, translated/rotated/scaled per-wall
 	// (or don't, if this is good/fast enough)
-
-	NSMutableArray *staticTriangles = [NSMutableArray array];
-	for (MetalPolygon *polygon in staticPolygons) {
-		[self addTrianglesForPolygon:polygon
-							 toArray:staticTriangles
-						  withOrigin:simd_make_int3(0, 0, 0)
-							rotation:0.0];
-	}
 
 	NSUInteger numTriangles = staticTriangles.count;
 	NSUInteger trianglesPerBatch = 100;
@@ -722,7 +717,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 - (void) startUpdatingAllGeometry {
-	staticPolygons = [NSMutableArray array];
+	staticTriangles = [NSMutableArray array];
 	sprites = [NSMutableDictionary dictionary];
 
 	[staticIASManager clearGeometry];
@@ -919,14 +914,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	NSUInteger offset = 0;
 
 	@autoreleasepool {
-		// FIXME: this should be built once in commitGeometry, not per-frame
-		NSMutableArray *triangles = [NSMutableArray array];
-		for (MetalPolygon *polygon in staticPolygons) {
-			[self addTrianglesForPolygon:polygon
-								 toArray:triangles
-							  withOrigin:simd_make_int3(0, 0, 0)
-								rotation:0.0];
-		}
+		NSMutableArray *triangles = [NSMutableArray arrayWithArray:staticTriangles];
 
 		for (MetalSprite *sprite in [sprites allValues]) {
 			simd_float3 surfaceNormal = { 0.0, 0.0, -1.0 };
