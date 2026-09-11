@@ -280,15 +280,16 @@ API_AVAILABLE(macos(26.0))
 	id<MTLBuffer> triangleBuffer;
 	id<MTLBuffer> uniformsBuffer;
 
-	NSMutableArray<Triangle*> *staticTriangles;
-	NSMutableDictionary<NSNumber*, MetalSprite*> *sprites;
 	NSMutableDictionary<NSString *, id<MTLTexture>> *textures;
 
 	// Static geometry (walls, floors, ceilings)
 	IASManager *staticIASManager;
+	NSMutableArray<Triangle*> *staticTriangles;
 
 	// Dynamic geometry (sprites, doors, platforms)
 	IASManager *dynamicIASManager;
+	SpriteQuad *spriteQuad;
+	NSMutableDictionary<NSNumber*, MetalSprite*> *sprites;
 
 	id<MTLBuffer> topLevelIASInstanceBuffer;
 	id<MTLAccelerationStructure> topLevelIAS;
@@ -645,14 +646,9 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 		};
 		[staticIASManager addInstanceOfPrimitive:batch withTransform:transform instanceID:0];
 	}
-	
-	[staticIASManager commitGeometry];
 }
 
 - (void) writeSpritesToDynamicIAS {
-	SpriteQuad *spriteQuad = [[SpriteQuad alloc] init];
-	[dynamicIASManager addPrimitive:spriteQuad];
-
 	float theta = radians(yaw);
 
 	for (MetalSprite *sprite in [sprites allValues]) {
@@ -672,8 +668,6 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 									withTransform:transform
 									   instanceID:(uint32_t)sprite.index];
 	}
-	
-	[dynamicIASManager commitGeometry];
 }
 
 - (void) initializeTopLevelIAS {
@@ -719,35 +713,51 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 - (void) startUpdatingAllGeometry {
 	staticTriangles = [NSMutableArray array];
 	sprites = [NSMutableDictionary dictionary];
+	if (!spriteQuad) {
+		// spriteQuad initializes exactly once and is reused across frames + level changes
+		spriteQuad = [[SpriteQuad alloc] init];
+	}
 
 	[staticIASManager clearGeometry];
 	[dynamicIASManager clearGeometry];
+	[dynamicIASManager addPrimitive:spriteQuad];
+
 	[self clearTopLevelIAS];
 }
 
 - (void) finishUpdatingAllGeometry {
 	[self writeStaticPolygonsToStaticIAS];
+	[staticIASManager commitGeometry];
+
 	[self writeSpritesToDynamicIAS];
+	[dynamicIASManager commitGeometry];
+
 	[self initializeTopLevelIAS];
 	
 	[self buildAccelerationStructureWithChangesTo:@[staticIASManager, dynamicIASManager]
+						  primitiveDataHasChanged:YES
 											label:@"Full IAS build"];
 }
 
 - (void) startUpdatingDynamicGeometry {
 	sprites = [NSMutableDictionary dictionary];
-	[dynamicIASManager clearGeometry];
+	[dynamicIASManager clearInstances];
 	[self clearTopLevelIAS];
 }
 
 - (void) finishUpdatingDynamicGeometry {
 	[self writeSpritesToDynamicIAS];
+	[dynamicIASManager commitInstances];
+
 	[self initializeTopLevelIAS];
 	[self buildAccelerationStructureWithChangesTo:@[dynamicIASManager]
+						  primitiveDataHasChanged:NO
 											label:[NSString stringWithFormat:@"Dynamic IAS build (frame #%llu)", frameNumber]];
 }
 
-- (void) buildAccelerationStructureWithChangesTo:(NSArray<IASManager*>*)iasManagers label:(NSString*)label {
+- (void) buildAccelerationStructureWithChangesTo:(NSArray<IASManager*>*)iasManagers
+						 primitiveDataHasChanged:(BOOL)primitiveDataHasChanged
+										   label:(NSString*)label {
 	// Calculate largest scratch size needed
 	NSMutableArray<MTL4AccelerationStructureDescriptor*> *allDescriptors = [NSMutableArray array];
 	[allDescriptors addObject:topLevelIASDescriptor];
@@ -766,6 +776,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	// Build everything
 	
 	id<MTLBuffer> scratchBuffer = [pipeline.device newBufferWithLength:scratchSize options:MTLResourceStorageModePrivate];
+	[rayTracingResidencySet addAllocation:scratchBuffer];
+	[rayTracingResidencySet commit];
 	
 	id<MTL4CommandBuffer> commandBuffer = pipeline.commandBuffer;
 	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
@@ -774,14 +786,16 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	id<MTL4ComputeCommandEncoder> encoder = [pipeline.commandBuffer computeCommandEncoder];
 	encoder.label = @"Build acceleration structures";
 	
-	for (IASManager *iasm in iasManagers) {
-		[iasm encodeBuildCommandsForPASes:encoder
-							scratchBuffer:MTL4BufferRangeMake(scratchBuffer.gpuAddress, scratchBuffer.length)];
+	if (primitiveDataHasChanged) {
+		for (IASManager *iasm in iasManagers) {
+			[iasm encodeBuildCommandsForPASes:encoder
+								scratchBuffer:MTL4BufferRangeMake(scratchBuffer.gpuAddress, scratchBuffer.length)];
+		}
+		
+		[encoder barrierAfterEncoderStages:MTLStageAccelerationStructure
+					   beforeEncoderStages:MTLStageAccelerationStructure
+						 visibilityOptions:MTL4VisibilityOptionDevice];
 	}
-	
-	[encoder barrierAfterEncoderStages:MTLStageAccelerationStructure
-				   beforeEncoderStages:MTLStageAccelerationStructure
-					 visibilityOptions:MTL4VisibilityOptionDevice];
 	
 	for (IASManager *iasm in iasManagers) {
 		[iasm encodeBuildCommandsForIAS:encoder
@@ -802,7 +816,16 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	uint64_t buildSignalValue = pipeline.sharedEvent.signaledValue + 1;
 	[pipeline.commandQueue commit:&commandBuffer count:1];
 	[pipeline.commandQueue signalEvent:pipeline.sharedEvent value:buildSignalValue];
-	[pipeline.sharedEvent waitUntilSignaledValue:buildSignalValue timeoutMS:5000];
+	bool didFinish = [pipeline.sharedEvent waitUntilSignaledValue:buildSignalValue timeoutMS:50];
+	
+	if (!didFinish) {
+		NSLog(@"Timed out waiting for AS build at frameNumber=%llu", frameNumber);
+	}
+	
+	[pipeline.commandAllocator reset];
+
+	[rayTracingResidencySet removeAllocation:scratchBuffer];
+	[rayTracingResidencySet commit];
 }
 
 - (bool) hasTextureWithID:(NSString*)textureID {
@@ -883,6 +906,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	
 	[pipeline.commandQueue signalEvent:pipeline.sharedEvent value:renderSignalValue];
 	[pipeline.sharedEvent waitUntilSignaledValue:renderSignalValue timeoutMS:5000];
+	[pipeline.commandAllocator reset];
 }
 
 - (void) encodeInitialRenderToOutputTexture:(id<MTLTexture>)outputTexture updatingFence:(id<MTLFence>)fence {

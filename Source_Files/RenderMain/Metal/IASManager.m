@@ -79,7 +79,7 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 	[instances addObject:instance];
 }
 
-- (void) copyDataToBuffers
+- (void) copyPrimitiveDataToBuffers
 {
 	NSUInteger numTriangles = 0;
 	for (id<ASTrianglePrimitive> primitive in primitives) {
@@ -169,7 +169,7 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 
 - (void) commitGeometry
 {
-	[self copyDataToBuffers];
+	[self copyPrimitiveDataToBuffers];
 	[self createPrimitiveAccelerationStructures];
 	[self createInstanceAccelerationStructure];
 		
@@ -181,28 +181,41 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 
 	[residencySet addAllocation:IASInstanceBuffer];
 	[residencySet addAllocation:IAS];
+	[residencySet commit];
+}
 
+- (void) commitInstances {
+	[self createInstanceAccelerationStructure];
+	[residencySet addAllocation:IASInstanceBuffer];
+	[residencySet addAllocation:IAS];
 	[residencySet commit];
 }
 
 - (void) clearGeometry {
 	if (PASVertexBuffer) [residencySet removeAllocation:PASVertexBuffer];
 	if (PASPrimitiveDataBuffer) [residencySet removeAllocation:PASPrimitiveDataBuffer];
-	if (IASInstanceBuffer) [residencySet removeAllocation:IASInstanceBuffer];
 	for (id<MTLAllocation> PAS in PASes) {
 		[residencySet removeAllocation:PAS];
 	}
-	if (IAS) [residencySet removeAllocation:IAS];
 	
 	PASVertexBuffer = nil;
 	PASPrimitiveDataBuffer = nil;
-	IASInstanceBuffer = nil;
 	PASes = [NSMutableArray array];
 	PASDescriptors = [NSMutableArray array];
-	IAS = nil;
-	IASDescriptor = nil;
 	
 	primitives = [NSMutableArray array];
+	
+	[self clearInstances];
+}
+
+- (void) clearInstances {
+	if (IASInstanceBuffer) [residencySet removeAllocation:IASInstanceBuffer];
+	if (IAS) [residencySet removeAllocation:IAS];
+
+	IASInstanceBuffer = nil;
+	IAS = nil;
+	IASDescriptor = nil;
+
 	instances = [NSMutableArray array];
 }
 

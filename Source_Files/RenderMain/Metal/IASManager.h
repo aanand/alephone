@@ -32,14 +32,29 @@
 @property (nonatomic, strong) NSString *label;
 
 /**
+ For rebuilding everything. Avoid calling per-frame.
  clearGeometry MUST be called before the first commitGeometry
  */
 - (void) clearGeometry;
+- (void) commitGeometry;
+
+/**
+ For rebuilding only the instances. Better for per-frame updates.
+ */
+- (void) clearInstances;
+- (void) commitInstances;
+
+/**
+ Must be called between clearGeometry and commitGeometry.
+ */
 - (void) addPrimitive:(id<ASTrianglePrimitive>)primitive;
+
+/**
+ Can be called either between clearGeometry/commitGeometry or clearInstances/commitInstances.
+ */
 - (void) addInstanceOfPrimitive:(id<ASTrianglePrimitive>)primitive
 				  withTransform:(MTLPackedFloat4x3)transform
 					 instanceID:(uint32_t)instanceID;
-- (void) commitGeometry;
 
 - (MTLResourceID) IASResourceID;
 - (NSArray<MTL4AccelerationStructureDescriptor*>*) allASDescriptors;
