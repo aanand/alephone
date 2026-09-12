@@ -19,6 +19,35 @@
 #include "IASManager.h"
 #include "MetalRenderer.h"
 
+@interface Triangle : NSObject
+
+@property (nonatomic, readonly) WorldVertex v0;
+@property (nonatomic, readonly) WorldVertex v1;
+@property (nonatomic, readonly) WorldVertex v2;
+@property (nonatomic, readonly) MetalSurface *surface;
+
+- (Triangle *) initWithV0:(WorldVertex)v0
+					   v1:(WorldVertex)v1
+					   v2:(WorldVertex)v2
+				  surface:(MetalSurface*)surface;
+
+@end
+
+@implementation Triangle
+
+-(Triangle *)initWithV0:(WorldVertex)v0 v1:(WorldVertex)v1 v2:(WorldVertex)v2 surface:(MetalSurface *)surface
+{
+	if (self = [super init]) {
+		_v0 = v0;
+		_v1 = v1;
+		_v2 = v2;
+		_surface = surface;
+	}
+	return self;
+}
+
+@end
+
 @implementation MetalImage
 
 - (MetalImage*) initWithWidth:(NSUInteger)width height:(NSUInteger)height pixels:(const uint32 *)pixels {
@@ -117,6 +146,24 @@
 	};
 }
 
+- (WorldVertex) getWorldVertexAtIndex:(NSUInteger)vertexIdx {
+	simd_int2 pos = _vertices[vertexIdx];
+	return (WorldVertex){
+		.position = simd_make_int3(pos.x, pos.y, _height),
+		.textureCoordinate = _uv[vertexIdx],
+	};
+}
+
+- (void) addTrianglesToArray:(NSMutableArray<Triangle*>*)triangles
+{
+	// Triangle fan: draw 0-1-2, 0-2-3, 0-3-4, etc
+	for (int j = 0; j < _vertexCount - 2; j++) {
+		[triangles addObject:[[Triangle alloc] initWithV0:[self getWorldVertexAtIndex:0]
+													   v1:[self getWorldVertexAtIndex:j+1]
+													   v2:[self getWorldVertexAtIndex:j+2]
+												  surface:_surface]];
+	}
+}
 @end
 
 @implementation MetalWall
@@ -185,35 +232,6 @@
 			{            x,             y,   z },
 		}
 	};
-}
-
-@end
-
-@interface Triangle : NSObject
-
-@property (nonatomic, readonly) WorldVertex v0;
-@property (nonatomic, readonly) WorldVertex v1;
-@property (nonatomic, readonly) WorldVertex v2;
-@property (nonatomic, readonly) MetalSurface *surface;
-
-- (Triangle *) initWithV0:(WorldVertex)v0
-					   v1:(WorldVertex)v1
-					   v2:(WorldVertex)v2
-				  surface:(MetalSurface*)surface;
-
-@end
-
-@implementation Triangle
-
--(Triangle *)initWithV0:(WorldVertex)v0 v1:(WorldVertex)v1 v2:(WorldVertex)v2 surface:(MetalSurface *)surface
-{
-	if (self = [super init]) {
-		_v0 = v0;
-		_v1 = v1;
-		_v2 = v2;
-		_surface = surface;
-	}
-	return self;
 }
 
 @end
@@ -684,51 +702,9 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	return simd_make_int3(transformed.x, transformed.y, transformed.z);
 }
 
-WorldVertex getWorldVertex(MetalPolygon *polygon, NSUInteger vertexIdx) {
-	simd_int2 pos = polygon.vertices[vertexIdx];
-	return (WorldVertex){
-		.position = simd_make_int3(pos.x, pos.y, polygon.height),
-		.textureCoordinate = polygon.uv[vertexIdx],
-	};
-}
-
-- (void) addTrianglesForPolygon:(MetalPolygon *)polygon
-						toArray:(NSMutableArray<Triangle*>*)triangles
-					 withOrigin:(simd_int3)origin
-					   rotation:(float)rotation
-{
-	assert(polygon.vertexCount > 2);
-	
-	simd_float4x4 rotationMat = rotationMatrix(rotation, simd_make_float3(0.0, 0.0, 1.0));
-	
-	// Triangle fan: draw 0-1-2, 0-2-3, 0-3-4, etc
-	for (int j = 0; j < polygon.vertexCount - 2; j++) {
-		WorldVertex v0 = getWorldVertex(polygon, 0);
-		WorldVertex v1 = getWorldVertex(polygon, j+1);
-		WorldVertex v2 = getWorldVertex(polygon, j+2);
-		
-		v0.position = transform(v0.position, rotationMat);
-		v1.position = transform(v1.position, rotationMat);
-		v2.position = transform(v2.position, rotationMat);
-
-		v0.position += origin;
-		v1.position += origin;
-		v2.position += origin;
-
-		[triangles addObject:[[Triangle alloc] initWithV0:v0
-													   v1:v1
-													   v2:v2
-												  surface:polygon.surface]];
-
-		assert(triangles.count < MAX_TRIANGLES);
-	}
-}
-
 - (void)addStaticPolygon:(MetalPolygon *)polygon {
-	[self addTrianglesForPolygon:polygon
-						 toArray:staticTriangles
-					  withOrigin:simd_make_int3(0, 0, 0)
-						rotation:0.0];
+	[polygon addTrianglesToArray:staticTriangles];
+	assert(staticTriangles.count < MAX_TRIANGLES);
 }
 
 - (void)addStaticWall:(MetalWall *)wall {
