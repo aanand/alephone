@@ -219,15 +219,13 @@ void AddWall(polygon_data *polygon, line_data *line, short vertexIdx,
 	endpoint_data *ep0 = get_endpoint_data(polygon->endpoint_indexes[vertexIdx]);
 	endpoint_data *ep1 = get_endpoint_data(polygon->endpoint_indexes[(vertexIdx+1) % polygon->vertex_count]);
 	
+	simd_int2 v0 = { ep0->vertex.x, ep0->vertex.y };
+	simd_int2 v1 = { ep1->vertex.x, ep1->vertex.y };
+	
 	simd_float2 d = simd_make_float2(ep1->vertex.x - ep0->vertex.x, ep1->vertex.y - ep0->vertex.y);
 	simd_float3 normal = simd_normalize(simd_make_float3(-d.y, d.x, 0.0));
 
 	if (top <= bottom || texDef.texture == UNONE) return;
-	
-	simd_int3 p0 = simd_make_int3(ep0->vertex.x, ep0->vertex.y, top);
-	simd_int3 p1 = simd_make_int3(ep1->vertex.x, ep1->vertex.y, top);
-	simd_int3 p2 = simd_make_int3(ep1->vertex.x, ep1->vertex.y, bottom);
-	simd_int3 p3 = simd_make_int3(ep0->vertex.x, ep0->vertex.y, bottom);
 	
 	auto TMgr = std::make_unique<TextureManager>();
 	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupPolygonTexture(TMgr.get(), texDef.texture));
@@ -236,25 +234,25 @@ void AddWall(polygon_data *polygon, line_data *line, short vertexIdx,
 	world_distance y0 = texDef.y0 % div;
 	float tOffset = polygon->ceiling_height + y0;
 	
-	simd_float2 uv0 = simd_make_float2((tOffset - top   ) / (float) div, (x0               ) / (float) div);
-	simd_float2 uv1 = simd_make_float2((tOffset - top   ) / (float) div, (x0 + line->length) / (float) div);
-	simd_float2 uv2 = simd_make_float2((tOffset - bottom) / (float) div, (x0 + line->length) / (float) div);
-	simd_float2 uv3 = simd_make_float2((tOffset - bottom) / (float) div, (x0               ) / (float) div);
-	
-	WorldVertex vertices[4] = {
-		{ p0, uv0 },
-		{ p1, uv1 },
-		{ p2, uv2 },
-		{ p3, uv3 },
+	simd_float4x2 uv = {
+		(simd_float2){ (tOffset - top   ) / (float) div, (x0               ) / (float) div },
+		(simd_float2){ (tOffset - top   ) / (float) div, (x0 + line->length) / (float) div },
+		(simd_float2){ (tOffset - bottom) / (float) div, (x0 + line->length) / (float) div },
+		(simd_float2){ (tOffset - bottom) / (float) div, (x0               ) / (float) div },
 	};
 	
-	if (@available(macOS 26.0, *)) {
-		[renderer addStaticPolygon:[[MetalPolygon alloc] initWithVertices:vertices
-															  vertexCount:4
-															 textureID:textureID
-															  emission:emissionForTextureID(textureID)
-																   normal:normal]];
-	}
+	MetalSurface *surface = [[MetalSurface alloc] initWithTextureID:textureID
+														   emission:emissionForTextureID(textureID)
+															 normal:normal];
+
+	MetalWall *wall = [[MetalWall alloc] initWithV0:v0
+												 v1:v1
+											 bottom:bottom
+												top:top
+												 uv:uv
+											surface:surface];
+	
+	[renderer addStaticWall:wall];
 }
 
 void AddFloorOrCeiling(polygon_data *polygon, bool ceil) {
@@ -268,35 +266,33 @@ void AddFloorOrCeiling(polygon_data *polygon, bool ceil) {
 		return;
 	}
 
-	simd_float3 surfaceNormal = simd_make_float3(0.0, 0.0, ceil ? -1.0 : 1.0);
+	simd_float3 normal = simd_make_float3(0.0, 0.0, ceil ? -1.0 : 1.0);
 
 	auto TMgr = std::make_unique<TextureManager>();
 	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupPolygonTexture(TMgr.get(), shape));
 	
 	float scale = (float) GetTextureScale(transfer_mode, TMgr.get());
 	
-	auto vertices = std::vector<WorldVertex>(polygon->vertex_count);
+	auto vertices = std::vector<simd_int2>(polygon->vertex_count);
+	auto uv = std::vector<simd_float2>(polygon->vertex_count);
 	
 	// Pulled out of RenderRasterize_Shader::render_node_floor_or_ceiling()
 	for (int i = 0; i < polygon->vertex_count; i++) {
 		world_point2d position = get_endpoint_data(polygon->endpoint_indexes[ceil ? (polygon->vertex_count - 1 - i) : i])->vertex;
-		
-		vertices[i] = {
-			simd_make_int3(position.x, position.y, height),
-			simd_make_float2((position.x + origin.x) / scale,
-							 (position.y + origin.y) / scale),
-		};
+		vertices[i] = { position.x, position.y };
+		uv[i] = { (position.x + origin.x) / scale, (position.y + origin.y) / scale };
 	}
 	
-	if (@available(macOS 26.0, *)) {
-		if (renderer) {
-			[renderer addStaticPolygon:[[MetalPolygon alloc] initWithVertices:vertices.data()
-																  vertexCount:polygon->vertex_count
-																	textureID:textureID
-																	 emission:emissionForTextureID(textureID)
-																	   normal:surfaceNormal]];
-		}
-	}
+	MetalSurface *surface = [[MetalSurface alloc] initWithTextureID:textureID
+														   emission:emissionForTextureID(textureID)
+															 normal:normal];
+	MetalPolygon *mPolygon = [[MetalPolygon alloc] initWithVertexCount:polygon->vertex_count
+															  vertices:vertices.data()
+																	uv:uv.data()
+																height:height
+															   surface:surface];
+	
+	[renderer addStaticPolygon:mPolygon];
 }
 
 void AddWalls(polygon_data *polygon) {
@@ -377,7 +373,16 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 		(simd_float2){ texB, texR },
 	};
 	
-	return [[MetalSprite alloc] initWithIndex:objectIdx textureID:textureID uv:uv size:size position:position];
+	simd_float3 normal = simd_normalize(simd_make_float3(view->origin.x, view->origin.y, 0.0) - position);
+	MetalSurface *surface = [[MetalSurface alloc] initWithTextureID:textureID
+														   emission:emissionForTextureID(textureID)
+															 normal:normal];
+	
+	return [[MetalSprite alloc] initWithIndex:objectIdx
+										   uv:uv
+										 size:size
+									 position:position
+									  surface:surface];
 }
 
 void UpdateObject(short objectIdx, object_data *object) {
