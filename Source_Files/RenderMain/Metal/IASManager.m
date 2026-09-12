@@ -65,7 +65,7 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 }
 
 - (void) addInstanceOfPrimitive:(id<ASTrianglePrimitive>)primitive
-				  withTransform:(MTLPackedFloat4x3)transform
+				  withTransform:(simd_float4x3)transform
 					 instanceID:(uint32_t)instanceID
 {
 	NSUInteger primitiveIdx = [primitives indexOfObject:primitive];
@@ -73,7 +73,14 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 	
 	Instance *instance = [[Instance alloc] init];
 	instance.primitiveIdx = primitiveIdx;
-	instance.transform = transform;
+	instance.transform = (MTLPackedFloat4x3){
+		.columns = {
+			MTLPackedFloat3Make(transform.columns[0][0], transform.columns[0][1], transform.columns[0][2]),
+			MTLPackedFloat3Make(transform.columns[1][0], transform.columns[1][1], transform.columns[1][2]),
+			MTLPackedFloat3Make(transform.columns[2][0], transform.columns[2][1], transform.columns[2][2]),
+			MTLPackedFloat3Make(transform.columns[3][0], transform.columns[3][1], transform.columns[3][2]),
+		}
+	};
 	instance.instanceID = instanceID;
 	
 	[instances addObject:instance];

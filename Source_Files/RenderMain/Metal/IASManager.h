@@ -11,17 +11,7 @@
 #import <Foundation/NSObject.h>
 #import <MetalKit/MetalKit.h>
 #import "MetalPipeline.h"
-
-/**
- A protocol for exporting data from some game object to a Primitive Acceleration Structure
- */
-@protocol ASTrianglePrimitive <NSObject>
-
-- (NSUInteger) numTriangles;
-- (simd_float3*) vertices;
-- (void*) primitiveData;
-
-@end
+#import "MetalTypes.h"
 
 @interface IASManager : NSObject
 
@@ -53,7 +43,7 @@
  Can be called either between clearGeometry/commitGeometry or clearInstances/commitInstances.
  */
 - (void) addInstanceOfPrimitive:(id<ASTrianglePrimitive>)primitive
-				  withTransform:(MTLPackedFloat4x3)transform
+				  withTransform:(simd_float4x3)transform
 					 instanceID:(uint32_t)instanceID;
 
 - (MTLResourceID) IASResourceID;
