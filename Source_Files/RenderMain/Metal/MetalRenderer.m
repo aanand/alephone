@@ -412,6 +412,7 @@ API_AVAILABLE(macos(26.0))
 
 	// Dynamic geometry (sprites, doors, platforms)
 	IASManager *dynamicIASManager;
+	NSMutableDictionary<NSNumber*, id<ASTrianglePrimitive>> *dynamicPolygonPrimitives;
 	NSMutableDictionary<NSNumber*, MetalSprite*> *sprites;
 
 	id<MTLBuffer> topLevelIASInstanceBuffer;
@@ -702,6 +703,22 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	return simd_make_int3(transformed.x, transformed.y, transformed.z);
 }
 
+- (void)addPolygon:(MetalPolygon *)polygon withID:(int)ID dynamic:(BOOL)isDynamic {
+	if (isDynamic) {
+		[self addDynamicPolygon:polygon withID:ID];
+	} else {
+		[self addStaticPolygon:polygon];
+	}
+}
+
+- (void)addWall:(MetalWall *)wall dynamic:(BOOL)isDynamic {
+	if (isDynamic) {
+		[self addDynamicWall:wall];
+	} else {
+		[self addStaticWall:wall];
+	}
+}
+
 - (void)addStaticPolygon:(MetalPolygon *)polygon {
 	[polygon addTrianglesToArray:staticTriangles];
 	assert(staticTriangles.count < MAX_TRIANGLES);
@@ -732,20 +749,24 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[staticTriangles addObject:t1];
 }
 
-//- (void)addStaticPolygon:(MetalPolygon *)polygon {
-//	// TODO: add the primitive once, instance it for floor + ceiling
-//	id<ASTrianglePrimitive> primitive = polygon.primitive;
-//	[staticIASManager addPrimitive:primitive];
-//	[staticIASManager addInstanceOfPrimitive:primitive
-//							   withTransform:polygon.instanceTransform
-//								  instanceID:0];
-//}
-//
-//- (void)addStaticWall:(MetalWall *)wall {
-//	[staticIASManager addInstanceOfPrimitive:verticalQuadPrimitive
-//							   withTransform:wall.instanceTransform
-//								  instanceID:0];
-//}
+- (void)addDynamicPolygon:(MetalPolygon *)polygon withID:(int)ID {
+	id<ASTrianglePrimitive> primitive = [dynamicPolygonPrimitives objectForKey:[NSNumber numberWithInt:ID]];
+	if (primitive == nil) {
+		primitive = polygon.primitive;
+		[dynamicIASManager addPrimitive:primitive];
+		[dynamicPolygonPrimitives setObject:primitive forKey:[NSNumber numberWithInt:ID]];
+	}
+
+	[dynamicIASManager addInstanceOfPrimitive:primitive
+								withTransform:polygon.instanceTransform
+								   instanceID:0];
+}
+
+- (void)addDynamicWall:(MetalWall *)wall {
+	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
+								withTransform:wall.instanceTransform
+								   instanceID:0];
+}
 
 - (void) updateSprite:(MetalSprite *)sprite {
 	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
@@ -819,6 +840,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 - (void) startUpdatingAllGeometry {
 	staticTriangles = [NSMutableArray array];
+	dynamicPolygonPrimitives = [NSMutableDictionary dictionary];
 	sprites = [NSMutableDictionary dictionary];
 	if (!verticalQuadPrimitive) {
 		// spriteQuad initializes exactly once and is reused across frames + level changes

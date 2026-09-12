@@ -124,8 +124,8 @@ API_AVAILABLE(macos(26.0))
 - (void) startUpdatingDynamicGeometry;
 - (void) finishUpdatingDynamicGeometry;
 
-- (void) addStaticPolygon:(MetalPolygon*)polygon;
-- (void) addStaticWall:(MetalWall*)wall;
+- (void) addPolygon:(MetalPolygon*)polygon withID:(int)ID dynamic:(BOOL)isDynamic;
+- (void) addWall:(MetalWall*)wall dynamic:(BOOL)isDynamic;
 - (void) updateSprite:(MetalSprite*)sprite;
 
 /**

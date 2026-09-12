@@ -209,7 +209,7 @@ simd_float3 emissionForTextureID(NSString *textureID) {
 void AddWall(polygon_data *polygon, line_data *line, short vertexIdx,
 					world_distance bottom, world_distance top,
 					side_texture_definition texDef,
-					short transferMode)
+					short transferMode, bool isDynamic)
 {
 	if (transferMode == _xfer_landscape) {
 		// Skip adding landscapes for now so the sun can get in
@@ -252,22 +252,28 @@ void AddWall(polygon_data *polygon, line_data *line, short vertexIdx,
 												 uv:uv
 											surface:surface];
 	
-	[renderer addStaticWall:wall];
+	[renderer addWall:wall dynamic:isDynamic];
 }
 
-void AddFloorOrCeiling(polygon_data *polygon, bool ceil) {
-	shape_descriptor shape         = ceil ? polygon->ceiling_texture       : polygon->floor_texture;
-	world_point2d    origin        = ceil ? polygon->ceiling_origin        : polygon->floor_origin;
-	world_distance   height        = ceil ? polygon->ceiling_height        : polygon->floor_height;
-	int16            transfer_mode = ceil ? polygon->ceiling_transfer_mode : polygon->floor_transfer_mode;
-
+// For floors and ceilings, static vs. dynamic is simple: if it's a platform, it's dynamic
+void AddFloorOrCeiling(short polygonIdx, polygon_data *polygon, bool isCeiling, bool isDynamicPass) {
+	bool isPlatform = polygon->type == _polygon_is_platform;
+	if (isPlatform != isDynamicPass) {
+		return;
+	}
+	
+	shape_descriptor shape         = isCeiling ? polygon->ceiling_texture       : polygon->floor_texture;
+	world_point2d    origin        = isCeiling ? polygon->ceiling_origin        : polygon->floor_origin;
+	world_distance   height        = isCeiling ? polygon->ceiling_height        : polygon->floor_height;
+	int16            transfer_mode = isCeiling ? polygon->ceiling_transfer_mode : polygon->floor_transfer_mode;
+	
 	if (transfer_mode == _xfer_landscape) {
 		// Skip adding landscapes for now so the sun can get in
 		return;
 	}
-
-	simd_float3 normal = simd_make_float3(0.0, 0.0, ceil ? -1.0 : 1.0);
-
+	
+	simd_float3 surfaceNormal = simd_make_float3(0.0, 0.0, isCeiling ? -1.0 : 1.0);
+	
 	auto TMgr = std::make_unique<TextureManager>();
 	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupPolygonTexture(TMgr.get(), shape));
 	
@@ -278,7 +284,7 @@ void AddFloorOrCeiling(polygon_data *polygon, bool ceil) {
 	
 	// Pulled out of RenderRasterize_Shader::render_node_floor_or_ceiling()
 	for (int i = 0; i < polygon->vertex_count; i++) {
-		world_point2d position = get_endpoint_data(polygon->endpoint_indexes[ceil ? (polygon->vertex_count - 1 - i) : i])->vertex;
+		world_point2d position = get_endpoint_data(polygon->endpoint_indexes[isCeiling ? (polygon->vertex_count - 1 - i) : i])->vertex;
 		vertices[i] = { position.x, position.y };
 		uv[i] = { (position.x + origin.x) / scale, (position.y + origin.y) / scale };
 	}
@@ -292,14 +298,30 @@ void AddFloorOrCeiling(polygon_data *polygon, bool ceil) {
 																height:height
 															   surface:surface];
 	
-	[renderer addStaticPolygon:mPolygon];
+	[renderer addPolygon:mPolygon withID:polygonIdx dynamic:isDynamicPass];
 }
 
-void AddWalls(polygon_data *polygon) {
+void AddFloor(short polygonIdx, polygon_data *polygon, bool isDynamicPass) {
+	AddFloorOrCeiling(polygonIdx, polygon, false, isDynamicPass);
+}
+
+void AddCeiling(short polygonIdx, polygon_data *polygon, bool isDynamicPass) {
+	AddFloorOrCeiling(polygonIdx, polygon, true, isDynamicPass);
+}
+
+// A wall is dynamic if it belongs to a platform polygon OR it's adjacent to a platform polygon.
+void AddWalls(polygon_data *polygon, bool isDynamicPass) {
+	bool isPlatform = polygon->type == _polygon_is_platform;
+
 	for (short vertexIdx=0; vertexIdx < polygon->vertex_count; vertexIdx++) {
+		short adjacentPolgyonIdx = polygon->adjacent_polygon_indexes[vertexIdx];
+		bool isNextToPlatform = (adjacentPolgyonIdx != NONE && get_polygon_data(adjacentPolgyonIdx)->type == _polygon_is_platform);
+		bool wallIsDynamic = isPlatform || isNextToPlatform;
+		if (wallIsDynamic != isDynamicPass) continue;
+		
 		short sideIdx = polygon->side_indexes[vertexIdx];
 		if (sideIdx == NONE) continue;;
-		
+
 		side_data *side = get_side_data(sideIdx);
 		line_data *line = get_line_data(polygon->line_indexes[vertexIdx]);
 
@@ -308,29 +330,34 @@ void AddWalls(polygon_data *polygon) {
 				AddWall(polygon, line, vertexIdx,
 						polygon->floor_height, polygon->ceiling_height,
 						side->primary_texture,
-						side->primary_transfer_mode);
+						side->primary_transfer_mode,
+						isDynamicPass);
 				break;
 			case _low_side:
 				AddWall(polygon, line, vertexIdx,
 						polygon->floor_height, line->highest_adjacent_floor,
 						side->primary_texture,
-						side->primary_transfer_mode);
+						side->primary_transfer_mode,
+						isDynamicPass);
 				break;
 			case _high_side:
 				AddWall(polygon, line, vertexIdx,
 						line->lowest_adjacent_ceiling, polygon->ceiling_height,
 						side->primary_texture,
-						side->primary_transfer_mode);
+						side->primary_transfer_mode,
+						isDynamicPass);
 				break;
 			case _split_side:
 				AddWall(polygon, line, vertexIdx,
 						line->lowest_adjacent_ceiling, polygon->ceiling_height,
 						side->primary_texture,
-						side->primary_transfer_mode);
+						side->primary_transfer_mode,
+						isDynamicPass);
 				AddWall(polygon, line, vertexIdx,
 						polygon->floor_height, line->highest_adjacent_floor,
 						side->secondary_texture,
-						side->secondary_transfer_mode);
+						side->secondary_transfer_mode,
+						isDynamicPass);
 				break;
 		}
 	}
@@ -398,9 +425,9 @@ void LoadStaticGeometry() {
 	for (short polyIdx = 0; polyIdx < dynamic_world->polygon_count; polyIdx++) {
 		polygon_data *polygon = get_polygon_data(polyIdx);
 		
-		AddFloorOrCeiling(polygon, true);
-		AddFloorOrCeiling(polygon, false);
-		AddWalls(polygon);
+		AddFloor(polyIdx, polygon, false);
+		AddCeiling(polyIdx, polygon, false);
+		AddWalls(polygon, false);
 	}
 }
 
@@ -414,6 +441,10 @@ void UpdateDynamicGeometry() {
 			UpdateObject(objectIdx, object);
 			objectIdx = object->next_object;
 		}
+		
+		AddFloor(polyIdx, polygon, true);
+		AddCeiling(polyIdx, polygon, true);
+		AddWalls(polygon, true);
 	}
 }
 
