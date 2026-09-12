@@ -130,6 +130,7 @@
 					   uv:(simd_float4x2)uv
 				  surface:(MetalSurface*)surface;
 
+- (void) addTrianglesToArray:(NSMutableArray<Triangle*>*)triangles;
 - (simd_float4x3) instanceTransform;
 
 @end

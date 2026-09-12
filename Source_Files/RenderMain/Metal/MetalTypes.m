@@ -158,6 +158,32 @@
 	return self;
 }
 
+- (void) addTrianglesToArray:(NSMutableArray<Triangle*>*)triangles
+{
+	WorldVertex v0 = {
+		.position = { _v0.x, _v0.y, _bottom },
+		.textureCoordinate = _uv.columns[0],
+	};
+	WorldVertex v1 = {
+		.position = { _v0.x, _v0.y, _top },
+		.textureCoordinate = _uv.columns[1],
+	};
+	WorldVertex v2 = {
+		.position = { _v1.x, _v1.y, _top },
+		.textureCoordinate = _uv.columns[2],
+	};
+	WorldVertex v3 = {
+		.position = { _v1.x, _v1.y, _bottom },
+		.textureCoordinate = _uv.columns[3],
+	};
+	
+	Triangle *t0 = [[Triangle alloc] initWithV0:v0 v1:v1 v2:v2 surface:_surface];
+	Triangle *t1 = [[Triangle alloc] initWithV0:v0 v1:v2 v2:v3 surface:_surface];
+	
+	[triangles addObject:t0];
+	[triangles addObject:t1];
+}
+
 - (simd_float4x3) instanceTransform {
 	// We need to take VerticalQuad and:
 	// - translate and rotate it so that the (y = -0.5) side is at `v0` and (y = +0.5) is at `v1`

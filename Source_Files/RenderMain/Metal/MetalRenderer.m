@@ -414,28 +414,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 - (void)addStaticWall:(MetalWall *)wall {
-	WorldVertex v0 = {
-		.position = { wall.v0.x, wall.v0.y, wall.bottom },
-		.textureCoordinate = wall.uv.columns[0],
-	};
-	WorldVertex v1 = {
-		.position = { wall.v0.x, wall.v0.y, wall.top },
-		.textureCoordinate = wall.uv.columns[1],
-	};
-	WorldVertex v2 = {
-		.position = { wall.v1.x, wall.v1.y, wall.top },
-		.textureCoordinate = wall.uv.columns[2],
-	};
-	WorldVertex v3 = {
-		.position = { wall.v1.x, wall.v1.y, wall.bottom },
-		.textureCoordinate = wall.uv.columns[3],
-	};
-	
-	Triangle *t0 = [[Triangle alloc] initWithV0:v0 v1:v1 v2:v2 surface:wall.surface];
-	Triangle *t1 = [[Triangle alloc] initWithV0:v0 v1:v2 v2:v3 surface:wall.surface];
-	
-	[staticTriangles addObject:t0];
-	[staticTriangles addObject:t1];
+	[wall addTrianglesToArray:staticTriangles];
+	assert(staticTriangles.count < MAX_TRIANGLES);
 }
 
 - (void)addDynamicPolygon:(MetalPolygon *)polygon withID:(int)ID {
