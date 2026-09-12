@@ -272,8 +272,6 @@ void AddFloorOrCeiling(short polygonIdx, polygon_data *polygon, bool isCeiling, 
 		return;
 	}
 	
-	simd_float3 surfaceNormal = simd_make_float3(0.0, 0.0, isCeiling ? -1.0 : 1.0);
-	
 	auto TMgr = std::make_unique<TextureManager>();
 	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupPolygonTexture(TMgr.get(), shape));
 	
@@ -291,7 +289,8 @@ void AddFloorOrCeiling(short polygonIdx, polygon_data *polygon, bool isCeiling, 
 	
 	MetalSurface *surface = [[MetalSurface alloc] initWithTextureID:textureID
 														   emission:emissionForTextureID(textureID)
-															 normal:normal];
+															 normal:simd_make_float3(0.0, 0.0, isCeiling ? -1.0 : 1.0)];
+
 	MetalPolygon *mPolygon = [[MetalPolygon alloc] initWithVertexCount:polygon->vertex_count
 															  vertices:vertices.data()
 																	uv:uv.data()
