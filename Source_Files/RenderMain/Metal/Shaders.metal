@@ -104,6 +104,32 @@ float getRandomSeed(float2 xy, float frameNumber) {
 	return float(baseHash(uint2(as_type<uint>(xy.x), as_type<uint>(xy.y)))) / float(0xffffffffU) + (float)frameNumber;
 }
 
+// From https://www.scratchapixel.com/lessons/3d-basic-rendering/introduction-to-lighting//introduction-to-lighting-spherical-light-cone-sampling.html
+// Although the orthonormal system they use there seems to glitch here when centerDirection.z is near-zero, so use regular Frisvad method
+void coordinateSystem(float3 n, thread float3 &b1, thread float3 &b2) {
+	if (n.z < - 0.9999999f) {
+		b1 = float3( 0.0f, -1.0f, 0.0f);
+		b2 = float3(-1.0f,  0.0f, 0.0f);
+		return;
+	}
+	float a = 1.0f / (1.0f + n.z);
+	float b = -n.x * n.y * a;
+	b1 = float3(1.0f + n.x * n.x * a, b, -n.x);
+	b2 = float3(b, 1.0f - n.y * n.y * a, -n.y);
+}
+float3 uniformSampleCone(float r1, float r2, float cosThetaMax, float3 x, float3 y, float3 z) {
+	float cosTheta = mix(cosThetaMax, 1.0f, r1);
+	float sinTheta = sqrt(1.0f - cosTheta*cosTheta);
+	float phi = M_2_PI_F * r2;
+	return cos(phi) * sinTheta * x + sin(phi) * sinTheta * y + cosTheta * z;
+}
+float3 randomDirectionInCone(float r1, float r2, float3 centerDirection, float maxAngle) {
+	float cosThetaMax = cos(maxAngle);
+	float3 b1, b2;
+	coordinateSystem(centerDirection, b1, b2);
+	return uniformSampleCone(r1, r2, cosThetaMax, b1, b2, centerDirection);
+}
+
 float3 rayTraceSoft(float3 origin, float3 direction,
 				instance_acceleration_structure accelerationStructure,
 				Uniforms uniforms,
@@ -151,17 +177,25 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 
 			float3 normal = data->surfaceNormal;
 			
-			float directLightingProbability = 1 - cos(uniforms.sunRadius);
-			float directLightingContribution = directLightingProbability * clamp(dot(normal, -uniforms.sunDirection), 0.0, 1.0);
-
-			ray.origin = hitPoint;
-			ray.direction = -uniforms.sunDirection;
-			if (i.intersect(ray, accelerationStructure).type == intersection_type::none) {
-				// We hit the sun
-				tcol += fcol * uniforms.sunIntensity * directLightingContribution;
-				fcol *= (1.0 - directLightingContribution);
-			}
+			// If this surface is exposed to the sun, sample it directly
+			float2 random = hash2(seed);
+			float3 towardSun = randomDirectionInCone(random.x, random.y, -uniforms.sunDirection, uniforms.sunRadius);
 			
+			// Could our ray hit the sun?
+			if (dot(normal, towardSun) > 0) {
+				ray.origin = hitPoint;
+				ray.direction = towardSun;
+
+				// *Did* our ray hit the sun?
+				if (i.intersect(ray, accelerationStructure).type == intersection_type::none) {
+					// Modulate the irradiance by its incident angle on the surface
+					float contribution = clamp(dot(normal, towardSun), 0.0, 1.0);
+					tcol += fcol * uniforms.sunIntensity * contribution;
+					fcol *= (1.0 - contribution);
+				}
+			}
+
+			// Bounce
 			float3 newDirection = normalize(randomInUnitSphere(seed));
 			if (dot(newDirection, normal) < 0) {
 				newDirection = -newDirection;
