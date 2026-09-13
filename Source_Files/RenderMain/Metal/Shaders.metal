@@ -50,7 +50,7 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 
 constant float ambientLightIntensity = 0.1;
 constant float gain = 1.5;
-constant float defaultAttenuation = 0.99;
+constant float defaultAttenuation = 0.9;
 
 constant uint numSamples = 2;
 constant uint numBounces = 4;
@@ -172,7 +172,6 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 				} else {
 					tcol += data->emission;
 				}
-				break;
 			}
 
 			float3 normal = data->surfaceNormal;
