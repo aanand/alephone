@@ -190,8 +190,9 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 				if (i.intersect(ray, accelerationStructure).type == intersection_type::none) {
 					// Modulate the irradiance by its incident angle on the surface
 					float contribution = clamp(dot(normal, towardSun), 0.0, 1.0);
-					tcol += fcol * uniforms.sunIntensity * contribution;
-					fcol *= (1.0 - contribution);
+					// Weight by the PDF
+					float weight = 2 * M_PI_F * (1.0f - cos(uniforms.sunRadius));
+					tcol += fcol * uniforms.sunIntensity * contribution * weight;
 				}
 			}
 
@@ -207,7 +208,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 		}
 	}
 	
-	return float3(tcol * fcol);
+	return float3(tcol);
 }
 
 kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
