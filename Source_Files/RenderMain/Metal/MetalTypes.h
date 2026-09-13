@@ -115,7 +115,7 @@
 							   height:(int)height
 							  surface:(MetalSurface*)surface;
 
-- (void) addTrianglesToArray:(NSMutableArray<Triangle*>*)triangles;
+- (void) eachTriangle:(void (^)(Triangle *triangle))callback;
 - (id<ASTrianglePrimitive>) primitive;
 - (simd_float4x3) instanceTransform;
 
@@ -142,7 +142,7 @@
 					   uv:(simd_float4x2)uv
 				  surface:(MetalSurface*)surface;
 
-- (void) addTrianglesToArray:(NSMutableArray<Triangle*>*)triangles;
+- (void) eachTriangle:(void (^)(Triangle *triangle))callback;
 - (simd_float4x3) instanceTransform;
 
 @end
@@ -164,6 +164,7 @@
 					  position:(simd_int3)position
 					   surface:(MetalSurface*)surface;
 
+- (void) eachTriangle:(void (^)(Triangle *triangle))callback forRotation:(float)theta;
 - (simd_float4x3) instanceTransformForRotation:(float)theta;
 
 @end

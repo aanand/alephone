@@ -10,6 +10,13 @@
 #import "Metal/VertexTypes.h"
 #import "Metal/MetalTypes.h"
 
+simd_float3 VERTICAL_QUAD_VERTICES[4] = {
+	{ 0.0, -0.5, 0.0 },
+	{ 0.0, -0.5, 1.0 },
+	{ 0.0,  0.5, 1.0 },
+	{ 0.0,  0.5, 0.0 },
+};
+
 @implementation Triangle
 
 -(Triangle *)initWithV0:(WorldVertex)v0 v1:(WorldVertex)v1 v2:(WorldVertex)v2 surface:(MetalSurface *)surface
@@ -129,14 +136,14 @@
 	};
 }
 
-- (void) addTrianglesToArray:(NSMutableArray<Triangle*>*)triangles
+- (void) eachTriangle:(void (^)(Triangle *))callback
 {
 	// Triangle fan: draw 0-1-2, 0-2-3, 0-3-4, etc
 	for (int j = 0; j < _vertexCount - 2; j++) {
-		[triangles addObject:[[Triangle alloc] initWithV0:[self getWorldVertexAtIndex:0]
-													   v1:[self getWorldVertexAtIndex:j+1]
-													   v2:[self getWorldVertexAtIndex:j+2]
-												  surface:_surface]];
+		callback([[Triangle alloc] initWithV0:[self getWorldVertexAtIndex:0]
+										   v1:[self getWorldVertexAtIndex:j+1]
+										   v2:[self getWorldVertexAtIndex:j+2]
+									  surface:_surface]);
 	}
 }
 @end
@@ -156,7 +163,7 @@
 	return self;
 }
 
-- (void) addTrianglesToArray:(NSMutableArray<Triangle*>*)triangles
+- (void) eachTriangle:(void (^)(Triangle *))callback
 {
 	WorldVertex v0 = {
 		.position = { _v0.x, _v0.y, _bottom },
@@ -178,8 +185,8 @@
 	Triangle *t0 = [[Triangle alloc] initWithV0:v0 v1:v1 v2:v2 surface:_surface];
 	Triangle *t1 = [[Triangle alloc] initWithV0:v0 v1:v2 v2:v3 surface:_surface];
 	
-	[triangles addObject:t0];
-	[triangles addObject:t1];
+	callback(t0);
+	callback(t1);
 }
 
 - (simd_float4x3) instanceTransform {
@@ -219,6 +226,25 @@
 		_surface = surface;
 	}
 	return self;
+}
+
+- (void) eachTriangle:(void (^)(Triangle *))callback forRotation:(float)theta {
+	simd_float4x3 transform = [self instanceTransformForRotation:theta];
+
+	WorldVertex v[4];
+	for (int i=0; i<4; i++) {
+		simd_float3 position = simd_mul(transform, simd_make_float4(VERTICAL_QUAD_VERTICES[i], 1.0)).xyz;
+		v[i] = (WorldVertex){
+			.position = simd_make_int3(position.x, position.y, position.z),
+			.textureCoordinate = _uv.columns[i],
+		};
+	}
+	
+	Triangle *t0 = [[Triangle alloc] initWithV0:v[0] v1:v[1] v2:v[2] surface:_surface];
+	Triangle *t1 = [[Triangle alloc] initWithV0:v[0] v1:v[2] v2:v[3] surface:_surface];
+	
+	callback(t0);
+	callback(t1);
 }
 
 - (simd_float4x3)instanceTransformForRotation:(float)theta {
@@ -294,13 +320,13 @@
 
 -(VerticalQuad*) init {
 	if (self = [super init]) {
-		vertices[0] = (simd_float3){ 0.0, -0.5, 0.0 };
-		vertices[1] = (simd_float3){ 0.0, -0.5, 1.0 };
-		vertices[2] = (simd_float3){ 0.0,  0.5, 1.0 };
+		vertices[0] = VERTICAL_QUAD_VERTICES[0];
+		vertices[1] = VERTICAL_QUAD_VERTICES[1];
+		vertices[2] = VERTICAL_QUAD_VERTICES[2];
 
-		vertices[3] = (simd_float3){ 0.0, -0.5, 0.0 };
-		vertices[4] = (simd_float3){ 0.0,  0.5, 1.0 };
-		vertices[5] = (simd_float3){ 0.0,  0.5, 0.0 };
+		vertices[3] = VERTICAL_QUAD_VERTICES[0];
+		vertices[4] = VERTICAL_QUAD_VERTICES[2];
+		vertices[5] = VERTICAL_QUAD_VERTICES[3];
 		
 		// Normals here are wrong, because rotation is applied to instances, but this needs to go away anyway
 		primitiveData[0] = (TriangleRayTracingData){ .surfaceNormal = { -1.0, 0.0, 0.0 }, .emission = { 0.0, 0.0, 0.0 } };

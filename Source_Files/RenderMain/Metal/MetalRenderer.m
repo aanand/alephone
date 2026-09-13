@@ -102,7 +102,7 @@ API_AVAILABLE(macos(26.0))
 	// Dynamic geometry (sprites, doors, platforms)
 	IASManager *dynamicIASManager;
 	NSMutableDictionary<NSNumber*, id<ASTrianglePrimitive>> *dynamicPolygonPrimitives;
-	NSMutableDictionary<NSNumber*, MetalSprite*> *sprites;
+	NSMutableArray<Triangle*> *dynamicTriangles;
 
 	id<MTLBuffer> topLevelIASInstanceBuffer;
 	id<MTLAccelerationStructure> topLevelIAS;
@@ -409,16 +409,25 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 - (void)addStaticPolygon:(MetalPolygon *)polygon {
-	[polygon addTrianglesToArray:staticTriangles];
+	[polygon eachTriangle:^(Triangle *triangle) {
+		[self->staticTriangles addObject:triangle];
+	}];
 	assert(staticTriangles.count < MAX_TRIANGLES);
 }
 
 - (void)addStaticWall:(MetalWall *)wall {
-	[wall addTrianglesToArray:staticTriangles];
+	[wall eachTriangle:^(Triangle *triangle) {
+		[self->staticTriangles addObject:triangle];
+	}];
 	assert(staticTriangles.count < MAX_TRIANGLES);
 }
 
 - (void)addDynamicPolygon:(MetalPolygon *)polygon withID:(int)ID {
+	[polygon eachTriangle:^(Triangle *triangle) {
+		[self->dynamicTriangles addObject:triangle];
+	}];
+	assert(dynamicTriangles.count < MAX_TRIANGLES);
+
 	id<ASTrianglePrimitive> primitive = [dynamicPolygonPrimitives objectForKey:[NSNumber numberWithInt:ID]];
 	if (primitive == nil) {
 		primitive = polygon.primitive;
@@ -432,22 +441,30 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 - (void)addDynamicWall:(MetalWall *)wall {
+	[wall eachTriangle:^(Triangle *triangle) {
+		[self->dynamicTriangles addObject:triangle];
+	}];
+	assert(dynamicTriangles.count < MAX_TRIANGLES);
+
 	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
 								withTransform:wall.instanceTransform
 								   instanceID:0];
 }
 
 - (void) updateSprite:(MetalSprite *)sprite {
+	float theta = radians(yaw);
+
+	[sprite eachTriangle:^(Triangle *triangle) {
+		[self->dynamicTriangles addObject:triangle];
+	} forRotation:theta];
+	assert(dynamicTriangles.count < MAX_TRIANGLES);
+
 	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
-								withTransform:[sprite instanceTransformForRotation:radians(yaw)]
+								withTransform:[sprite instanceTransformForRotation:theta]
 								   instanceID:(uint32_t)sprite.index];
 }
 
-- (void) writeStaticPolygonsToStaticIAS {
-	// TODO: make a primitive for each floor+ceiling, translated to the appropriate height
-	// TODO: make a single vertical quad primitive, translated/rotated/scaled per-wall
-	// (or don't, if this is good/fast enough)
-
+- (void) writeStaticTrianglesToIAS {
 	NSUInteger numTriangles = staticTriangles.count;
 	NSUInteger trianglesPerBatch = 100;
 	
@@ -509,8 +526,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 - (void) startUpdatingAllGeometry {
 	staticTriangles = [NSMutableArray array];
+	dynamicTriangles = [NSMutableArray array];
 	dynamicPolygonPrimitives = [NSMutableDictionary dictionary];
-	sprites = [NSMutableDictionary dictionary];
 	if (!verticalQuadPrimitive) {
 		// spriteQuad initializes exactly once and is reused across frames + level changes
 		verticalQuadPrimitive = [[VerticalQuad alloc] init];
@@ -524,7 +541,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 - (void) finishUpdatingAllGeometry {
-	[self writeStaticPolygonsToStaticIAS];
+	[self writeStaticTrianglesToIAS];
 	[staticIASManager commitGeometry];
 	[dynamicIASManager commitGeometry];
 
@@ -536,7 +553,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 - (void) startUpdatingDynamicGeometry {
-	sprites = [NSMutableDictionary dictionary];
+	dynamicTriangles = [NSMutableArray array];
 	[dynamicIASManager clearInstances];
 	[self clearTopLevelIAS];
 }
@@ -729,52 +746,29 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[vertexArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:InitialRenderVertexShaderUniformsIndex];
 	[vertexArgumentTable setAddress:triangleBuffer.gpuAddress atIndex:InitialRenderVertexShaderVertexDataIndex];
 
-//	WorldVertex *target = (WorldVertex*)triangleBuffer.contents;
-//	NSUInteger offset = 0;
-//
-//	@autoreleasepool {
-//		NSMutableArray *triangles = [NSMutableArray arrayWithArray:staticTriangles];
-//
-//		for (MetalSprite *sprite in [sprites allValues]) {
-//			simd_float3 surfaceNormal = { 0.0, 0.0, -1.0 };
-//
-//			WorldVertex vertices[] = {
-//				(WorldVertex){ .position = { 0, -sprite.size.x/2,             0 }, .textureCoordinate = sprite.uv.columns[0] },
-//				(WorldVertex){ .position = { 0, -sprite.size.x/2, sprite.size.y }, .textureCoordinate = sprite.uv.columns[1] },
-//				(WorldVertex){ .position = { 0,  sprite.size.x/2, sprite.size.y }, .textureCoordinate = sprite.uv.columns[2] },
-//				(WorldVertex){ .position = { 0,  sprite.size.x/2,             0 }, .textureCoordinate = sprite.uv.columns[3] },
-//			};
-//
-//			MetalPolygon *spritePolygon = [[MetalPolygon alloc] initWithVertices:vertices
-//																	 vertexCount:4
-//																	   textureID:sprite.textureID
-//																		emission:simd_make_float3(0.0, 0.0, 0.0)
-//																		  normal:surfaceNormal];
-//
-//			[self addTrianglesForPolygon:spritePolygon
-//								 toArray:triangles
-//							  withOrigin:sprite.position
-//								rotation:yaw];
-//		}
-//		
-//		for (Triangle *triangle in triangles) {
-//			target[offset] = triangle.v0;
-//			target[offset+1] = triangle.v1;
-//			target[offset+2] = triangle.v2;
-//			
-//			MTLGPUAddress address = triangleBuffer.gpuAddress + (offset * sizeof(WorldVertex));
-//			[vertexArgumentTable setAddress:address atIndex:InitialRenderVertexShaderVertexDataIndex];
-//			[renderPassEncoder setArgumentTable:vertexArgumentTable atStages:MTLRenderStageVertex];
-//			
-//			id<MTLTexture> texture = [textures objectForKey:triangle.textureID];
-//			[fragmentArgumentTable setTexture:texture.gpuResourceID atIndex:InitialRenderFragmentShaderColorTextureIndex];
-//			[renderPassEncoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
-//			
-//			[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
-//			
-//			offset += 3;
-//		}
-//	}
+	WorldVertex *target = (WorldVertex*)triangleBuffer.contents;
+	NSUInteger __block offset = 0;
+
+	void (^drawTriangle)(Triangle*) = ^(Triangle *triangle){
+		target[offset] = triangle.v0;
+		target[offset+1] = triangle.v1;
+		target[offset+2] = triangle.v2;
+		
+		MTLGPUAddress address = self->triangleBuffer.gpuAddress + (offset * sizeof(WorldVertex));
+		[self->vertexArgumentTable setAddress:address atIndex:InitialRenderVertexShaderVertexDataIndex];
+		[renderPassEncoder setArgumentTable:self->vertexArgumentTable atStages:MTLRenderStageVertex];
+		
+		id<MTLTexture> texture = [self->textures objectForKey:triangle.surface.textureID];
+		[self->fragmentArgumentTable setTexture:texture.gpuResourceID atIndex:InitialRenderFragmentShaderColorTextureIndex];
+		[renderPassEncoder setArgumentTable:self->fragmentArgumentTable atStages:MTLRenderStageFragment];
+		
+		[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+		
+		offset += 3;
+	};
+	
+	for (Triangle *triangle in staticTriangles) drawTriangle(triangle);
+	for (Triangle *triangle in dynamicTriangles) drawTriangle(triangle);
 	
 	[renderPassEncoder updateFence:fence afterEncoderStages:MTLStageFragment];
 	[renderPassEncoder endEncoding];
