@@ -52,7 +52,7 @@ constant float ambientLightIntensity = 0.1;
 constant float gain = 1.5;
 constant float defaultAttenuation = 0.99;
 
-constant uint numSamples = 1;
+constant uint numSamples = 2;
 constant uint numBounces = 4;
 constant int denoiseRadius = 3;
 
