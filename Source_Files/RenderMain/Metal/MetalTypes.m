@@ -51,22 +51,17 @@
 
 @end
 
-// A convex polygon on the XY plane at Z=0
-@interface MetalPolygonPrimitive : NSObject <ASTrianglePrimitive>
-- (MetalPolygonPrimitive*) initWithVertexCount:(NSUInteger)vertexCount
-									  vertices:(simd_int2*)vertices
-									   surface:(MetalSurface*)surface;
-@end
 @implementation MetalPolygonPrimitive
 {
 	NSUInteger numTriangles;
 	simd_float3 *vertices;
 	TriangleRayTracingData *primitiveData;
 }
+
 -(MetalPolygonPrimitive *)initWithVertexCount:(NSUInteger)vertexCount vertices:(simd_int2 *)vs surface:(MetalSurface *)surface {
 	if (self = [super init]) {
 		numTriangles = vertexCount - 2;
-
+		
 		vertices = malloc(sizeof(simd_float3) * numTriangles * 3);
 		primitiveData = malloc(sizeof(TriangleRayTracingData) * numTriangles);
 		
@@ -80,13 +75,16 @@
 	}
 	return self;
 }
+
 -(void)dealloc {
 	free(vertices);
 	free(primitiveData);
 }
+
 - (NSUInteger)numTriangles { return numTriangles; }
 - (void *)primitiveData { return primitiveData; }
 - (simd_float3 *)vertices { return vertices; }
+
 @end
 
 @implementation MetalPolygon

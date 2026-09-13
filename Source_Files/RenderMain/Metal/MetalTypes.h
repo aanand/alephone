@@ -77,10 +77,22 @@
 @end
 
 /**
- A raytracing primitive that's a vertically-oriented rectangle. Used for sprites and moving walls
- (static walls are shoved into TriangleBatches instead for efficiency).
+ A raytracing primitive that's a vertically-oriented unit square on the YZ plane with the center of its base at (0, 0, 0).
+ Used for sprites and moving walls (static walls are shoved into TriangleBatches instead for efficiency).
  */
 @interface VerticalQuad : NSObject <ASTrianglePrimitive>
+@end
+
+/**
+ A raytracing primitive that's a convex polygon on the XY plane at Z=0.
+ Used for the tops and bottoms of moving platforms (static floors/ceilings go into TriangleBatches).
+ */
+@interface MetalPolygonPrimitive : NSObject <ASTrianglePrimitive>
+
+- (MetalPolygonPrimitive*) initWithVertexCount:(NSUInteger)vertexCount
+									  vertices:(simd_int2*)vertices
+									   surface:(MetalSurface*)surface;
+
 @end
 
 #pragma mark - World geometry types
