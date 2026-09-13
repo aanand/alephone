@@ -235,10 +235,10 @@ void AddWall(polygon_data *polygon, line_data *line, short vertexIdx,
 	float tOffset = polygon->ceiling_height + y0;
 	
 	simd_float4x2 uv = {
+		(simd_float2){ (tOffset - bottom) / (float) div, (x0               ) / (float) div },
 		(simd_float2){ (tOffset - top   ) / (float) div, (x0               ) / (float) div },
 		(simd_float2){ (tOffset - top   ) / (float) div, (x0 + line->length) / (float) div },
 		(simd_float2){ (tOffset - bottom) / (float) div, (x0 + line->length) / (float) div },
-		(simd_float2){ (tOffset - bottom) / (float) div, (x0               ) / (float) div },
 	};
 	
 	MetalSurface *surface = [[MetalSurface alloc] initWithTextureID:textureID
