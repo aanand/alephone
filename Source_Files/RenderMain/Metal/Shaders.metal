@@ -158,6 +158,61 @@ struct SpriteTextureArgs {
 	array<texture2d<float>, MAX_SPRITE_TEXTURES> textures [[id(0)]];
 };
 
+struct Hit {
+	float3 hitPoint;
+	float3 normal;
+	float3 emission;
+};
+
+bool castRay(intersector<triangle_data, instancing> i,
+			 instance_acceleration_structure accelerationStructure,
+			 constant InstanceRayTracingData *perInstanceData,
+			 constant SpriteTextureArgs &spriteTextures,
+			 ray ray,
+			 thread Hit &hit)
+{
+	typename intersector<triangle_data, instancing>::result_type intersection;
+	intersection = i.intersect(ray, accelerationStructure);
+
+	if (intersection.type == intersection_type::none) {
+		return false;
+	}
+	
+	float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
+
+	const device PrimitiveRayTracingData *primitiveData;
+	primitiveData = (const device PrimitiveRayTracingData*) intersection.primitive_data;
+	float3 normal = primitiveData->surfaceNormal;
+	float3 emission = primitiveData->emission;
+	float alpha = 1.0;
+	
+	uint32_t instanceId = intersection.user_instance_id;
+	if (instanceId > 0) {
+		InstanceRayTracingData instanceData = perInstanceData[instanceId];
+		normal = instanceData.surfaceNormal;
+		emission = instanceData.emission;
+		
+		if (instanceData.textureIndex > 0) {
+			float2 uv = getQuadUV(intersection, instanceData);
+			texture2d<float> spriteTexture = spriteTextures.textures[instanceData.textureIndex];
+			constexpr sampler spriteSampler(mag_filter::nearest, min_filter::nearest, address::clamp_to_edge);
+			alpha = spriteTexture.sample(spriteSampler, uv).a;
+		}
+	}
+	
+	// We hit something transparent - continue the ray. This doesn't cost us a bounce.
+	if (alpha < 0.5) {
+		ray.origin = hitPoint + ray.direction * 0.1;
+		return castRay(i, accelerationStructure, perInstanceData, spriteTextures, ray, hit);
+	}
+	
+	hit.hitPoint = hitPoint;
+	hit.normal = normal;
+	hit.emission = emission;
+	
+	return true;
+}
+
 float3 rayTraceSoft(float3 origin, float3 direction,
 				instance_acceleration_structure accelerationStructure,
 				Uniforms uniforms,
@@ -175,12 +230,12 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 	float fcol = 1.0;
 	
 	intersector<triangle_data, instancing> i;
-	typename intersector<triangle_data, instancing>::result_type intersection;
 
 	for (uint b = 0; b < numBounces; b++) {
-		intersection = i.intersect(ray, accelerationStructure);
-		
-		if (intersection.type == intersection_type::none) {
+		Hit hit;
+		bool didHit = castRay(i, accelerationStructure, perInstanceData, spriteTextures, ray, hit);
+
+		if (!didHit) {
 			float cosTheta = dot(ray.direction, -uniforms.sunDirection);
 			if (acos(cosTheta) < uniforms.sunRadius) {
 				tcol += fcol * uniforms.sunIntensity;
@@ -188,34 +243,10 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 
 			break;
 		} else {
-			float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
+			float3 hitPoint = hit.hitPoint;
+			float3 normal = hit.normal;
+			float3 emission = hit.emission;
 
-			const device PrimitiveRayTracingData *primitiveData;
-			primitiveData = (const device PrimitiveRayTracingData*) intersection.primitive_data;
-			float3 normal = primitiveData->surfaceNormal;
-			float3 emission = primitiveData->emission;
-			float alpha = 1.0;
-			
-			uint32_t instanceId = intersection.user_instance_id;
-			if (instanceId > 0) {
-				InstanceRayTracingData instanceData = perInstanceData[instanceId];
-				normal = instanceData.surfaceNormal;
-				emission = instanceData.emission;
-				
-				if (instanceData.textureIndex > 0) {
-					float2 uv = getQuadUV(intersection, instanceData);
-					texture2d<float> spriteTexture = spriteTextures.textures[instanceData.textureIndex];
-					constexpr sampler spriteSampler(mag_filter::nearest, min_filter::nearest, address::clamp_to_edge);
-					alpha = spriteTexture.sample(spriteSampler, uv).a;
-				}
-			}
-			
-			// We hit something transparent - continue
-			if (alpha < 0.5) {
-				ray.origin = hitPoint + ray.direction * 0.1;
-				continue;
-			}
-			
 			if (length(emission) > 0) {
 				// We hit a light source
 				if (b == 0) {
@@ -233,11 +264,15 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 			
 			// Could our ray hit the sun?
 			if (dot(normal, towardSun) > 0) {
-				ray.origin = hitPoint;
-				ray.direction = towardSun;
+				struct ray directRay;
+				directRay.origin = hitPoint;
+				directRay.direction = towardSun;
+				directRay.min_distance = 0.1;
+				directRay.max_distance = INFINITY;
 
 				// *Did* our ray hit the sun?
-				if (i.intersect(ray, accelerationStructure).type == intersection_type::none) {
+				Hit directRayHit;
+				if (!castRay(i, accelerationStructure, perInstanceData, spriteTextures, directRay, directRayHit)) {
 					// Modulate the irradiance by its incident angle on the surface
 					float contribution = clamp(dot(normal, towardSun), 0.0, 1.0);
 					// Weight by the PDF
