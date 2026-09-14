@@ -42,6 +42,7 @@ simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
 }
 
 uint MAX_TRIANGLES = 10000;
+uint MAX_INSTANCES = 1000;
 
 static const simd_float3 sunDirection    = { -1.0, 1.0, 0.0 }; // sun is to the northwest
 static const simd_float3 sunRotationAxis = {  0.0, 1.0, 0.0 }; // sun rotates around the north-south axis
@@ -85,10 +86,15 @@ API_AVAILABLE(macos(26.0))
 	id<MTLTexture> initialRenderOutputTexture;
 	id<MTLTexture> rayTracingOutputTexture;
 
-	// Shader inputs
-	
-	id<MTLBuffer> triangleBuffer;
+	// Constants shared across all pipelines
 	id<MTLBuffer> uniformsBuffer;
+
+	// Triangles for rasterization (static + dynamic)
+	id<MTLBuffer> triangleBuffer;
+
+	// Normals, UVs etc. for dynamic geometry
+	id<MTLBuffer> perInstanceDataBuffer;
+	uint32_t numInstances;
 
 	NSMutableDictionary<NSString *, id<MTLTexture>> *textures;
 
@@ -156,7 +162,7 @@ API_AVAILABLE(macos(26.0))
 	
 	NSError *error;
 	staticIASManager = [[IASManager alloc] initWithPipeline:pipeline
-								   primitiveDataElementSize:sizeof(TriangleRayTracingData)
+								   primitiveDataElementSize:sizeof(PrimitiveRayTracingData)
 													  error:&error];
 	if (!staticIASManager) {
 		NSLog(@"%@", error);
@@ -165,7 +171,7 @@ API_AVAILABLE(macos(26.0))
 	staticIASManager.label = @"staticIASManager";
 
 	dynamicIASManager = [[IASManager alloc] initWithPipeline:pipeline
-									primitiveDataElementSize:sizeof(TriangleRayTracingData)
+									primitiveDataElementSize:sizeof(PrimitiveRayTracingData)
 													   error:&error];
 	if (!dynamicIASManager) {
 		NSLog(@"%@", error);
@@ -256,6 +262,9 @@ API_AVAILABLE(macos(26.0))
 	
 	triangleBuffer = [pipeline.device newBufferWithLength:(sizeof(WorldVertex) * MAX_TRIANGLES * 3) options:MTLResourceStorageModeShared];
 	[initialRenderResidencySet addAllocation:triangleBuffer];
+	
+	perInstanceDataBuffer = [pipeline.device newBufferWithLength:(sizeof(InstanceRayTracingData) * MAX_INSTANCES) options:MTLResourceStorageModeShared];
+	[rayTracingResidencySet addAllocation:perInstanceDataBuffer];
 }
 
 - (void) setupIntermediateTextures {
@@ -422,6 +431,14 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	assert(staticTriangles.count < MAX_TRIANGLES);
 }
 
+- (uint32_t)addInstanceData:(InstanceRayTracingData)instanceData {
+	// Purposefully skip index 0, which is shorthand for "use the per-primitive data"
+	uint32_t instanceID = ++numInstances;
+	assert(numInstances < MAX_INSTANCES);
+	*(InstanceRayTracingData*)(perInstanceDataBuffer.contents + sizeof(InstanceRayTracingData)*instanceID) = instanceData;
+	return instanceID;
+}
+
 - (void)addDynamicPolygon:(MetalPolygon *)polygon withID:(int)ID {
 	[polygon eachTriangle:^(Triangle *triangle) {
 		[self->dynamicTriangles addObject:triangle];
@@ -434,10 +451,16 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 		[dynamicIASManager addPrimitive:primitive];
 		[dynamicPolygonPrimitives setObject:primitive forKey:[NSNumber numberWithInt:ID]];
 	}
+	
+	uint32_t instanceID = [self addInstanceData:(InstanceRayTracingData){
+		.surfaceNormal = polygon.surface.normal,
+		.emission = polygon.surface.emission,
+		// TODO: figure out how to pass in UV data for polygons
+	}];
 
 	[dynamicIASManager addInstanceOfPrimitive:primitive
 								withTransform:polygon.instanceTransform
-								   instanceID:0];
+								   instanceID:instanceID];
 }
 
 - (void)addDynamicWall:(MetalWall *)wall {
@@ -445,10 +468,16 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 		[self->dynamicTriangles addObject:triangle];
 	}];
 	assert(dynamicTriangles.count < MAX_TRIANGLES);
+	
+	uint32_t instanceID = [self addInstanceData:(InstanceRayTracingData){
+		.surfaceNormal = wall.surface.normal,
+		.emission = wall.surface.emission,
+		.uv = wall.uv,
+	}];
 
 	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
 								withTransform:wall.instanceTransform
-								   instanceID:0];
+								   instanceID:instanceID];
 }
 
 - (void) updateSprite:(MetalSprite *)sprite {
@@ -459,9 +488,15 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	} forRotation:theta];
 	assert(dynamicTriangles.count < MAX_TRIANGLES);
 
+	uint32_t instanceID = [self addInstanceData:(InstanceRayTracingData){
+		.surfaceNormal = simd_make_float3(-cos(theta), -sin(theta), 0.0),
+		.emission = sprite.surface.emission,
+		.uv = sprite.uv,
+	}];
+
 	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
 								withTransform:[sprite instanceTransformForRotation:theta]
-								   instanceID:(uint32_t)sprite.index];
+								   instanceID:instanceID];
 }
 
 - (void) writeStaticTrianglesToIAS {
@@ -528,6 +563,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	staticTriangles = [NSMutableArray array];
 	dynamicTriangles = [NSMutableArray array];
 	dynamicPolygonPrimitives = [NSMutableDictionary dictionary];
+	numInstances = 0;
 	if (!verticalQuadPrimitive) {
 		// spriteQuad initializes exactly once and is reused across frames + level changes
 		verticalQuadPrimitive = [[VerticalQuad alloc] init];
@@ -554,6 +590,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 - (void) startUpdatingDynamicGeometry {
 	dynamicTriangles = [NSMutableArray array];
+	numInstances = 0;
 	[dynamicIASManager clearInstances];
 	[self clearTopLevelIAS];
 }
@@ -785,7 +822,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[encoder setComputePipelineState:rayTracingPipeline];
 	
 	[computeArgumentTable setResource:topLevelIAS.gpuResourceID atBufferIndex:RayTracingKernelAccelerationStructureIndex];
-	[computeArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:RayTracingKernelCameraIndex];
+	[computeArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:RayTracingKernelUniformsIndex];
+	[computeArgumentTable setAddress:perInstanceDataBuffer.gpuAddress atIndex:RayTracingKernelPerInstanceDataIndex];
 	[computeArgumentTable setTexture:outputTexture.gpuResourceID atIndex:RayTracingKernelOutImageIndex];
 	[encoder setArgumentTable:computeArgumentTable];
 	

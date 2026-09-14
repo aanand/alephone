@@ -62,7 +62,7 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 {
 	NSUInteger numTriangles;
 	simd_float3 *vertices;
-	TriangleRayTracingData *primitiveData;
+	PrimitiveRayTracingData *primitiveData;
 }
 
 -(MetalPolygonPrimitive *)initWithVertexCount:(NSUInteger)vertexCount vertices:(simd_int2 *)vs surface:(MetalSurface *)surface {
@@ -70,14 +70,14 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 		numTriangles = vertexCount - 2;
 		
 		vertices = malloc(sizeof(simd_float3) * numTriangles * 3);
-		primitiveData = malloc(sizeof(TriangleRayTracingData) * numTriangles);
+		primitiveData = malloc(sizeof(PrimitiveRayTracingData) * numTriangles);
 		
 		// Triangle fan: 0-1-2, 0-2-3, 0-3-4, ...
 		for (int i = 0; i < numTriangles; i++) {
 			vertices[i*3]   = (simd_float3){ vs[  0].x, vs[  0].y, 0.0 };
 			vertices[i*3+1] = (simd_float3){ vs[i+1].x, vs[i+1].y, 0.0 };
 			vertices[i*3+2] = (simd_float3){ vs[i+2].x, vs[i+2].y, 0.0 };
-			primitiveData[i] = (TriangleRayTracingData){ .surfaceNormal = surface.normal, .emission = surface.emission };
+			primitiveData[i] = (PrimitiveRayTracingData){ .surfaceNormal = surface.normal, .emission = surface.emission };
 		}
 	}
 	return self;
@@ -267,7 +267,7 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 {
 	NSArray<Triangle*> *_triangles;
 	simd_float3 *vertices;
-	TriangleRayTracingData *primitiveData;
+	PrimitiveRayTracingData *primitiveData;
 }
 
 - (TriangleBatch*) initWithTriangles:(NSArray<Triangle *> *)triangles {
@@ -275,7 +275,7 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 		_triangles = triangles;
 		
 		vertices = malloc(sizeof(simd_float3) * _triangles.count * 3);
-		primitiveData = malloc(sizeof(TriangleRayTracingData) * _triangles.count);
+		primitiveData = malloc(sizeof(PrimitiveRayTracingData) * _triangles.count);
 
 		for (int i = 0; i < _triangles.count; i++) {
 			Triangle *triangle = [_triangles objectAtIndex:i];
@@ -315,7 +315,7 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 @implementation VerticalQuad
 {
 	simd_float3 vertices[6];
-	TriangleRayTracingData primitiveData[2];
+	PrimitiveRayTracingData primitiveData[2];
 }
 
 -(VerticalQuad*) init {
@@ -329,8 +329,8 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 		vertices[5] = VERTICAL_QUAD_VERTICES[3];
 		
 		// Normals here are wrong, because rotation is applied to instances, but this needs to go away anyway
-		primitiveData[0] = (TriangleRayTracingData){ .surfaceNormal = { -1.0, 0.0, 0.0 }, .emission = { 0.0, 0.0, 0.0 } };
-		primitiveData[1] = (TriangleRayTracingData){ .surfaceNormal = { -1.0, 0.0, 0.0 }, .emission = { 0.0, 0.0, 0.0 } };
+		primitiveData[0] = (PrimitiveRayTracingData){ .surfaceNormal = { -1.0, 0.0, 0.0 }, .emission = { 0.0, 0.0, 0.0 } };
+		primitiveData[1] = (PrimitiveRayTracingData){ .surfaceNormal = { -1.0, 0.0, 0.0 }, .emission = { 0.0, 0.0, 0.0 } };
 	}
 	return self;
 }

@@ -399,10 +399,10 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 		(simd_float2){ texB, texR },
 	};
 	
-	simd_float3 normal = simd_normalize(simd_make_float3(view->origin.x, view->origin.y, 0.0) - position);
+	// Normal is ignored here and set based on the sprite's rotation
 	MetalSurface *surface = [[MetalSurface alloc] initWithTextureID:textureID
 														   emission:emissionForTextureID(textureID)
-															 normal:normal];
+															 normal:simd_make_float3(1.0, 0.0, 0.0)];
 	
 	return [[MetalSprite alloc] initWithIndex:objectIdx
 										   uv:uv

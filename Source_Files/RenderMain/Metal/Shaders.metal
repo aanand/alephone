@@ -133,6 +133,7 @@ float3 randomDirectionInCone(float r1, float r2, float3 centerDirection, float m
 float3 rayTraceSoft(float3 origin, float3 direction,
 				instance_acceleration_structure accelerationStructure,
 				Uniforms uniforms,
+				constant InstanceRayTracingData *perInstanceData,
 				thread float &seed)
 {
 	ray ray;
@@ -160,22 +161,29 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 		} else {
 			float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
 
-			const device TriangleRayTracingData *data;
-			data = (const device TriangleRayTracingData*) intersection.primitive_data;
-
-			if (length(data->emission) > 0) {
+			const device PrimitiveRayTracingData *primitiveData;
+			primitiveData = (const device PrimitiveRayTracingData*) intersection.primitive_data;
+			float3 normal = primitiveData->surfaceNormal;
+			float3 emission = primitiveData->emission;
+			
+			uint32_t instanceId = intersection.user_instance_id;
+			if (instanceId > 0) {
+				InstanceRayTracingData instanceData = perInstanceData[instanceId];
+				normal = instanceData.surfaceNormal;
+				emission = instanceData.emission;
+			}
+			
+			if (length(emission) > 0) {
 				// We hit a light source
 				if (b == 0) {
 					// Desaturate the light value if we haven't bounced yet, so the texture doesn't appear tinted
-					float3 e = data->emission;
+					float3 e = emission;
 					tcol += float3(e.r + e.g + e.b) / 3.0;
 				} else {
-					tcol += data->emission;
+					tcol += emission;
 				}
 			}
 
-			float3 normal = data->surfaceNormal;
-			
 			// If this surface is exposed to the sun, sample it directly
 			float2 random = hash2(seed);
 			float3 towardSun = randomDirectionInCone(random.x, random.y, -uniforms.sunDirection, uniforms.sunRadius);
@@ -212,7 +220,8 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 
 kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
 							 instance_acceleration_structure accelerationStructure [[ buffer(RayTracingKernelAccelerationStructureIndex) ]],
-							 constant Uniforms &uniforms [[ buffer(RayTracingKernelCameraIndex) ]],
+							 constant Uniforms &uniforms [[ buffer(RayTracingKernelUniformsIndex) ]],
+							 constant InstanceRayTracingData *perInstanceData [[ buffer(RayTracingKernelPerInstanceDataIndex) ]],
 							 uint2 tid [[thread_position_in_grid]])
 {
 	float2 deltaXY = float2(1.0) / float2(uniforms.resolution);
@@ -247,7 +256,12 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 		// Ray direction in world-space
 		float3 direction = normalize(uv.x * right.zxy + uv.y * up.zxy + forward.zxy);
 		
-		sumColor += rayTraceSoft(float3(uniforms.origin), direction, accelerationStructure, uniforms, seed);
+		sumColor += rayTraceSoft(float3(uniforms.origin),
+								 direction,
+								 accelerationStructure,
+								 uniforms,
+								 perInstanceData,
+								 seed);
 	}
 	
 	float3 averageColor = sumColor / (float)numSamples;

@@ -23,7 +23,8 @@ enum {
 
 enum {
 	RayTracingKernelAccelerationStructureIndex,
-	RayTracingKernelCameraIndex,
+	RayTracingKernelUniformsIndex,
+	RayTracingKernelPerInstanceDataIndex,
 	RayTracingKernel_NumBuffers,
 };
 
@@ -84,6 +85,12 @@ typedef struct {
 typedef struct {
 	vector_float3 surfaceNormal;
 	vector_float3 emission;
-} TriangleRayTracingData;
+} PrimitiveRayTracingData;
+
+typedef struct {
+	vector_float3 surfaceNormal;
+	vector_float3 emission;
+	matrix_float4x2 uv;
+} InstanceRayTracingData;
 
 #endif /* VertexTypes_h */
