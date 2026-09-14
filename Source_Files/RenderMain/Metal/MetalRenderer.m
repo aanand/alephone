@@ -682,6 +682,17 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 - (void) addTextureWithID:(NSString*)textureID image:(MetalImage *)image {
+	id<MTLTexture> texture = [self makeTextureFromImage:image];
+	texture.label = textureID;
+	[textures setObject:texture forKey:textureID];
+	[initialRenderResidencySet addAllocation:texture];
+}
+
+- (void) addPlaceholderTextureWithID:(NSString *)textureID {
+	[self addTextureWithID:textureID image:[self makePlaceholderTextureImage]];
+}
+
+- (id<MTLTexture>) makeTextureFromImage:(MetalImage *)image {
 	MTLTextureDescriptor *descriptor = [[MTLTextureDescriptor alloc] init];
 	descriptor.pixelFormat = MTLPixelFormatBGRA8Unorm;
 	descriptor.width = image.width;
@@ -693,14 +704,17 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	};
 
 	id<MTLTexture> texture = [pipeline.device newTextureWithDescriptor:descriptor];
-	texture.label = textureID;
 	[texture replaceRegion:region
 			   mipmapLevel:0
 				 withBytes:image.data.bytes
 			   bytesPerRow:sizeof(uint32) * image.width];
-	
-	[textures setObject:texture forKey:textureID];
-	[initialRenderResidencySet addAllocation:texture];
+
+	return texture;
+}
+
+- (MetalImage*) makePlaceholderTextureImage {
+	uint32 pixels[1] = { 255u | (0u << 8) | (255u << 16) | (255u << 24) };
+	return [[MetalImage alloc] initWithWidth:1 height:1 pixels:pixels];
 }
 
 - (void) begin {

@@ -146,10 +146,8 @@ NSString* LoadTextureIntoRenderer(TextureManager *TMgr, bool didSetupSucceed) {
 	if (@available(macOS 26.0, *)) {
 		if (![renderer hasTextureWithID:textureID]) {
 			if (!didSetupSucceed) {
-				logWarning("Failed to set up texture %d - substituting magenta", textureID.intValue);
-				uint32 pixels[1] = { 255u | (0u << 8) | (255u << 16) | (255u << 24) };
-				MetalImage *substitute = [[MetalImage alloc] initWithWidth:1 height:1 pixels:pixels];
-				[renderer addTextureWithID:textureID image:substitute];
+				logWarning("Failed to set up texture %d - substituting placeholder", textureID.intValue);
+				[renderer addPlaceholderTextureWithID:textureID];
 				return textureID;
 			}
 			
