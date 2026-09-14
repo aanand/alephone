@@ -130,10 +130,39 @@ float3 randomDirectionInCone(float r1, float r2, float3 centerDirection, float m
 	return uniformSampleCone(r1, r2, cosThetaMax, b1, b2, centerDirection);
 }
 
+float2 getQuadUV(intersector<triangle_data, instancing>::result_type intersection,
+				 InstanceRayTracingData instanceData)
+{
+	float3 bary = float3(1.0 - intersection.triangle_barycentric_coord.x - intersection.triangle_barycentric_coord.y,
+						 intersection.triangle_barycentric_coord.x,
+						 intersection.triangle_barycentric_coord.y);
+	
+	float2 uv0, uv1, uv2;
+	
+	if (intersection.primitive_id == 0) {
+		uv0 = instanceData.uv[0];
+		uv1 = instanceData.uv[1];
+		uv2 = instanceData.uv[2];
+	} else {
+		uv0 = instanceData.uv[0];
+		uv1 = instanceData.uv[2];
+		uv2 = instanceData.uv[3];
+	}
+	
+	return uv0 * bary.x + uv1 * bary.y + uv2 * bary.z;
+}
+
+#define MAX_SPRITE_TEXTURES 1024
+
+struct SpriteTextureArgs {
+	array<texture2d<float>, MAX_SPRITE_TEXTURES> textures [[id(0)]];
+};
+
 float3 rayTraceSoft(float3 origin, float3 direction,
 				instance_acceleration_structure accelerationStructure,
 				Uniforms uniforms,
 				constant InstanceRayTracingData *perInstanceData,
+				constant SpriteTextureArgs &spriteTextures,
 				thread float &seed)
 {
 	ray ray;
@@ -165,12 +194,24 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 			primitiveData = (const device PrimitiveRayTracingData*) intersection.primitive_data;
 			float3 normal = primitiveData->surfaceNormal;
 			float3 emission = primitiveData->emission;
+			float alpha = 1.0;
 			
 			uint32_t instanceId = intersection.user_instance_id;
 			if (instanceId > 0) {
 				InstanceRayTracingData instanceData = perInstanceData[instanceId];
 				normal = instanceData.surfaceNormal;
 				emission = instanceData.emission;
+				
+				float2 uv = getQuadUV(intersection, instanceData);
+				texture2d<float> spriteTexture = spriteTextures.textures[instanceData.textureIndex];
+				constexpr sampler spriteSampler(mag_filter::nearest, min_filter::nearest, address::clamp_to_edge);
+				alpha = spriteTexture.sample(spriteSampler, uv).a;
+			}
+			
+			// We hit something transparent - continue
+			if (alpha < 0.5) {
+				ray.origin = hitPoint + ray.direction * 0.1;
+				continue;
 			}
 			
 			if (length(emission) > 0) {
@@ -222,6 +263,7 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 							 instance_acceleration_structure accelerationStructure [[ buffer(RayTracingKernelAccelerationStructureIndex) ]],
 							 constant Uniforms &uniforms [[ buffer(RayTracingKernelUniformsIndex) ]],
 							 constant InstanceRayTracingData *perInstanceData [[ buffer(RayTracingKernelPerInstanceDataIndex) ]],
+							 constant SpriteTextureArgs &spriteTextures [[ buffer(RayTracingKernelSpriteTexturesIndex) ]],
 							 uint2 tid [[thread_position_in_grid]])
 {
 	float2 deltaXY = float2(1.0) / float2(uniforms.resolution);
@@ -261,6 +303,7 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 								 accelerationStructure,
 								 uniforms,
 								 perInstanceData,
+								 spriteTextures,
 								 seed);
 	}
 	

@@ -78,6 +78,7 @@ API_AVAILABLE(macos(26.0))
 	id<MTL4ArgumentTable> vertexArgumentTable;
 	id<MTL4ArgumentTable> fragmentArgumentTable;
 	id<MTL4ArgumentTable> computeArgumentTable;
+	id<MTLArgumentEncoder> spriteTextureArgumentEncoder;
 
 	id<MTLResidencySet> initialRenderResidencySet;
 	id<MTLResidencySet> rayTracingResidencySet;
@@ -95,6 +96,10 @@ API_AVAILABLE(macos(26.0))
 	// Normals, UVs etc. for dynamic geometry
 	id<MTLBuffer> perInstanceDataBuffer;
 	uint32_t numInstances;
+
+	// Sprite textures are passed into the raytracer for alpha testing
+	NSMutableOrderedSet<NSString*> *spriteTextureIDs;
+	id<MTLBuffer> spriteTextureArgumentBuffer;
 
 	NSMutableDictionary<NSString *, id<MTLTexture>> *textures;
 
@@ -133,6 +138,10 @@ API_AVAILABLE(macos(26.0))
 	pipeline.commandAllocator = [pipeline.device newCommandAllocator];
 	pipeline.sharedEvent = [pipeline.device newSharedEvent];
 
+	if (![self setupResidencySets]) {
+		return nil;
+	}
+
 	initialRenderPipeline = [self compileInitialRenderPipeline:metalLayer.pixelFormat];
 	if (!initialRenderPipeline) {
 		return nil;
@@ -151,9 +160,6 @@ API_AVAILABLE(macos(26.0))
 	depthState = [self configureDepth];
 	
 	if (![self setupArgumentTables]) {
-		return nil;
-	}
-	if (![self setupResidencySets]) {
 		return nil;
 	}
 
@@ -379,6 +385,16 @@ API_AVAILABLE(macos(26.0))
 	NSError *error;
 	id<MTLFunction> function = [pipeline.defaultLibrary newFunctionWithName:@"rayTracingKernel"];
 	
+	spriteTextureArgumentEncoder = [function newArgumentEncoderWithBufferIndex:RayTracingKernelSpriteTexturesIndex];
+	spriteTextureArgumentEncoder.label = @"spriteTextureArgumentEncoder";
+
+	spriteTextureArgumentBuffer = [pipeline.device newBufferWithLength:spriteTextureArgumentEncoder.encodedLength
+															   options:MTLResourceStorageModeShared];
+	spriteTextureArgumentBuffer.label = @"spriteTextureArgumentBuffer";
+	
+	[spriteTextureArgumentEncoder setArgumentBuffer:spriteTextureArgumentBuffer offset:0];
+	[rayTracingResidencySet addAllocation:spriteTextureArgumentBuffer];
+	
 	id<MTLComputePipelineState> state = [pipeline.device newComputePipelineStateWithFunction:function
 																			  error:&error];
 	
@@ -429,6 +445,11 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 		[self->staticTriangles addObject:triangle];
 	}];
 	assert(staticTriangles.count < MAX_TRIANGLES);
+}
+
+- (uint32_t) addSpriteTexture:(NSString*)textureID {
+	[spriteTextureIDs addObject:textureID];
+	return (uint32_t)[spriteTextureIDs indexOfObject:textureID];
 }
 
 - (uint32_t)addInstanceData:(InstanceRayTracingData)instanceData {
@@ -488,10 +509,12 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	} forRotation:theta];
 	assert(dynamicTriangles.count < MAX_TRIANGLES);
 
+	uint32_t textureIndex = [self addSpriteTexture:sprite.surface.textureID];
 	uint32_t instanceID = [self addInstanceData:(InstanceRayTracingData){
 		.surfaceNormal = simd_make_float3(-cos(theta), -sin(theta), 0.0),
 		.emission = sprite.surface.emission,
 		.uv = sprite.uv,
+		.textureIndex = textureIndex,
 	}];
 
 	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
@@ -564,6 +587,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	dynamicTriangles = [NSMutableArray array];
 	dynamicPolygonPrimitives = [NSMutableDictionary dictionary];
 	numInstances = 0;
+	spriteTextureIDs = [NSMutableOrderedSet orderedSet];
 	if (!verticalQuadPrimitive) {
 		// spriteQuad initializes exactly once and is reused across frames + level changes
 		verticalQuadPrimitive = [[VerticalQuad alloc] init];
@@ -591,6 +615,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 - (void) startUpdatingDynamicGeometry {
 	dynamicTriangles = [NSMutableArray array];
 	numInstances = 0;
+	spriteTextureIDs = [NSMutableOrderedSet orderedSet];
 	[dynamicIASManager clearInstances];
 	[self clearTopLevelIAS];
 }
@@ -834,10 +859,19 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	encoder.label = @"Ray tracing";
 	
 	[encoder setComputePipelineState:rayTracingPipeline];
+
+	[spriteTextureArgumentEncoder setArgumentBuffer:spriteTextureArgumentBuffer offset:0];
+	
+	for (NSUInteger i = 0; i < spriteTextureIDs.count; i++) {
+		id<MTLTexture> texture = textures[spriteTextureIDs[i]];
+		[spriteTextureArgumentEncoder setTexture:texture atIndex:i];
+		[rayTracingResidencySet addAllocation:texture];
+	}
 	
 	[computeArgumentTable setResource:topLevelIAS.gpuResourceID atBufferIndex:RayTracingKernelAccelerationStructureIndex];
 	[computeArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:RayTracingKernelUniformsIndex];
 	[computeArgumentTable setAddress:perInstanceDataBuffer.gpuAddress atIndex:RayTracingKernelPerInstanceDataIndex];
+	[computeArgumentTable setAddress:spriteTextureArgumentBuffer.gpuAddress atIndex:RayTracingKernelSpriteTexturesIndex];
 	[computeArgumentTable setTexture:outputTexture.gpuResourceID atIndex:RayTracingKernelOutImageIndex];
 	[encoder setArgumentTable:computeArgumentTable];
 	
