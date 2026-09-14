@@ -202,10 +202,12 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 				normal = instanceData.surfaceNormal;
 				emission = instanceData.emission;
 				
-				float2 uv = getQuadUV(intersection, instanceData);
-				texture2d<float> spriteTexture = spriteTextures.textures[instanceData.textureIndex];
-				constexpr sampler spriteSampler(mag_filter::nearest, min_filter::nearest, address::clamp_to_edge);
-				alpha = spriteTexture.sample(spriteSampler, uv).a;
+				if (instanceData.textureIndex > 0) {
+					float2 uv = getQuadUV(intersection, instanceData);
+					texture2d<float> spriteTexture = spriteTextures.textures[instanceData.textureIndex];
+					constexpr sampler spriteSampler(mag_filter::nearest, min_filter::nearest, address::clamp_to_edge);
+					alpha = spriteTexture.sample(spriteSampler, uv).a;
+				}
 			}
 			
 			// We hit something transparent - continue

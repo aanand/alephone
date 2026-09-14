@@ -49,6 +49,8 @@ static const simd_float3 sunRotationAxis = {  0.0, 1.0, 0.0 }; // sun rotates ar
 static const float sunIntensity = 50.0;
 static const float sunDiameterDegrees = 30.0;
 
+static const NSString* PLACEHOLDER_TEXTURE_ID = @"PLACEHOLDER";
+
 API_AVAILABLE(macos(26.0))
 @implementation MetalRenderer
 {
@@ -190,6 +192,7 @@ API_AVAILABLE(macos(26.0))
 	[finalRenderResidencySet commit];
 	
 	textures = [NSMutableDictionary dictionary];
+	[textures setObject:[self makeTextureFromImage:[self makePlaceholderTextureImage]] forKey:PLACEHOLDER_TEXTURE_ID];
 	
 	return self;
 }
@@ -477,6 +480,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 		.surfaceNormal = polygon.surface.normal,
 		.emission = polygon.surface.emission,
 		// TODO: figure out how to pass in UV data for polygons
+		.textureIndex = 0,
 	}];
 
 	[dynamicIASManager addInstanceOfPrimitive:primitive
@@ -494,6 +498,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 		.surfaceNormal = wall.surface.normal,
 		.emission = wall.surface.emission,
 		.uv = wall.uv,
+		.textureIndex = 0,
 	}];
 
 	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
@@ -587,7 +592,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	dynamicTriangles = [NSMutableArray array];
 	dynamicPolygonPrimitives = [NSMutableDictionary dictionary];
 	numInstances = 0;
-	spriteTextureIDs = [NSMutableOrderedSet orderedSet];
+	spriteTextureIDs = [NSMutableOrderedSet orderedSetWithObject:PLACEHOLDER_TEXTURE_ID];
 	if (!verticalQuadPrimitive) {
 		// spriteQuad initializes exactly once and is reused across frames + level changes
 		verticalQuadPrimitive = [[VerticalQuad alloc] init];
@@ -615,7 +620,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 - (void) startUpdatingDynamicGeometry {
 	dynamicTriangles = [NSMutableArray array];
 	numInstances = 0;
-	spriteTextureIDs = [NSMutableOrderedSet orderedSet];
+	spriteTextureIDs = [NSMutableOrderedSet orderedSetWithObject:PLACEHOLDER_TEXTURE_ID];
 	[dynamicIASManager clearInstances];
 	[self clearTopLevelIAS];
 }
