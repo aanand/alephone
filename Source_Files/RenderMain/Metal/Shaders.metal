@@ -168,15 +168,18 @@ struct Hit {
 	float3 emission;
 };
 
-bool castRay(intersector<triangle_data, instancing> i,
-			 instance_acceleration_structure accelerationStructure,
-			 constant InstanceRayTracingData *perInstanceData,
-			 constant SpriteTextureArgs &spriteTextures,
-			 ray ray,
-			 thread Hit &hit)
+typedef intersector<triangle_data, instancing>::result_type RayTracingResult;
+
+struct RayTracer {
+	intersector<triangle_data, instancing> intersector;
+	instance_acceleration_structure accelerationStructure;
+	constant InstanceRayTracingData *perInstanceData;
+	constant SpriteTextureArgs *spriteTextures;
+};
+
+bool castRay(RayTracer rayTracer, ray ray, thread Hit &hit)
 {
-	typename intersector<triangle_data, instancing>::result_type intersection;
-	intersection = i.intersect(ray, accelerationStructure);
+	RayTracingResult intersection = rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure);
 
 	if (intersection.type == intersection_type::none) {
 		return false;
@@ -192,13 +195,13 @@ bool castRay(intersector<triangle_data, instancing> i,
 	
 	uint32_t instanceId = intersection.user_instance_id;
 	if (instanceId > 0) {
-		InstanceRayTracingData instanceData = perInstanceData[instanceId];
+		InstanceRayTracingData instanceData = rayTracer.perInstanceData[instanceId];
 		normal = instanceData.surfaceNormal;
 		emission = instanceData.emission;
 		
 		if (instanceData.textureIndex > 0) {
 			float2 uv = getQuadUV(intersection, instanceData);
-			texture2d<float> spriteTexture = spriteTextures.textures[instanceData.textureIndex];
+			texture2d<float> spriteTexture = rayTracer.spriteTextures->textures[instanceData.textureIndex];
 			constexpr sampler spriteSampler(mag_filter::nearest, min_filter::nearest, address::clamp_to_edge);
 			alpha = spriteTexture.sample(spriteSampler, uv).a;
 		}
@@ -208,7 +211,7 @@ bool castRay(intersector<triangle_data, instancing> i,
 	if (alpha < 0.5) {
 		ray.origin = hitPoint + ray.direction * 0.1;
 		ray.max_distance -= (intersection.distance + 0.1);
-		return castRay(i, accelerationStructure, perInstanceData, spriteTextures, ray, hit);
+		return castRay(rayTracer, ray, hit);
 	}
 	
 	hit.hitPoint = hitPoint;
@@ -219,11 +222,9 @@ bool castRay(intersector<triangle_data, instancing> i,
 }
 
 float3 rayTraceSoft(float3 origin, float3 direction,
-				instance_acceleration_structure accelerationStructure,
-				Uniforms uniforms,
-				constant InstanceRayTracingData *perInstanceData,
-				constant SpriteTextureArgs &spriteTextures,
-				thread float &seed)
+					RayTracer rayTracer,
+					Uniforms uniforms,
+					thread float &seed)
 {
 	ray ray;
 	ray.origin = origin;
@@ -234,11 +235,9 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 	float3 tcol = float3(0.0);
 	float fcol = 1.0;
 	
-	intersector<triangle_data, instancing> i;
-
 	for (uint b = 0; b < numBounces; b++) {
 		Hit hit;
-		bool didHit = castRay(i, accelerationStructure, perInstanceData, spriteTextures, ray, hit);
+		bool didHit = castRay(rayTracer, ray, hit);
 
 		if (!didHit) {
 			float cosTheta = dot(ray.direction, -uniforms.sunDirection);
@@ -291,7 +290,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 
 				// *Did* our ray hit the sun?
 				Hit directRayHit;
-				if (!castRay(i, accelerationStructure, perInstanceData, spriteTextures, directRay, directRayHit)) {
+				if (!castRay(rayTracer, directRay, directRayHit)) {
 					// Modulate the irradiance by its incident angle on the surface
 					float contribution = clamp(dot(normal, towardSun), 0.0, 1.0);
 					// Weight by the PDF
@@ -308,7 +307,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 				directRay.max_distance = length(surfaceToWeapon) - 0.1;
 
 				Hit directRayHit;
-				if (!castRay(i, accelerationStructure, perInstanceData, spriteTextures, directRay, directRayHit)) {
+				if (!castRay(rayTracer, directRay, directRayHit)) {
 					float contribution = clamp(dot(normal, directRay.direction), 0.0, 1.0);
 					tcol += fcol * weaponFlare * contribution;
 				}
@@ -358,6 +357,14 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 	
 	float3 sumColor = float3(0.0);
 	
+	intersector<triangle_data, instancing> intersector;
+	RayTracer rayTracer{
+		.intersector = intersector,
+		.accelerationStructure = accelerationStructure,
+		.perInstanceData = perInstanceData,
+		.spriteTextures = &spriteTextures,
+	};
+
 	for (uint s = 0; s < numSamples; s++) {
 		float2 xyPerturbed = xy + deltaXY * hash2(seed);
 
@@ -370,10 +377,8 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 		
 		sumColor += rayTraceSoft(float3(uniforms.origin),
 								 direction,
-								 accelerationStructure,
+								 rayTracer,
 								 uniforms,
-								 perInstanceData,
-								 spriteTextures,
 								 seed);
 	}
 	
