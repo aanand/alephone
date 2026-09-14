@@ -52,8 +52,7 @@ constant float ambientLightIntensity = 0.1;
 constant float gain = 1.5;
 constant float defaultAttenuation = 0.9;
 
-constant uint numSamples = 2;
-constant uint numBounces = 4;
+constant uint rayBudgetPerPixel = 8;
 constant int denoiseRadius = 3;
 
 fragment float4
@@ -163,6 +162,7 @@ struct SpriteTextureArgs {
 };
 
 struct Hit {
+	bool didHit;
 	float3 hitPoint;
 	float3 normal;
 	float3 emission;
@@ -175,14 +175,23 @@ struct RayTracer {
 	instance_acceleration_structure accelerationStructure;
 	constant InstanceRayTracingData *perInstanceData;
 	constant SpriteTextureArgs *spriteTextures;
+	uint rayBudget;
 };
 
-bool castRay(RayTracer rayTracer, ray ray, thread Hit &hit)
+// Cast a ray, continuing in the case of hitting a transparent surface. Populates `hit` with the result.
+// Returns false if the ray budget was exhausted, in which case `hit` should not be read.
+bool castRay(thread RayTracer &rayTracer, ray ray, thread Hit &hit)
 {
+	if (rayTracer.rayBudget <= 0) {
+		return false;
+	}
+	rayTracer.rayBudget -= 1;
+
 	RayTracingResult intersection = rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure);
 
 	if (intersection.type == intersection_type::none) {
-		return false;
+		hit.didHit = false;
+		return true;
 	}
 	
 	float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
@@ -207,13 +216,17 @@ bool castRay(RayTracer rayTracer, ray ray, thread Hit &hit)
 		}
 	}
 	
-	// We hit something transparent - continue the ray. This doesn't cost us a bounce.
+	// We hit something transparent - continue the ray.
+	// Artificially inflate the ray budget, because otherwise transparent materials will be biased.
 	if (alpha < 0.5) {
+		rayTracer.rayBudget += 1;
+
 		ray.origin = hitPoint + ray.direction * 0.1;
 		ray.max_distance -= (intersection.distance + 0.1);
 		return castRay(rayTracer, ray, hit);
 	}
 	
+	hit.didHit = true;
 	hit.hitPoint = hitPoint;
 	hit.normal = normal;
 	hit.emission = emission;
@@ -221,10 +234,13 @@ bool castRay(RayTracer rayTracer, ray ray, thread Hit &hit)
 	return true;
 }
 
-float3 rayTraceSoft(float3 origin, float3 direction,
-					RayTracer rayTracer,
+// Casts a ray and bounces it until the ray budget is exhausted. Populates `color`.
+// If we couldn't afford a single raycast, returns `false`, in which case `color` should not be read.
+bool rayTraceSoft(float3 origin, float3 direction,
+					thread RayTracer &rayTracer,
 					Uniforms uniforms,
-					thread float &seed)
+					thread float &seed,
+				    thread float3 &color)
 {
 	ray ray;
 	ray.origin = origin;
@@ -234,12 +250,13 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 
 	float3 tcol = float3(0.0);
 	float fcol = 1.0;
+	bool hasSampled = false;
 	
-	for (uint b = 0; b < numBounces; b++) {
+	while (rayTracer.rayBudget > 0) {
 		Hit hit;
-		bool didHit = castRay(rayTracer, ray, hit);
+		if (!castRay(rayTracer, ray, hit)) break;
 
-		if (!didHit) {
+		if (!hit.didHit) {
 			float cosTheta = dot(ray.direction, -uniforms.sunDirection);
 			if (acos(cosTheta) < uniforms.sunRadius) {
 				tcol += fcol * uniforms.sunIntensity;
@@ -253,7 +270,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 
 			if (length(emission) > 0) {
 				// We hit a light source
-				if (b == 0) {
+				if (!hasSampled) {
 					// Desaturate the light value if we haven't bounced yet, so the texture doesn't appear tinted
 					float3 e = emission;
 					tcol += float3(e.r + e.g + e.b) / 3.0;
@@ -290,7 +307,9 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 
 				// *Did* our ray hit the sun?
 				Hit directRayHit;
-				if (!castRay(rayTracer, directRay, directRayHit)) {
+				if (!castRay(rayTracer, directRay, directRayHit)) break;
+				
+				if (!directRayHit.didHit) {
 					// Modulate the irradiance by its incident angle on the surface
 					float contribution = clamp(dot(normal, towardSun), 0.0, 1.0);
 					// Weight by the PDF
@@ -307,7 +326,9 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 				directRay.max_distance = length(surfaceToWeapon) - 0.1;
 
 				Hit directRayHit;
-				if (!castRay(rayTracer, directRay, directRayHit)) {
+				if (!castRay(rayTracer, directRay, directRayHit)) break;
+				
+				if (!directRayHit.didHit){
 					float contribution = clamp(dot(normal, directRay.direction), 0.0, 1.0);
 					tcol += fcol * weaponFlare * contribution;
 				}
@@ -322,10 +343,14 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 			ray.direction = newDirection;
 			
 			fcol *= defaultAttenuation;
+			hasSampled = true;
 		}
 	}
 	
-	return float3(tcol);
+	if (!hasSampled) return false;
+
+	color = float3(tcol);
+	return true;
 }
 
 kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
@@ -363,9 +388,11 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 		.accelerationStructure = accelerationStructure,
 		.perInstanceData = perInstanceData,
 		.spriteTextures = &spriteTextures,
+		.rayBudget = rayBudgetPerPixel,
 	};
 
-	for (uint s = 0; s < numSamples; s++) {
+	uint numSamples = 0;
+	while (rayTracer.rayBudget > 0) {
 		float2 xyPerturbed = xy + deltaXY * hash2(seed);
 
 		// Screen position in [-1, 1], with positive Y = up
@@ -375,11 +402,13 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 		// Ray direction in world-space
 		float3 direction = normalize(uv.x * right.zxy + uv.y * up.zxy + forward.zxy);
 		
-		sumColor += rayTraceSoft(float3(uniforms.origin),
-								 direction,
-								 rayTracer,
-								 uniforms,
-								 seed);
+		float3 sampleColor;
+		if (rayTraceSoft(float3(uniforms.origin), direction, rayTracer, uniforms, seed, sampleColor)) {
+			sumColor += sampleColor;
+			numSamples += 1;
+		} else {
+			break;
+		}
 	}
 	
 	float3 averageColor = sumColor / (float)numSamples;
