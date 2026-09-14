@@ -83,6 +83,10 @@ uint randNext(thread float &seed) {
 	float s2 = seed += 0.1;
 	return baseHash(uint2(as_type<uint>(s1), as_type<uint>(s2)));
 }
+float hash1(thread float &seed) {
+	uint n = randNext(seed);
+	return float(n) * 2.3283064365386963e-10f;
+}
 float2 hash2(thread float &seed) {
 	uint n = randNext(seed);
 	uint2 rz = uint2(n, n*48271U);
@@ -203,6 +207,7 @@ bool castRay(intersector<triangle_data, instancing> i,
 	// We hit something transparent - continue the ray. This doesn't cost us a bounce.
 	if (alpha < 0.5) {
 		ray.origin = hitPoint + ray.direction * 0.1;
+		ray.max_distance -= (intersection.distance + 0.1);
 		return castRay(i, accelerationStructure, perInstanceData, spriteTextures, ray, hit);
 	}
 	
@@ -258,12 +263,26 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 				}
 			}
 
-			// If this surface is exposed to the sun, sample it directly
+			// Directly sample a light source - choose randomly between sun and weapon flare
 			float2 random = hash2(seed);
 			float3 towardSun = randomDirectionInCone(random.x, random.y, -uniforms.sunDirection, uniforms.sunRadius);
+			bool couldHitSun = dot(normal, towardSun) > 0;
+
+			float weaponFlare = uniforms.weaponFlare;
+			bool hasWeaponFlare = weaponFlare > 0;
 			
-			// Could our ray hit the sun?
-			if (dot(normal, towardSun) > 0) {
+			bool sampleSun = false;
+			bool sampleWeaponFlare = false;
+			if (couldHitSun && !hasWeaponFlare) {
+				sampleSun = true;
+			} else if (!couldHitSun && hasWeaponFlare) {
+				sampleWeaponFlare = true;
+			} else if (couldHitSun && hasWeaponFlare) {
+				sampleSun = hash1(seed) <= 0.5;
+				sampleWeaponFlare = !sampleSun;
+			}
+
+			if (sampleSun) {
 				struct ray directRay;
 				directRay.origin = hitPoint;
 				directRay.direction = towardSun;
@@ -278,6 +297,20 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 					// Weight by the PDF
 					float weight = 2 * M_PI_F * (1.0f - cos(uniforms.sunRadius));
 					tcol += fcol * uniforms.sunIntensity * contribution * weight;
+				}
+			} else if (sampleWeaponFlare) {
+				int3 weaponFlarePosition = uniforms.origin + int3(0, 0, -256);
+				float3 surfaceToWeapon = float3(weaponFlarePosition) - hitPoint;
+				struct ray directRay;
+				directRay.origin = hitPoint;
+				directRay.direction = normalize(surfaceToWeapon);
+				directRay.min_distance = 0.1;
+				directRay.max_distance = length(surfaceToWeapon) - 0.1;
+
+				Hit directRayHit;
+				if (!castRay(i, accelerationStructure, perInstanceData, spriteTextures, directRay, directRayHit)) {
+					float contribution = clamp(dot(normal, directRay.direction), 0.0, 1.0);
+					tcol += fcol * weaponFlare * contribution;
 				}
 			}
 

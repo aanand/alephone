@@ -65,6 +65,7 @@ API_AVAILABLE(macos(26.0))
 	simd_uint2 viewportSize;
 	float fov, pitch, yaw;
 	simd_int3 origin;
+	float weaponFlare;
 
 	uint64_t frameNumber;
 	
@@ -408,11 +409,12 @@ API_AVAILABLE(macos(26.0))
 	return state;
 }
 
-- (void) updateViewWithOrigin:(simd_int3)newOrigin pitch:(float)newPitch yaw:(float)newYaw FOV:(float)newFOV {
+- (void) updateViewWithOrigin:(simd_int3)newOrigin pitch:(float)newPitch yaw:(float)newYaw FOV:(float)newFOV weaponFlare:(float)newWeaponFlare {
 	origin = newOrigin;
 	fov = newFOV;
 	pitch = newPitch;
 	yaw = newYaw;
+	weaponFlare = newWeaponFlare;
 }
 
 simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
@@ -767,6 +769,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	uniforms.sunDirection = simd_normalize(rotatedSunDirection);
 	uniforms.sunIntensity = sunIntensity;
 	uniforms.sunRadius = radians(sunDiameterDegrees/2);
+	uniforms.weaponFlare = weaponFlare;
 	memcpy(uniformsBuffer.contents, &uniforms, sizeof(Uniforms));
 		
 	id<CAMetalDrawable> currentDrawable = [metalLayer nextDrawable];

@@ -75,6 +75,8 @@ typedef struct {
 	vector_float3 sunDirection; // Unit vector pointing away from the sun
 	float sunIntensity;
 	float sunRadius; // Half the angle subtended by the sun, in radians
+	
+	float weaponFlare; // Intensity of the weapon flare (0 if it's inactive)
 } Uniforms;
 
 // A vertex in Marathon world-space: X = east, Y = north, Z = up

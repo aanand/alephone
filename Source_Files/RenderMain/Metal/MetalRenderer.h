@@ -30,7 +30,8 @@ API_AVAILABLE(macos(26.0))
 - (void) updateViewWithOrigin:(simd_int3)origin
 						pitch:(float)pitch
 						  yaw:(float)yaw
-						  FOV:(float)fov;
+						  FOV:(float)fov
+				  weaponFlare:(float)weaponFlare;
 
 - (void) begin;
 - (void) end;

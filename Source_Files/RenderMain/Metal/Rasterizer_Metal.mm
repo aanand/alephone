@@ -20,6 +20,7 @@
 #include "OGL_Textures.h"
 #include "Logging.h"
 #include "vbl.h"
+#include "player.h"
 
 #include <simd/simd.h>
 
@@ -62,13 +63,16 @@ void UpdateWorld();
 
 void Rasterizer_Metal_Class::SetView(view_data &View) {
 	view = &View;
+	
+	float weaponFlare = PIN(view->maximum_depth_intensity - NATURAL_LIGHT_INTENSITY, 0, FIXED_ONE)/float(FIXED_ONE);
 
 	if (@available(macOS 26.0, *)) {
 		if (renderer) {
 			[renderer updateViewWithOrigin:simd_make_int3(View.origin.x, View.origin.y, View.origin.z)
 								  pitch:View.virtual_pitch * FixedAngleToDegrees
 									yaw:View.virtual_yaw * FixedAngleToDegrees
-									   FOV:View.field_of_view];
+									   FOV:View.field_of_view
+							   weaponFlare:weaponFlare];
 		}
 	}
 }
