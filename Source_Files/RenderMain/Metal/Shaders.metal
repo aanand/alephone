@@ -61,6 +61,9 @@ initialRenderFragmentShader(RasterizerData in [[stage_in]],
 {
 	constexpr sampler textureSampler (mag_filter::nearest, min_filter::nearest, address::repeat);
 	const half4 colorSample = colorTexture.sample(textureSampler, in.textureCoordinate);
+	if (colorSample.a == 0) {
+		discard_fragment();
+	}
 	return float4(colorSample);
 }
 
