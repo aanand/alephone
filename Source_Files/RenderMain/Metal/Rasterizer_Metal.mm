@@ -36,11 +36,7 @@ bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
 		if (renderer) {
 			return true;
 		}
-		
-		// This is unfortunately necessary while we're using TextureManager,
-		// which is heavily coupled to OpenGL but too complex to recreate from scratch
-		OGL_StartTextures();
-		
+				
 		MetalRenderer *r = [[MetalRenderer alloc] initializeWithWindow:window width:width height:height];
 		if (!r) {
 			logWarning("Failed to initialize MetalRenderer");
@@ -128,8 +124,8 @@ bool SetupSpriteTexture(TextureManager *TMgr,
 	return TMgr->Setup();
 }
 
-int GetTextureScale(short transfer_mode, TextureManager *TMgr) {
-	int tile_ratio = TMgr ? TMgr->TileRatio() : 1;
+int GetTextureScale(TextureManager *TMgr, short transfer_mode, bool didSetup) {
+	int tile_ratio = (TMgr && didSetup) ? TMgr->TileRatio() : 1;
 
 	switch (transfer_mode) {
 		case _xfer_2x:
@@ -230,8 +226,9 @@ void AddWall(polygon_data *polygon, line_data *line, short vertexIdx,
 	if (top <= bottom || texDef.texture == UNONE) return;
 	
 	auto TMgr = std::make_unique<TextureManager>();
-	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupPolygonTexture(TMgr.get(), texDef.texture));
-	int div = GetTextureScale(transferMode, TMgr.get());
+	bool didSetup = SetupPolygonTexture(TMgr.get(), texDef.texture);
+	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), didSetup);
+	int div = GetTextureScale(TMgr.get(), transferMode, didSetup);
 	world_distance x0 = texDef.x0 % div;
 	world_distance y0 = texDef.y0 % div;
 	float tOffset = polygon->ceiling_height + y0;
@@ -269,15 +266,20 @@ void AddFloorOrCeiling(short polygonIdx, polygon_data *polygon, bool isCeiling, 
 	world_distance   height        = isCeiling ? polygon->ceiling_height        : polygon->floor_height;
 	int16            transfer_mode = isCeiling ? polygon->ceiling_transfer_mode : polygon->floor_transfer_mode;
 	
+	if (shape == UNONE) {
+		return;
+	}
+	
 	if (transfer_mode == _xfer_landscape) {
 		// Skip adding landscapes for now so the sun can get in
 		return;
 	}
 	
 	auto TMgr = std::make_unique<TextureManager>();
-	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupPolygonTexture(TMgr.get(), shape));
+	bool didSetup = SetupPolygonTexture(TMgr.get(), shape);
+	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), didSetup);
 	
-	float scale = (float) GetTextureScale(transfer_mode, TMgr.get());
+	float scale = (float) GetTextureScale(TMgr.get(), transfer_mode, didSetup);
 	
 	auto vertices = std::vector<simd_int2>(polygon->vertex_count);
 	auto uv = std::vector<simd_float2>(polygon->vertex_count);
@@ -452,6 +454,11 @@ void UpdateDynamicGeometry() {
 void UpdateWorld() {
 	if (lastLoadedLevelNumber != dynamic_world->current_level_number) {
 		logWarning("Loading level number %d", dynamic_world->current_level_number);
+		
+		// This is unfortunately necessary while we're using TextureManager,
+		// which is heavily coupled to OpenGL but too complex to recreate from scratch
+		if (lastLoadedLevelNumber >= 0) { OGL_StopTextures(); }
+		OGL_StartTextures();
 
 		[renderer startUpdatingAllGeometry];
 		LoadStaticGeometry();
