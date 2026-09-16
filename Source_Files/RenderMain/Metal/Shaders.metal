@@ -49,11 +49,14 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 }
 
 constant float ambientLightIntensity = 0.1;
-constant float gain = 1.5;
+constant float gain = 1.0;
 constant float defaultAttenuation = 0.9;
 
 constant uint rayBudgetPerPixel = 8;
-constant int denoiseRadius = 3;
+constant uint maxBounces = 4;
+constant int denoiseRadius = 1;
+
+constant float rayEpsilon = 0.1;
 
 fragment float4
 initialRenderFragmentShader(RasterizerData in [[stage_in]],
@@ -227,8 +230,8 @@ bool castRay(thread RayTracer &rayTracer, ray ray, thread Hit &hit)
 	if (alpha < 0.5) {
 		rayTracer.rayBudget += 1;
 
-		ray.origin = hitPoint + ray.direction * 0.1;
-		ray.max_distance -= (intersection.distance + 0.1);
+		ray.origin = hitPoint + ray.direction * rayEpsilon;
+		ray.max_distance -= (intersection.distance + rayEpsilon);
 		return castRay(rayTracer, ray, hit);
 	}
 	
@@ -252,14 +255,14 @@ bool rayTraceSoft(float3 origin, float3 direction,
 	ray ray;
 	ray.origin = origin;
 	ray.direction = direction;
-	ray.min_distance = 0.1;
+	ray.min_distance = rayEpsilon;
 	ray.max_distance = INFINITY;
 
 	float3 tcol = float3(0.0);
 	float fcol = 1.0;
-	bool hasSampled = false;
+	uint b;
 	
-	while (rayTracer.rayBudget > 0) {
+	for (b = 0; b < maxBounces; b++) {
 		Hit hit;
 		if (!castRay(rayTracer, ray, hit)) break;
 
@@ -276,13 +279,13 @@ bool rayTraceSoft(float3 origin, float3 direction,
 			float3 emission = hit.emission;
 			
 			if (hit.lightSourceIndex >= 0) {
-				float intensity = rayTracer.lightSources[hit.lightSourceIndex].intensity > 0.5 ? 1.0 : 0.0;
+				float intensity = rayTracer.lightSources[hit.lightSourceIndex].intensity;
 				emission *= intensity;
 			}
 
 			if (length(emission) > 0) {
 				// We hit a light source
-				if (!hasSampled) {
+				if (b == 0) {
 					// Desaturate the light value if we haven't bounced yet, so the texture doesn't appear tinted
 					float3 e = emission;
 					tcol += float3(e.r + e.g + e.b) / 3.0;
@@ -314,7 +317,7 @@ bool rayTraceSoft(float3 origin, float3 direction,
 				struct ray directRay;
 				directRay.origin = hitPoint;
 				directRay.direction = towardSun;
-				directRay.min_distance = 0.1;
+				directRay.min_distance = rayEpsilon;
 				directRay.max_distance = INFINITY;
 
 				// *Did* our ray hit the sun?
@@ -334,8 +337,8 @@ bool rayTraceSoft(float3 origin, float3 direction,
 				struct ray directRay;
 				directRay.origin = hitPoint;
 				directRay.direction = normalize(surfaceToWeapon);
-				directRay.min_distance = 0.1;
-				directRay.max_distance = length(surfaceToWeapon) - 0.1;
+				directRay.min_distance = rayEpsilon;
+				directRay.max_distance = length(surfaceToWeapon) - rayEpsilon;
 
 				Hit directRayHit;
 				if (!castRay(rayTracer, directRay, directRayHit)) break;
@@ -355,11 +358,11 @@ bool rayTraceSoft(float3 origin, float3 direction,
 			ray.direction = newDirection;
 			
 			fcol *= defaultAttenuation;
-			hasSampled = true;
 		}
 	}
 	
-	if (!hasSampled) return false;
+	// We didn't manage a single sample before exhausting the ray budget
+	if (b == 0) return false;
 
 	color = float3(tcol);
 	return true;
@@ -482,6 +485,17 @@ float4 denoisedSample(texture2d<float> texture,
 	return accumulation/c;
 }
 
+// Pulled from Apple's code examples. Might need this later
+//static float3 ToneMapACES(float3 x)
+//{
+//	float a = 2.51f;
+//	float b = 0.03f;
+//	float c = 2.43f;
+//	float d = 0.59f;
+//	float e = 0.14f;
+//	return saturate((x*(a*x+b))/(x*(c*x+d)+e));
+//}
+
 // Adapted from https://developer.apple.com/documentation/metal/accelerating-ray-tracing-using-metal?language=objc
 fragment float4
 finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
@@ -496,5 +510,6 @@ finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
 	float4 initialPassColor = initialPassTex.sample(sam, in.uv);
 	float3 color = clamp(initialPassColor.rgb * rayTracingPassColor.rgb * gain, 0.0, 1.0);
 //	return float4(rayTracingPassColor.rgb, 1.0f);
+//	color = ToneMapACES(color);
 	return float4(color, 1.0f);
 }

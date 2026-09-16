@@ -290,7 +290,7 @@ API_AVAILABLE(macos(26.0))
 	initial.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
 	initialRenderOutputTexture = [pipeline.device newTextureWithDescriptor:initial];
 
-	MTLTextureDescriptor *raytrace = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:metalLayer.pixelFormat
+	MTLTextureDescriptor *raytrace = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRG11B10Float
 																								 width:viewportSize.x
 																								height:viewportSize.y
 																							 mipmapped:NO];

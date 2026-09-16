@@ -180,7 +180,9 @@ NSString* LoadTextureIntoRenderer(TextureManager *TMgr, bool didSetupSucceed) {
 
 std::unordered_map<std::string, simd_float3> emissiveTextures = {
 	// Light panels (M1)
-	{ "[ShapeDesc=4622/Collection=18/CTable=0/Frame=14/Bitmap=14]", simd_make_float3(1.0, 1.0, 1.0) },
+	{ "[ShapeDesc=4622/Collection=18/CTable=0/Frame=14/Bitmap=14]", simd_make_float3(2.0, 2.0, 2.0) },
+	{ "[ShapeDesc=4357/Collection=17/CTable=0/Frame=5/Bitmap=5]", simd_make_float3(2.0, 2.0, 2.0) },
+	{ "[ShapeDesc=4358/Collection=17/CTable=0/Frame=6/Bitmap=6]", simd_make_float3(2.0, 2.0, 2.0) },
 	
 	// Terminals and pattern buffers (M1)
 	{ "[ShapeDesc=2048/Collection=8/CTable=0/Frame=0/Bitmap=0]", simd_make_float3(0.0, 1.0, 0.0) },
@@ -196,8 +198,8 @@ std::unordered_map<std::string, simd_float3> emissiveTextures = {
 	{ "[ShapeDesc=4617/Collection=18/CTable=0/Frame=9/Bitmap=9]", simd_make_float3(0.2, 0.2, 0.2) },
 	
 	// Light panels (M2)
-	{ "[ShapeDesc=4377/Collection=17/CTable=0/Frame=25/Bitmap=25]", simd_make_float3(20.0, 20.0, 20.0) },
-	{ "[ShapeDesc=4886/Collection=19/CTable=0/Frame=22/Bitmap=22]", simd_make_float3(20.0, 20.0, 20.0) },
+	{ "[ShapeDesc=4377/Collection=17/CTable=0/Frame=25/Bitmap=25]", simd_make_float3(2.0, 2.0, 2.0) },
+	{ "[ShapeDesc=4886/Collection=19/CTable=0/Frame=22/Bitmap=22]", simd_make_float3(2.0, 2.0, 2.0) },
 	
 	// Green wall panels (M2)
 	{ "[ShapeDesc=4361/Collection=17/CTable=0/Frame=9/Bitmap=9]", simd_make_float3(0.0, 1.0, 0.0) },
