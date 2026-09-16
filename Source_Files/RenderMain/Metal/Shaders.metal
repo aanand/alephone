@@ -169,6 +169,7 @@ struct Hit {
 	float3 hitPoint;
 	float3 normal;
 	float3 emission;
+	int32_t lightSourceIndex;
 };
 
 typedef intersector<triangle_data, instancing>::result_type RayTracingResult;
@@ -178,6 +179,7 @@ struct RayTracer {
 	instance_acceleration_structure accelerationStructure;
 	constant InstanceRayTracingData *perInstanceData;
 	constant SpriteTextureArgs *spriteTextures;
+	constant LightSource *lightSources;
 	uint rayBudget;
 };
 
@@ -203,6 +205,7 @@ bool castRay(thread RayTracer &rayTracer, ray ray, thread Hit &hit)
 	primitiveData = (const device PrimitiveRayTracingData*) intersection.primitive_data;
 	float3 normal = primitiveData->surfaceNormal;
 	float3 emission = primitiveData->emission;
+	int32_t lightSourceIndex = primitiveData->lightSourceIndex;
 	float alpha = 1.0;
 	
 	uint32_t instanceId = intersection.user_instance_id;
@@ -233,6 +236,7 @@ bool castRay(thread RayTracer &rayTracer, ray ray, thread Hit &hit)
 	hit.hitPoint = hitPoint;
 	hit.normal = normal;
 	hit.emission = emission;
+	hit.lightSourceIndex = lightSourceIndex;
 	
 	return true;
 }
@@ -270,6 +274,11 @@ bool rayTraceSoft(float3 origin, float3 direction,
 			float3 hitPoint = hit.hitPoint;
 			float3 normal = hit.normal;
 			float3 emission = hit.emission;
+			
+			if (hit.lightSourceIndex >= 0) {
+				float intensity = rayTracer.lightSources[hit.lightSourceIndex].intensity > 0.5 ? 1.0 : 0.0;
+				emission *= intensity;
+			}
 
 			if (length(emission) > 0) {
 				// We hit a light source
@@ -361,6 +370,7 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 							 constant Uniforms &uniforms [[ buffer(RayTracingKernelUniformsIndex) ]],
 							 constant InstanceRayTracingData *perInstanceData [[ buffer(RayTracingKernelPerInstanceDataIndex) ]],
 							 constant SpriteTextureArgs &spriteTextures [[ buffer(RayTracingKernelSpriteTexturesIndex) ]],
+							 constant LightSource &lightSources [[ buffer(RayTracingKernelLightSourcesIndex) ]],
 							 uint2 tid [[thread_position_in_grid]])
 {
 	float2 deltaXY = float2(1.0) / float2(uniforms.resolution);
@@ -391,6 +401,7 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 		.accelerationStructure = accelerationStructure,
 		.perInstanceData = perInstanceData,
 		.spriteTextures = &spriteTextures,
+		.lightSources = &lightSources,
 		.rayBudget = rayBudgetPerPixel,
 	};
 

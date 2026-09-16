@@ -21,6 +21,7 @@
 #include "Logging.h"
 #include "vbl.h"
 #include "player.h"
+#include "lightsource.h"
 
 #include <simd/simd.h>
 
@@ -212,9 +213,10 @@ simd_float3 emissionForTextureID(NSString *textureID) {
 }
 
 void AddWall(polygon_data *polygon, line_data *line, short vertexIdx,
-					world_distance bottom, world_distance top,
-					side_texture_definition texDef,
-					short transferMode, bool isDynamic)
+			 world_distance bottom, world_distance top,
+			 side_texture_definition texDef,
+			 short transferMode, int32_t lightSourceIndex,
+			 bool isDynamic)
 {
 	if (transferMode == _xfer_landscape) {
 		// Skip adding landscapes for now so the sun can get in
@@ -249,7 +251,8 @@ void AddWall(polygon_data *polygon, line_data *line, short vertexIdx,
 	
 	MetalSurface *surface = [[MetalSurface alloc] initWithTextureID:textureID
 														   emission:emissionForTextureID(textureID)
-															 normal:normal];
+															 normal:normal
+												   lightSourceIndex:lightSourceIndex];
 
 	MetalWall *wall = [[MetalWall alloc] initWithV0:v0
 												 v1:v1
@@ -272,6 +275,7 @@ void AddFloorOrCeiling(short polygonIdx, polygon_data *polygon, bool isCeiling, 
 	world_point2d    origin        = isCeiling ? polygon->ceiling_origin        : polygon->floor_origin;
 	world_distance   height        = isCeiling ? polygon->ceiling_height        : polygon->floor_height;
 	int16            transfer_mode = isCeiling ? polygon->ceiling_transfer_mode : polygon->floor_transfer_mode;
+	int32_t          lightsource_index = isCeiling ? polygon->ceiling_lightsource_index : polygon->floor_lightsource_index;
 	
 	if (shape == UNONE) {
 		return;
@@ -300,7 +304,8 @@ void AddFloorOrCeiling(short polygonIdx, polygon_data *polygon, bool isCeiling, 
 	
 	MetalSurface *surface = [[MetalSurface alloc] initWithTextureID:textureID
 														   emission:emissionForTextureID(textureID)
-															 normal:simd_make_float3(0.0, 0.0, isCeiling ? -1.0 : 1.0)];
+															 normal:simd_make_float3(0.0, 0.0, isCeiling ? -1.0 : 1.0)
+												   lightSourceIndex:lightsource_index];
 
 	MetalPolygon *mPolygon = [[MetalPolygon alloc] initWithVertexCount:polygon->vertex_count
 															  vertices:vertices.data()
@@ -341,6 +346,7 @@ void AddWalls(polygon_data *polygon, bool isDynamicPass) {
 						polygon->floor_height, polygon->ceiling_height,
 						side->primary_texture,
 						side->primary_transfer_mode,
+						side->primary_lightsource_index,
 						isDynamicPass);
 				break;
 			case _low_side:
@@ -348,6 +354,7 @@ void AddWalls(polygon_data *polygon, bool isDynamicPass) {
 						polygon->floor_height, line->highest_adjacent_floor,
 						side->primary_texture,
 						side->primary_transfer_mode,
+						side->primary_lightsource_index,
 						isDynamicPass);
 				break;
 			case _high_side:
@@ -355,6 +362,7 @@ void AddWalls(polygon_data *polygon, bool isDynamicPass) {
 						line->lowest_adjacent_ceiling, polygon->ceiling_height,
 						side->primary_texture,
 						side->primary_transfer_mode,
+						side->primary_lightsource_index,
 						isDynamicPass);
 				break;
 			case _split_side:
@@ -362,11 +370,13 @@ void AddWalls(polygon_data *polygon, bool isDynamicPass) {
 						line->lowest_adjacent_ceiling, polygon->ceiling_height,
 						side->primary_texture,
 						side->primary_transfer_mode,
+						side->primary_lightsource_index,
 						isDynamicPass);
 				AddWall(polygon, line, vertexIdx,
 						polygon->floor_height, line->highest_adjacent_floor,
 						side->secondary_texture,
 						side->secondary_transfer_mode,
+						side->secondary_lightsource_index,
 						isDynamicPass);
 				break;
 		}
@@ -413,7 +423,8 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 	// Normal is ignored here and set based on the sprite's rotation
 	MetalSurface *surface = [[MetalSurface alloc] initWithTextureID:textureID
 														   emission:emissionForTextureID(textureID)
-															 normal:simd_make_float3(1.0, 0.0, 0.0)];
+															 normal:simd_make_float3(1.0, 0.0, 0.0)
+												   lightSourceIndex:NONE];
 	
 	return [[MetalSprite alloc] initWithIndex:objectIdx
 										   uv:uv
@@ -456,6 +467,13 @@ void UpdateDynamicGeometry() {
 		AddCeiling(polyIdx, polygon, true);
 		AddWalls(polygon, true);
 	}
+	
+	NSMutableArray<NSNumber*> *intensities = [NSMutableArray array];
+	for (int32_t lightSourceIndex = 0; lightSourceIndex < MAXIMUM_LIGHTS_PER_MAP; lightSourceIndex++) {
+		float intensity = get_light_intensity(lightSourceIndex) / float(FIXED_ONE - 1);
+		[intensities addObject:@(intensity)];
+	}
+	[renderer updateLightSourceIntensities:intensities];
 }
 
 void UpdateWorld() {

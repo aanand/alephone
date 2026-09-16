@@ -48,6 +48,7 @@ API_AVAILABLE(macos(26.0))
 - (void) addPolygon:(MetalPolygon*)polygon withID:(int)ID dynamic:(BOOL)isDynamic;
 - (void) addWall:(MetalWall*)wall dynamic:(BOOL)isDynamic;
 - (void) updateSprite:(MetalSprite*)sprite;
+- (void) updateLightSourceIntensities:(NSArray<NSNumber*>*)intensities;
 
 /**
  Textures

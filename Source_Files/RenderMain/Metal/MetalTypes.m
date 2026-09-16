@@ -47,11 +47,13 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 
 @implementation MetalSurface
 
--(MetalSurface *)initWithTextureID:(NSString *)textureID emission:(simd_float3)emission normal:(simd_float3)normal {
+-(MetalSurface *)initWithTextureID:(NSString *)textureID emission:(simd_float3)emission normal:(simd_float3)normal lightSourceIndex:(int32_t)lightSourceIndex
+{
 	if (self = [super init]) {
 		_textureID = textureID;
 		_emission = emission;
 		_normal = normal;
+		_lightSourceIndex = lightSourceIndex;
 	}
 	return self;
 }
@@ -77,7 +79,11 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 			vertices[i*3]   = (simd_float3){ vs[  0].x, vs[  0].y, 0.0 };
 			vertices[i*3+1] = (simd_float3){ vs[i+1].x, vs[i+1].y, 0.0 };
 			vertices[i*3+2] = (simd_float3){ vs[i+2].x, vs[i+2].y, 0.0 };
-			primitiveData[i] = (PrimitiveRayTracingData){ .surfaceNormal = surface.normal, .emission = surface.emission };
+			primitiveData[i] = (PrimitiveRayTracingData){
+				.surfaceNormal = surface.normal,
+				.emission = surface.emission,
+				.lightSourceIndex = surface.lightSourceIndex,
+			};
 		}
 	}
 	return self;
@@ -286,6 +292,7 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 
 			primitiveData[i].surfaceNormal = triangle.surface.normal;
 			primitiveData[i].emission = triangle.surface.emission;
+			primitiveData[i].lightSourceIndex = triangle.surface.lightSourceIndex;
 		}
 	}
 	return self;

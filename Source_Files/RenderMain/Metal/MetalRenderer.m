@@ -118,6 +118,10 @@ API_AVAILABLE(macos(26.0))
 	NSMutableDictionary<NSNumber*, id<ASTrianglePrimitive>> *dynamicPolygonPrimitives;
 	NSMutableArray<Triangle*> *dynamicTriangles;
 
+	// Light sources
+	NSArray<NSNumber*> *lightSourceIntensities;
+	id<MTLBuffer> lightSourcesBuffer;
+
 	id<MTLBuffer> topLevelIASInstanceBuffer;
 	id<MTLAccelerationStructure> topLevelIAS;
 	MTL4InstanceAccelerationStructureDescriptor *topLevelIASDescriptor;
@@ -529,6 +533,10 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 								   instanceID:instanceID];
 }
 
+- (void) updateLightSourceIntensities:(NSArray<NSNumber *> *)intensities {
+	lightSourceIntensities = intensities;
+}
+
 - (void) writeStaticTrianglesToIAS {
 	NSUInteger numTriangles = staticTriangles.count;
 	NSUInteger trianglesPerBatch = 100;
@@ -589,6 +597,32 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	topLevelIAS = nil;
 }
 
+- (void) clearLightSources {
+	lightSourceIntensities = nil;
+	if (lightSourcesBuffer) {
+		[rayTracingResidencySet removeAllocation:lightSourcesBuffer];
+		lightSourcesBuffer = nil;
+	}
+}
+
+- (void) writeLightSources {
+	if (lightSourceIntensities.count == 0) {
+		return;
+	}
+
+	lightSourcesBuffer = [pipeline.device newBufferWithLength:sizeof(LightSource) * lightSourceIntensities.count
+													  options:MTLResourceStorageModeShared];
+	lightSourcesBuffer.label = @"lightSourcesBuffer";
+	
+	LightSource *lightSources = (LightSource*)lightSourcesBuffer.contents;
+	
+	for (NSUInteger i = 0; i < lightSourceIntensities.count; i++) {
+		lightSources[i].intensity = lightSourceIntensities[i].floatValue;
+	}
+	
+	[rayTracingResidencySet addAllocation:lightSourcesBuffer];
+}
+
 - (void) startUpdatingAllGeometry {
 	staticTriangles = [NSMutableArray array];
 	dynamicTriangles = [NSMutableArray array];
@@ -603,6 +637,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[staticIASManager clearGeometry];
 	[dynamicIASManager clearGeometry];
 	[dynamicIASManager addPrimitive:verticalQuadPrimitive];
+	[self clearLightSources];
 
 	[self clearTopLevelIAS];
 }
@@ -611,6 +646,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[self writeStaticTrianglesToIAS];
 	[staticIASManager commitGeometry];
 	[dynamicIASManager commitGeometry];
+	[self writeLightSources];
 
 	[self initializeTopLevelIAS];
 	
@@ -624,11 +660,13 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	numInstances = 0;
 	spriteTextureIDs = [NSMutableOrderedSet orderedSetWithObject:PLACEHOLDER_TEXTURE_ID];
 	[dynamicIASManager clearInstances];
+	[self clearLightSources];
 	[self clearTopLevelIAS];
 }
 
 - (void) finishUpdatingDynamicGeometry {
 	[dynamicIASManager commitInstances];
+	[self writeLightSources];
 
 	[self initializeTopLevelIAS];
 	[self buildAccelerationStructureWithChangesTo:@[dynamicIASManager]
@@ -880,6 +918,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[computeArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:RayTracingKernelUniformsIndex];
 	[computeArgumentTable setAddress:perInstanceDataBuffer.gpuAddress atIndex:RayTracingKernelPerInstanceDataIndex];
 	[computeArgumentTable setAddress:spriteTextureArgumentBuffer.gpuAddress atIndex:RayTracingKernelSpriteTexturesIndex];
+	[computeArgumentTable setAddress:lightSourcesBuffer.gpuAddress atIndex:RayTracingKernelLightSourcesIndex];
 	[computeArgumentTable setTexture:outputTexture.gpuResourceID atIndex:RayTracingKernelOutImageIndex];
 	[encoder setArgumentTable:computeArgumentTable];
 	

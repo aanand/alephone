@@ -26,6 +26,7 @@ enum {
 	RayTracingKernelUniformsIndex,
 	RayTracingKernelPerInstanceDataIndex,
 	RayTracingKernelSpriteTexturesIndex,
+	RayTracingKernelLightSourcesIndex,
 	RayTracingKernel_NumBuffers,
 };
 
@@ -86,8 +87,13 @@ typedef struct {
 } WorldVertex;
 
 typedef struct {
+	float intensity;
+} LightSource;
+
+typedef struct {
 	vector_float3 surfaceNormal;
 	vector_float3 emission;
+	int32_t lightSourceIndex;
 } PrimitiveRayTracingData;
 
 typedef struct {
