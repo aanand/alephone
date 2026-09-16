@@ -31,7 +31,7 @@ void coordinateSystem(float3 n, thread float3 &b1, thread float3 &b2) {
 	}
 	float a = 1.0f / (1.0f + n.z);
 	float b = -n.x * n.y * a;
-	b1 = float3(1.0f + n.x * n.x * a, b, -n.x);
+	b1 = float3(1.0f - n.x * n.x * a, b, -n.x);
 	b2 = float3(b, 1.0f - n.y * n.y * a, -n.y);
 }
 float3 uniformSampleCone(float r1, float r2, float cosThetaMax, float3 x, float3 y, float3 z) {
