@@ -227,12 +227,8 @@ bool rayTraceSoft(float3 origin, float3 direction,
 			}
 
 			// Bounce
-			float3 newDirection = normalize(randomInUnitSphere(seed));
-			if (dot(newDirection, normal) < 0) {
-				newDirection = -newDirection;
-			}
 			ray.origin = hitPoint;
-			ray.direction = newDirection;
+			ray.direction = randomDirectionOnUnitHemisphereCosineWeighted(normal, seed);
 			
 			fcol *= defaultAttenuation;
 		}

@@ -14,13 +14,6 @@ using namespace metal;
 #include "Noise.h"
 
 
-float3 randomInUnitSphere(thread float &seed) {
-	float3 h = hash3(seed) * float3(2.,6.28318530718,1.)-float3(1,0,0);
-	float phi = h.y;
-	float r = pow(h.z, 1./3.);
-	return r * float3(sqrt(1.-h.x*h.x)*float2(sin(phi),cos(phi)),h.x);
-}
-
 // From https://www.scratchapixel.com/lessons/3d-basic-rendering/introduction-to-lighting//introduction-to-lighting-spherical-light-cone-sampling.html
 // Although the orthonormal system they use there seems to glitch here when centerDirection.z is near-zero, so use regular Frisvad method
 void coordinateSystem(float3 n, thread float3 &b1, thread float3 &b2) {
@@ -45,6 +38,26 @@ float3 randomDirectionInCone(float r1, float r2, float3 centerDirection, float m
 	float3 b1, b2;
 	coordinateSystem(centerDirection, b1, b2);
 	return uniformSampleCone(r1, r2, cosThetaMax, b1, b2, centerDirection);
+}
+
+float2 inUnitDisk(float2 uv) {
+	float theta = 2.0 * M_PI_F * uv.x;
+	float r = sqrt(uv.y);
+	return float2(cos(theta), sin(theta)) * r;
+}
+
+float3 projectOntoUnitHemisphereCosineWeighted(float2 uv) {
+	float2 disk = inUnitDisk(uv);
+	return float3(disk.x, disk.y, sqrt(max(0.0, 1.0 - dot(disk, disk))));
+}
+
+float3 randomDirectionOnUnitHemisphereCosineWeighted(float3 normal, thread float &seed) {
+	float2 uv = hash2(seed);
+	float3 z = normal;
+	float3 x, y;
+	coordinateSystem(z, x, y);
+	float3 h = projectOntoUnitHemisphereCosineWeighted(uv);
+	return h.x * x + h.y * y + h.z * z;
 }
 
 #endif /* Sampling_h */
