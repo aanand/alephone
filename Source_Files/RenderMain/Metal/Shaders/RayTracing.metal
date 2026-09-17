@@ -144,9 +144,11 @@ bool rayTraceSoft(float3 origin, float3 direction,
 		if (!castRay(rayTracer, ray, hit)) break;
 
 		if (!hit.didHit) {
-			float cosTheta = dot(ray.direction, -uniforms.sunDirection);
-			if (acos(cosTheta) < uniforms.sunRadius) {
-				tcol += fcol * uniforms.sunIntensity;
+			if (b == 0) {
+				float cosTheta = dot(ray.direction, -uniforms.sunDirection);
+				if (acos(cosTheta) < uniforms.sunRadius) {
+					tcol += fcol * uniforms.sunIntensity;
+				}
 			}
 
 			break;
