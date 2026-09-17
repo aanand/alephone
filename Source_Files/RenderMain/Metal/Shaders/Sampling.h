@@ -30,7 +30,7 @@ void coordinateSystem(float3 n, thread float3 &b1, thread float3 &b2) {
 float3 uniformSampleCone(float r1, float r2, float cosThetaMax, float3 x, float3 y, float3 z) {
 	float cosTheta = mix(cosThetaMax, 1.0f, r1);
 	float sinTheta = sqrt(1.0f - cosTheta*cosTheta);
-	float phi = M_2_PI_F * r2;
+	float phi = 2 * M_PI_F * r2;
 	return cos(phi) * sinTheta * x + sin(phi) * sinTheta * y + cosTheta * z;
 }
 float3 randomDirectionInCone(float r1, float r2, float3 centerDirection, float maxAngle) {

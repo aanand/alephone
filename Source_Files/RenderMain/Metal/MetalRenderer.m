@@ -46,8 +46,8 @@ uint MAX_INSTANCES = 1000;
 
 static const simd_float3 sunDirection    = { -1.0, 1.0, 0.0 }; // sun is to the northwest
 static const simd_float3 sunRotationAxis = {  0.0, 1.0, 0.0 }; // sun rotates around the north-south axis
-static const float sunIntensity = 50.0;
-static const float sunDiameterDegrees = 30.0;
+static const float sunIntensity = 450.0;
+static const float sunDiameterDegrees = 10.0;
 
 static const NSString* PLACEHOLDER_TEXTURE_ID = @"PLACEHOLDER";
 
