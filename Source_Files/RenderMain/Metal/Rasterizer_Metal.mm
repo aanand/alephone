@@ -22,6 +22,7 @@
 #include "vbl.h"
 #include "player.h"
 #include "lightsource.h"
+#include "media.h"
 
 #include <simd/simd.h>
 
@@ -197,6 +198,9 @@ std::unordered_map<std::string, simd_float3> emissiveTextures = {
 	// Panels on columns in that one side room in Arrival (M1)
 	{ "[ShapeDesc=4617/Collection=18/CTable=0/Frame=9/Bitmap=9]", simd_make_float3(0.2, 0.2, 0.2) },
 	
+	// Lava (M1)
+	{ "[ShapeDesc=4893/Collection=19/CTable=0/Frame=29/Bitmap=29]", simd_make_float3(2.0, 1.0, 0.0) },
+	
 	// Light panels (M2)
 	{ "[ShapeDesc=4377/Collection=17/CTable=0/Frame=25/Bitmap=25]", simd_make_float3(2.0, 2.0, 2.0) },
 	{ "[ShapeDesc=4886/Collection=19/CTable=0/Frame=22/Bitmap=22]", simd_make_float3(2.0, 2.0, 2.0) },
@@ -269,13 +273,7 @@ void AddWall(polygon_data *polygon,
 	[renderer addWall:wall dynamic:isDynamic];
 }
 
-// For floors and ceilings, static vs. dynamic is simple: if it's a platform, it's dynamic
 void AddHorizontalSurface(short polygonIdx, polygon_data *polygon, horizontal_surface_data *surface, bool isCeiling, bool isDynamicPass) {
-	bool isPlatform = polygon->type == _polygon_is_platform;
-	if (isPlatform != isDynamicPass) {
-		return;
-	}
-	
 	if (surface->texture == UNONE) {
 		return;
 	}
@@ -316,21 +314,39 @@ void AddHorizontalSurface(short polygonIdx, polygon_data *polygon, horizontal_su
 }
 
 void AddHorizontalSurfaces(short polygonIdx, polygon_data *polygon, bool isDynamicPass) {
-	horizontal_surface_data floor, ceiling;
+	bool isPlatform = polygon->type == _polygon_is_platform;
+
+	// If it's a platform, we add the floor/ceiling to the dynamic geometry.
+	// If it's not a platform, we add them to the static geometry.
+	if (isPlatform == isDynamicPass) {
+		horizontal_surface_data floor, ceiling;
+		
+		floor.texture = polygon->floor_texture;
+		floor.origin = polygon->floor_origin;
+		floor.height = polygon->floor_height;
+		floor.transfer_mode = polygon->floor_transfer_mode;
+		floor.lightsource_index = polygon->floor_lightsource_index;
+		AddHorizontalSurface(polygonIdx, polygon, &floor, false, isDynamicPass);
+		
+		ceiling.texture = polygon->ceiling_texture;
+		ceiling.origin = polygon->ceiling_origin;
+		ceiling.height = polygon->ceiling_height;
+		ceiling.transfer_mode = polygon->ceiling_transfer_mode;
+		ceiling.lightsource_index = polygon->ceiling_lightsource_index;
+		AddHorizontalSurface(polygonIdx, polygon, &ceiling, true, isDynamicPass);
+	}
 	
-	floor.texture = polygon->floor_texture;
-	floor.origin = polygon->floor_origin;
-	floor.height = polygon->floor_height;
-	floor.transfer_mode = polygon->floor_transfer_mode;
-	floor.lightsource_index = polygon->floor_lightsource_index;
-	AddHorizontalSurface(polygonIdx, polygon, &floor, false, isDynamicPass);
-	
-	ceiling.texture = polygon->ceiling_texture;
-	ceiling.origin = polygon->ceiling_origin;
-	ceiling.height = polygon->ceiling_height;
-	ceiling.transfer_mode = polygon->ceiling_transfer_mode;
-	ceiling.lightsource_index = polygon->ceiling_lightsource_index;
-	AddHorizontalSurface(polygonIdx, polygon, &ceiling, true, isDynamicPass);
+	// Media goes in dynamic geometry because it animates up and down.
+	if (isDynamicPass && polygon->media_index != NONE) {
+		media_data *media = get_media_data(polygon->media_index);
+		horizontal_surface_data media_surface;
+		media_surface.texture = media->texture;
+		media_surface.origin = media->origin;
+		media_surface.height = media->height;
+		media_surface.transfer_mode = media->transfer_mode;
+		media_surface.lightsource_index = polygon->media_lightsource_index;
+		AddHorizontalSurface(polygonIdx, polygon, &media_surface, false, isDynamicPass);
+	}
 }
 
 // A wall is dynamic if it belongs to a platform polygon OR it's adjacent to a platform polygon.
