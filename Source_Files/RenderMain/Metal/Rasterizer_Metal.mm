@@ -214,13 +214,13 @@ simd_float3 emissionForTextureID(NSString *textureID) {
 	return simd_make_float3(0.0, 0.0, 0.0);
 }
 
-void AddWall(polygon_data *polygon, line_data *line, short vertexIdx,
-			 world_distance bottom, world_distance top,
-			 side_texture_definition texDef,
-			 short transferMode, int32_t lightSourceIndex,
+void AddWall(polygon_data *polygon,
+			 line_data *line,
+			 short vertexIdx,
+			 vertical_surface_data *surface,
 			 bool isDynamic)
 {
-	if (transferMode == _xfer_landscape) {
+	if (surface->transfer_mode == _xfer_landscape) {
 		// Skip adding landscapes for now so the sun can get in
 		return;
 	}
@@ -234,34 +234,34 @@ void AddWall(polygon_data *polygon, line_data *line, short vertexIdx,
 	simd_float2 d = simd_make_float2(ep1->vertex.x - ep0->vertex.x, ep1->vertex.y - ep0->vertex.y);
 	simd_float3 normal = simd_normalize(simd_make_float3(-d.y, d.x, 0.0));
 
-	if (top <= bottom || texDef.texture == UNONE) return;
+	if (surface->h1 <= surface->h0 || surface->texture_definition->texture == UNONE) return;
 	
 	auto TMgr = std::make_unique<TextureManager>();
-	bool didSetup = SetupPolygonTexture(TMgr.get(), texDef.texture);
+	bool didSetup = SetupPolygonTexture(TMgr.get(), surface->texture_definition->texture);
 	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), didSetup);
-	int div = GetTextureScale(TMgr.get(), transferMode, didSetup);
-	world_distance x0 = texDef.x0 % div;
-	world_distance y0 = texDef.y0 % div;
+	int div = GetTextureScale(TMgr.get(), surface->transfer_mode, didSetup);
+	world_distance x0 = surface->texture_definition->x0 % div;
+	world_distance y0 = surface->texture_definition->y0 % div;
 	float tOffset = polygon->ceiling_height + y0;
 	
 	simd_float4x2 uv = {
-		(simd_float2){ (tOffset - bottom) / (float) div, (x0               ) / (float) div },
-		(simd_float2){ (tOffset - top   ) / (float) div, (x0               ) / (float) div },
-		(simd_float2){ (tOffset - top   ) / (float) div, (x0 + line->length) / (float) div },
-		(simd_float2){ (tOffset - bottom) / (float) div, (x0 + line->length) / (float) div },
+		(simd_float2){ (tOffset - surface->h0) / (float) div, (x0               ) / (float) div },
+		(simd_float2){ (tOffset - surface->h1) / (float) div, (x0               ) / (float) div },
+		(simd_float2){ (tOffset - surface->h1) / (float) div, (x0 + line->length) / (float) div },
+		(simd_float2){ (tOffset - surface->h0) / (float) div, (x0 + line->length) / (float) div },
 	};
 	
-	MetalSurface *surface = [[MetalSurface alloc] initWithTextureID:textureID
+	MetalSurface *mSurface = [[MetalSurface alloc] initWithTextureID:textureID
 														   emission:emissionForTextureID(textureID)
 															 normal:normal
-												   lightSourceIndex:lightSourceIndex];
+												   lightSourceIndex:surface->lightsource_index];
 
 	MetalWall *wall = [[MetalWall alloc] initWithV0:v0
 												 v1:v1
-											 bottom:bottom
-												top:top
+											 bottom:surface->h0
+												top:surface->h1
 												 uv:uv
-											surface:surface];
+											surface:mSurface];
 	
 	[renderer addWall:wall dynamic:isDynamic];
 }
@@ -345,45 +345,43 @@ void AddWalls(polygon_data *polygon, bool isDynamicPass) {
 
 		side_data *side = get_side_data(sideIdx);
 		line_data *line = get_line_data(polygon->line_indexes[vertexIdx]);
+		
+		vertical_surface_data wall;
+		wall.texture_definition = &side->primary_texture;
+		wall.transfer_mode = side->primary_transfer_mode;
+		wall.lightsource_index = side->primary_lightsource_index;
 
 		switch (side->type) {
 			case _full_side:
-				AddWall(polygon, line, vertexIdx,
-						polygon->floor_height, polygon->ceiling_height,
-						side->primary_texture,
-						side->primary_transfer_mode,
-						side->primary_lightsource_index,
-						isDynamicPass);
+				wall.h0 = polygon->floor_height;
+				wall.h1 = polygon->ceiling_height;
+				AddWall(polygon, line, vertexIdx, &wall, isDynamicPass);
 				break;
+
 			case _low_side:
-				AddWall(polygon, line, vertexIdx,
-						polygon->floor_height, line->highest_adjacent_floor,
-						side->primary_texture,
-						side->primary_transfer_mode,
-						side->primary_lightsource_index,
-						isDynamicPass);
+				wall.h0 = polygon->floor_height;
+				wall.h1 = line->highest_adjacent_floor;
+				AddWall(polygon, line, vertexIdx, &wall, isDynamicPass);
 				break;
+
 			case _high_side:
-				AddWall(polygon, line, vertexIdx,
-						line->lowest_adjacent_ceiling, polygon->ceiling_height,
-						side->primary_texture,
-						side->primary_transfer_mode,
-						side->primary_lightsource_index,
-						isDynamicPass);
+				wall.h0 = line->lowest_adjacent_ceiling;
+				wall.h1 = polygon->ceiling_height;
+				AddWall(polygon, line, vertexIdx, &wall, isDynamicPass);
 				break;
+
 			case _split_side:
-				AddWall(polygon, line, vertexIdx,
-						line->lowest_adjacent_ceiling, polygon->ceiling_height,
-						side->primary_texture,
-						side->primary_transfer_mode,
-						side->primary_lightsource_index,
-						isDynamicPass);
-				AddWall(polygon, line, vertexIdx,
-						polygon->floor_height, line->highest_adjacent_floor,
-						side->secondary_texture,
-						side->secondary_transfer_mode,
-						side->secondary_lightsource_index,
-						isDynamicPass);
+				wall.h0 = line->lowest_adjacent_ceiling;
+				wall.h1 = polygon->ceiling_height;
+				AddWall(polygon, line, vertexIdx, &wall, isDynamicPass);
+
+				wall.h0 = polygon->floor_height;
+				wall.h1 = line->highest_adjacent_floor;
+				wall.texture_definition = &side->secondary_texture;
+				wall.transfer_mode = side->secondary_transfer_mode;
+				wall.lightsource_index = side->secondary_lightsource_index;
+				AddWall(polygon, line, vertexIdx, &wall, isDynamicPass);
+
 				break;
 		}
 	}
