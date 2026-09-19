@@ -267,32 +267,26 @@ void AddWall(polygon_data *polygon, line_data *line, short vertexIdx,
 }
 
 // For floors and ceilings, static vs. dynamic is simple: if it's a platform, it's dynamic
-void AddFloorOrCeiling(short polygonIdx, polygon_data *polygon, bool isCeiling, bool isDynamicPass) {
+void AddHorizontalSurface(short polygonIdx, polygon_data *polygon, horizontal_surface_data *surface, bool isCeiling, bool isDynamicPass) {
 	bool isPlatform = polygon->type == _polygon_is_platform;
 	if (isPlatform != isDynamicPass) {
 		return;
 	}
 	
-	shape_descriptor shape         = isCeiling ? polygon->ceiling_texture       : polygon->floor_texture;
-	world_point2d    origin        = isCeiling ? polygon->ceiling_origin        : polygon->floor_origin;
-	world_distance   height        = isCeiling ? polygon->ceiling_height        : polygon->floor_height;
-	int16            transfer_mode = isCeiling ? polygon->ceiling_transfer_mode : polygon->floor_transfer_mode;
-	int32_t          lightsource_index = isCeiling ? polygon->ceiling_lightsource_index : polygon->floor_lightsource_index;
-	
-	if (shape == UNONE) {
+	if (surface->texture == UNONE) {
 		return;
 	}
 	
-	if (transfer_mode == _xfer_landscape) {
+	if (surface->transfer_mode == _xfer_landscape) {
 		// Skip adding landscapes for now so the sun can get in
 		return;
 	}
 	
 	auto TMgr = std::make_unique<TextureManager>();
-	bool didSetup = SetupPolygonTexture(TMgr.get(), shape);
+	bool didSetup = SetupPolygonTexture(TMgr.get(), surface->texture);
 	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), didSetup);
 	
-	float scale = (float) GetTextureScale(TMgr.get(), transfer_mode, didSetup);
+	float scale = (float) GetTextureScale(TMgr.get(), surface->transfer_mode, didSetup);
 	
 	auto vertices = std::vector<simd_int2>(polygon->vertex_count);
 	auto uv = std::vector<simd_float2>(polygon->vertex_count);
@@ -301,29 +295,39 @@ void AddFloorOrCeiling(short polygonIdx, polygon_data *polygon, bool isCeiling, 
 	for (int i = 0; i < polygon->vertex_count; i++) {
 		world_point2d position = get_endpoint_data(polygon->endpoint_indexes[isCeiling ? (polygon->vertex_count - 1 - i) : i])->vertex;
 		vertices[i] = { position.x, position.y };
-		uv[i] = { (position.x + origin.x) / scale, (position.y + origin.y) / scale };
+		uv[i] = { (position.x + surface->origin.x) / scale, (position.y + surface->origin.y) / scale };
 	}
 	
-	MetalSurface *surface = [[MetalSurface alloc] initWithTextureID:textureID
+	MetalSurface *mSurface = [[MetalSurface alloc] initWithTextureID:textureID
 														   emission:emissionForTextureID(textureID)
 															 normal:simd_make_float3(0.0, 0.0, isCeiling ? -1.0 : 1.0)
-												   lightSourceIndex:lightsource_index];
+												   lightSourceIndex:surface->lightsource_index];
 
 	MetalPolygon *mPolygon = [[MetalPolygon alloc] initWithVertexCount:polygon->vertex_count
 															  vertices:vertices.data()
 																	uv:uv.data()
-																height:height
-															   surface:surface];
+																height:surface->height
+															   surface:mSurface];
 	
 	[renderer addPolygon:mPolygon withID:polygonIdx dynamic:isDynamicPass];
 }
 
-void AddFloor(short polygonIdx, polygon_data *polygon, bool isDynamicPass) {
-	AddFloorOrCeiling(polygonIdx, polygon, false, isDynamicPass);
-}
-
-void AddCeiling(short polygonIdx, polygon_data *polygon, bool isDynamicPass) {
-	AddFloorOrCeiling(polygonIdx, polygon, true, isDynamicPass);
+void AddHorizontalSurfaces(short polygonIdx, polygon_data *polygon, bool isDynamicPass) {
+	horizontal_surface_data floor, ceiling;
+	
+	floor.texture = polygon->floor_texture;
+	floor.origin = polygon->floor_origin;
+	floor.height = polygon->floor_height;
+	floor.transfer_mode = polygon->floor_transfer_mode;
+	floor.lightsource_index = polygon->floor_lightsource_index;
+	AddHorizontalSurface(polygonIdx, polygon, &floor, false, isDynamicPass);
+	
+	ceiling.texture = polygon->ceiling_texture;
+	ceiling.origin = polygon->ceiling_origin;
+	ceiling.height = polygon->ceiling_height;
+	ceiling.transfer_mode = polygon->ceiling_transfer_mode;
+	ceiling.lightsource_index = polygon->ceiling_lightsource_index;
+	AddHorizontalSurface(polygonIdx, polygon, &ceiling, true, isDynamicPass);
 }
 
 // A wall is dynamic if it belongs to a platform polygon OR it's adjacent to a platform polygon.
@@ -448,8 +452,7 @@ void LoadStaticGeometry() {
 	for (short polyIdx = 0; polyIdx < dynamic_world->polygon_count; polyIdx++) {
 		polygon_data *polygon = get_polygon_data(polyIdx);
 		
-		AddFloor(polyIdx, polygon, false);
-		AddCeiling(polyIdx, polygon, false);
+		AddHorizontalSurfaces(polyIdx, polygon, false);
 		AddWalls(polygon, false);
 	}
 }
@@ -465,8 +468,7 @@ void UpdateDynamicGeometry() {
 			objectIdx = object->next_object;
 		}
 		
-		AddFloor(polyIdx, polygon, true);
-		AddCeiling(polyIdx, polygon, true);
+		AddHorizontalSurfaces(polyIdx, polygon, true);
 		AddWalls(polygon, true);
 	}
 	
