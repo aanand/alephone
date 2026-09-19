@@ -190,7 +190,7 @@ std::unordered_map<std::string, simd_float3> emissiveTextures = {
 	// Health recharge panels
 	{ "[ShapeDesc=2052/Collection=8/CTable=0/Frame=4/Bitmap=4]", simd_make_float3(0.0, 0.0, 1.0) },
 	
-	// Switches
+	// Switches (M1)
 	{ "[ShapeDesc=2049/Collection=8/CTable=0/Frame=1/Bitmap=1]", simd_make_float3(1.0, 1.0, 1.0) },
 	{ "[ShapeDesc=2050/Collection=8/CTable=0/Frame=2/Bitmap=2]", simd_make_float3(1.0, 1.0, 1.0) },
 	
@@ -203,6 +203,9 @@ std::unordered_map<std::string, simd_float3> emissiveTextures = {
 	
 	// Green wall panels (M2)
 	{ "[ShapeDesc=4361/Collection=17/CTable=0/Frame=9/Bitmap=9]", simd_make_float3(0.0, 1.0, 0.0) },
+	
+	// Switches (M2)
+	{ "[ShapeDesc=4353/Collection=17/CTable=0/Frame=1/Bitmap=1]", simd_make_float3(1.0, 1.0, 1.0) },
 };
 
 simd_float3 emissionForTextureID(NSString *textureID) {
