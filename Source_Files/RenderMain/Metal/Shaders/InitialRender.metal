@@ -47,7 +47,12 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 	return out;
 }
 
-fragment float4
+struct GBuffer {
+	float4 albedo [[ color(InitialRenderAttachmentAlbedo) ]];
+	float depth [[ color(InitialRenderAttachmentDepth) ]];
+};
+
+fragment GBuffer
 initialRenderFragmentShader(RasterizerData in [[stage_in]],
 			   texture2d<half> colorTexture [[ texture(InitialRenderFragmentShaderColorTextureIndex) ]])
 {
@@ -56,5 +61,8 @@ initialRenderFragmentShader(RasterizerData in [[stage_in]],
 	if (colorSample.a == 0) {
 		discard_fragment();
 	}
-	return float4(colorSample);
+	return {
+		.albedo = float4(colorSample),
+		.depth = in.position.z,
+	};
 }

@@ -22,6 +22,11 @@ enum {
 };
 
 enum {
+	InitialRenderAttachmentAlbedo,
+	InitialRenderAttachmentDepth,
+};
+
+enum {
 	RayTracingKernelAccelerationStructureIndex,
 	RayTracingKernelUniformsIndex,
 	RayTracingKernelPerInstanceDataIndex,
