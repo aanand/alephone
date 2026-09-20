@@ -9,7 +9,7 @@
 using namespace metal;
 using namespace raytracing;
 
-#include "../VertexTypes.h"
+#include "ShaderTypes.h"
 #include "Constants.h"
 #include "Noise.h"
 #include "Sampling.h"

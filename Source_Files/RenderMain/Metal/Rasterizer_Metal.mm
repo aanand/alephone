@@ -15,7 +15,6 @@
 #include "Rasterizer_Metal.h"
 
 #include "Metal/MetalRenderer.h"
-#include "Metal/VertexTypes.h"
 
 #include "OGL_Textures.h"
 #include "Logging.h"

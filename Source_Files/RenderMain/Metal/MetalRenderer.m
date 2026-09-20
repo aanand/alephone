@@ -14,7 +14,7 @@
 #include <MetalKit/MetalKit.h>
 #include <dispatch/dispatch.h>
 
-#include "VertexTypes.h"
+#include "Shaders/ShaderTypes.h"
 #include "MetalPipeline.h"
 #include "IASManager.h"
 #include "MetalRenderer.h"

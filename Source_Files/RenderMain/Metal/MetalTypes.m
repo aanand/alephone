@@ -7,8 +7,8 @@
 
 #import <Foundation/Foundation.h>
 
-#import "Metal/VertexTypes.h"
-#import "Metal/MetalTypes.h"
+#import "Shaders/ShaderTypes.h"
+#import "MetalTypes.h"
 
 simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 	{ 0.0, -0.5, 0.0 },

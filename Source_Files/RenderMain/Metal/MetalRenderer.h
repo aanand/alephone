@@ -13,7 +13,6 @@
 
 #import <SDL2/SDL.h>
 
-#import "Metal/VertexTypes.h"
 #import "Metal/MetalTypes.h"
 
 API_AVAILABLE(macos(26.0))

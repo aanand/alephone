@@ -8,7 +8,7 @@
 #include <metal_stdlib>
 using namespace metal;
 
-#include "../VertexTypes.h"
+#include "ShaderTypes.h"
 #include "Constants.h"
 
 

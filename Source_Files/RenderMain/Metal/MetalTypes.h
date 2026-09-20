@@ -11,7 +11,7 @@
 #import <Foundation/NSObject.h>
 #import <simd/simd.h>
 
-#import "VertexTypes.h"
+#import "Shaders/ShaderTypes.h"
 
 #pragma mark - Texture-related types
 

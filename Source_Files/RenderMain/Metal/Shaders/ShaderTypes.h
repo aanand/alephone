@@ -1,12 +1,12 @@
 //
-//  VertexTypes.h
+//  ShaderTypes.h
 //  AlephOne
 //
 //  Created by Aanand Prasad on 28/08/2026.
 //
 
-#ifndef VertexTypes_h
-#define VertexTypes_h
+#ifndef ShaderTypes_h
+#define ShaderTypes_h
 
 #include <simd/simd.h>
 
