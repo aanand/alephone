@@ -60,74 +60,63 @@ struct RayTracer {
 	constant InstanceRayTracingData *perInstanceData;
 	constant SpriteTextureArgs *spriteTextures;
 	constant LightSource *lightSources;
-	uint rayBudget;
 };
 
-// Cast a ray, continuing in the case of hitting a transparent surface. Populates `hit` with the result.
-// Returns false if the ray budget was exhausted, in which case `hit` should not be read.
-bool castRay(thread RayTracer &rayTracer, ray ray, thread Hit &hit)
+// Cast a ray, continuing in the case of hitting a transparent surface.
+Hit castRay(thread RayTracer &rayTracer, ray ray)
 {
-	if (rayTracer.rayBudget <= 0) {
-		return false;
-	}
-	rayTracer.rayBudget -= 1;
-
-	RayTracingResult intersection = rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure);
-
-	if (intersection.type == intersection_type::none) {
-		hit.didHit = false;
-		return true;
-	}
-	
-	float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
-
-	const device PrimitiveRayTracingData *primitiveData;
-	primitiveData = (const device PrimitiveRayTracingData*) intersection.primitive_data;
-	float3 normal = primitiveData->surfaceNormal;
-	float3 emission = primitiveData->emission;
-	int32_t lightSourceIndex = primitiveData->lightSourceIndex;
-	float alpha = 1.0;
-	
-	uint32_t instanceId = intersection.user_instance_id;
-	if (instanceId > 0) {
-		InstanceRayTracingData instanceData = rayTracer.perInstanceData[instanceId];
-		normal = instanceData.surfaceNormal;
-		emission = instanceData.emission;
+	for (uint p = 0; p < maxAlphaPassthroughs; p++) {
+		RayTracingResult intersection = rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure);
 		
-		if (instanceData.textureIndex > 0) {
-			float2 uv = getQuadUV(intersection, instanceData);
-			texture2d<float> spriteTexture = rayTracer.spriteTextures->textures[instanceData.textureIndex];
-			constexpr sampler spriteSampler(mag_filter::nearest, min_filter::nearest, address::clamp_to_edge);
-			alpha = spriteTexture.sample(spriteSampler, uv).a;
+		if (intersection.type == intersection_type::none) {
+			return { .didHit = false };
+		}
+		
+		float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
+		
+		const device PrimitiveRayTracingData *primitiveData;
+		primitiveData = (const device PrimitiveRayTracingData*) intersection.primitive_data;
+		float3 normal = primitiveData->surfaceNormal;
+		float3 emission = primitiveData->emission;
+		int32_t lightSourceIndex = primitiveData->lightSourceIndex;
+		float alpha = 1.0;
+		
+		uint32_t instanceId = intersection.user_instance_id;
+		if (instanceId > 0) {
+			InstanceRayTracingData instanceData = rayTracer.perInstanceData[instanceId];
+			normal = instanceData.surfaceNormal;
+			emission = instanceData.emission;
+			
+			if (instanceData.textureIndex > 0) {
+				float2 uv = getQuadUV(intersection, instanceData);
+				texture2d<float> spriteTexture = rayTracer.spriteTextures->textures[instanceData.textureIndex];
+				constexpr sampler spriteSampler(mag_filter::nearest, min_filter::nearest, address::clamp_to_edge);
+				alpha = spriteTexture.sample(spriteSampler, uv).a;
+			}
+		}
+		
+		if (alpha < 0.5) {
+			// We hit something transparent - continue the ray.
+			ray.origin = hitPoint + ray.direction * rayEpsilon;
+			ray.max_distance -= (intersection.distance + rayEpsilon);
+		} else {
+			return {
+				.didHit = true,
+				.hitPoint = hitPoint,
+				.normal = normal,
+				.emission = emission,
+				.lightSourceIndex = lightSourceIndex,
+			};
 		}
 	}
 	
-	// We hit something transparent - continue the ray.
-	// Artificially inflate the ray budget, because otherwise transparent materials will be biased.
-	if (alpha < 0.5) {
-		rayTracer.rayBudget += 1;
-
-		ray.origin = hitPoint + ray.direction * rayEpsilon;
-		ray.max_distance -= (intersection.distance + rayEpsilon);
-		return castRay(rayTracer, ray, hit);
-	}
-	
-	hit.didHit = true;
-	hit.hitPoint = hitPoint;
-	hit.normal = normal;
-	hit.emission = emission;
-	hit.lightSourceIndex = lightSourceIndex;
-	
-	return true;
+	return { .didHit = false };
 }
 
-// Casts a ray and bounces it until the ray budget is exhausted. Populates `color`.
-// If we couldn't afford a single raycast, returns `false`, in which case `color` should not be read.
-bool rayTraceSoft(float3 origin, float3 direction,
+float3 rayTraceSoft(float3 origin, float3 direction,
 					thread RayTracer &rayTracer,
 					Uniforms uniforms,
-					thread float &seed,
-					thread float3 &color)
+					thread float &seed)
 {
 	ray ray;
 	ray.origin = origin;
@@ -140,8 +129,7 @@ bool rayTraceSoft(float3 origin, float3 direction,
 	uint b;
 	
 	for (b = 0; b < maxBounces; b++) {
-		Hit hit;
-		if (!castRay(rayTracer, ray, hit)) break;
+		Hit hit = castRay(rayTracer, ray);
 
 		if (!hit.didHit) {
 			if (b == 0) {
@@ -199,9 +187,7 @@ bool rayTraceSoft(float3 origin, float3 direction,
 				directRay.min_distance = rayEpsilon;
 				directRay.max_distance = INFINITY;
 
-				// *Did* our ray hit the sun?
-				Hit directRayHit;
-				if (!castRay(rayTracer, directRay, directRayHit)) break;
+				Hit directRayHit = castRay(rayTracer, directRay);
 				
 				if (!directRayHit.didHit) {
 					// Modulate the irradiance by its incident angle on the surface
@@ -219,8 +205,7 @@ bool rayTraceSoft(float3 origin, float3 direction,
 				directRay.min_distance = rayEpsilon;
 				directRay.max_distance = length(surfaceToWeapon) - rayEpsilon;
 
-				Hit directRayHit;
-				if (!castRay(rayTracer, directRay, directRayHit)) break;
+				Hit directRayHit = castRay(rayTracer, directRay);
 				
 				if (!directRayHit.didHit){
 					float contribution = clamp(dot(normal, directRay.direction), 0.0, 1.0);
@@ -235,12 +220,8 @@ bool rayTraceSoft(float3 origin, float3 direction,
 			fcol *= defaultAttenuation;
 		}
 	}
-	
-	// We didn't manage a single sample before exhausting the ray budget
-	if (b == 0) return false;
 
-	color = float3(tcol);
-	return true;
+	return tcol;
 }
 
 kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
@@ -280,11 +261,9 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 		.perInstanceData = perInstanceData,
 		.spriteTextures = &spriteTextures,
 		.lightSources = &lightSources,
-		.rayBudget = rayBudgetPerPixel,
 	};
 
-	uint numSamples = 0;
-	while (rayTracer.rayBudget > 0) {
+	for (uint s = 0; s < samplesPerPixel; s++) {
 		float2 xyPerturbed = xy + deltaXY * hash2(seed);
 
 		// Screen position in [-1, 1], with positive Y = up
@@ -294,16 +273,10 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 		// Ray direction in world-space
 		float3 direction = normalize(uv.x * right.zxy + uv.y * up.zxy + forward.zxy);
 		
-		float3 sampleColor;
-		if (rayTraceSoft(float3(uniforms.origin), direction, rayTracer, uniforms, seed, sampleColor)) {
-			sumColor += sampleColor;
-			numSamples += 1;
-		} else {
-			break;
-		}
+		sumColor += rayTraceSoft(float3(uniforms.origin), direction, rayTracer, uniforms, seed);
 	}
 	
-	float3 averageColor = sumColor / (float)numSamples;
+	float3 averageColor = sumColor / (float)samplesPerPixel;
 	float3 adjusted = mix(float3(ambientLightIntensity), float3(1.0), averageColor);
 
 	outImage.write(float4(adjusted, 1.0), tid);

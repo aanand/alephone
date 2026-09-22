@@ -16,8 +16,9 @@ constant float ambientLightIntensity = 0.1;
 constant float gain = 1.0;
 constant float defaultAttenuation = 0.9;
 
-constant uint rayBudgetPerPixel = 8;
+constant uint samplesPerPixel = 1;
 constant uint maxBounces = 4;
+constant uint maxAlphaPassthroughs = 10;
 constant int denoiseRadius = 1;
 
 constant float rayEpsilon = 0.1;
