@@ -36,15 +36,18 @@ bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
 
 	if (@available(macOS 26.0, *)) {
 		if (renderer) {
-			return true;
+			[renderer shutdown];
+			renderer = nil;
 		}
-				
+
 		MetalRenderer *r = [[MetalRenderer alloc] initializeWithWindow:window width:width height:height];
 		if (!r) {
 			logWarning("Failed to initialize MetalRenderer");
 			return false;
 		}
 		renderer = r;
+		view = nil;
+		lastLoadedLevelNumber = -1;
 
 		logWarning("Initialized MetalRenderer");
 		return true;

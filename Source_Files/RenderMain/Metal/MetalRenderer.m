@@ -421,6 +421,34 @@ API_AVAILABLE(macos(26.0))
 	return state;
 }
 
+- (void) shutdown {
+	[initialRenderResidencySet removeAllAllocations];
+	[rayTracingResidencySet removeAllAllocations];
+	[finalRenderResidencySet removeAllAllocations];
+	[pipeline.commandQueue removeResidencySet:initialRenderResidencySet];
+	[pipeline.commandQueue removeResidencySet:rayTracingResidencySet];
+	[pipeline.commandQueue removeResidencySet:finalRenderResidencySet];
+	
+	staticIASManager = nil;
+	dynamicIASManager = nil;
+	pipeline = nil;
+	
+	textures = nil;
+	staticTriangles = nil;
+	dynamicTriangles = nil;
+	dynamicPolygonPrimitives = nil;
+	spriteTextureIDs = nil;
+	
+	metalLayer = nil;
+	
+	if (renderer) {
+		SDL_DestroyRenderer(renderer);
+		renderer = nil;
+	}
+	
+	window = nil;
+}
+
 - (void) updateViewWithOrigin:(simd_int3)newOrigin pitch:(float)newPitch yaw:(float)newYaw FOV:(float)newFOV weaponFlare:(float)newWeaponFlare {
 	origin = newOrigin;
 	fov = newFOV;

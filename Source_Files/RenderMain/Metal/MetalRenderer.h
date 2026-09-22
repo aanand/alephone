@@ -22,6 +22,8 @@ API_AVAILABLE(macos(26.0))
 								 width:(int)width
 								height:(int)height;
 
+- (void) shutdown;
+
 /**
  Rendering
  */
