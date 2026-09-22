@@ -22,6 +22,7 @@
 #include "player.h"
 #include "lightsource.h"
 #include "media.h"
+#include "Scenario.h"
 
 #include <simd/simd.h>
 
@@ -209,6 +210,25 @@ std::unordered_map<std::string, simd_float3> emissiveTextures = {
 	
 	// Switches (M2)
 	{ "[ShapeDesc=4353/Collection=17/CTable=0/Frame=1/Bitmap=1]", simd_make_float3(1.0, 1.0, 1.0) },
+};
+
+std::unordered_map<std::string, Sky> skies = {
+	{ "Marathon 1.2", (Sky){
+		.bottomEmission = { 0.0, 0.0, 0.0 },
+		.topEmission = { 0.0, 0.0, 0.0 },
+		.hasSun = true,
+		.sunEmission = { 10.0, 10.0, 10.0 },
+		.sunPosition = { 1.0, -1.0, 0.0 },
+		.sunRadius = 10.0 * M_PI / 180.0,
+		.sunRotationSpeed = 1.0 * M_PI / 180.0,
+		.sunRotationAxis = {  0.0, 1.0, 0.0 },
+	} }
+};
+
+Sky defaultSky = {
+	.bottomEmission = { 0.2, 0.2, 0.2 },
+	.topEmission = { 2.0, 2.0, 2.0 },
+	.hasSun = false,
 };
 
 simd_float3 emissionForTextureID(NSString *textureID) {
@@ -497,6 +517,14 @@ void UpdateDynamicGeometry() {
 }
 
 void UpdateWorld() {
+	Sky sky = defaultSky;
+	const std::string &scenarioId = Scenario::instance()->GetID();
+	auto iterator = skies.find(scenarioId);
+	if (iterator != skies.end()) {
+		sky = iterator->second;
+	}
+	[renderer updateSky:sky];
+
 	if (lastLoadedLevelNumber != dynamic_world->current_level_number) {
 		logWarning("Loading level number %d", dynamic_world->current_level_number);
 		

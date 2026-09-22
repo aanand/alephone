@@ -56,6 +56,23 @@ enum {
 };
 
 typedef struct {
+	vector_float3 bottomEmission;
+	vector_float3 topEmission;
+
+	bool hasSun;
+	vector_float3 sunEmission;
+	vector_float3 sunPosition; // Unit vector towards sun
+
+	// Half the angle subtended by the sun, in radians
+	float sunRadius;
+
+	// Axis and rate at which the sun rotates around its axis (radians per frame).
+	// Applied on the CPU, but located here for convenience.
+	float sunRotationSpeed;
+	vector_float3 sunRotationAxis;
+} Sky;
+
+typedef struct {
 	vector_uint2 resolution;
 	uint64_t frameNumber;
 	
@@ -78,9 +95,7 @@ typedef struct {
 	matrix_float4x4 perspectiveMat;
 	
 	// Global light parameters
-	vector_float3 sunDirection; // Unit vector pointing away from the sun
-	float sunIntensity;
-	float sunRadius; // Half the angle subtended by the sun, in radians
+	Sky sky;
 	
 	float weaponFlare; // Intensity of the weapon flare (0 if it's inactive)
 } Uniforms;

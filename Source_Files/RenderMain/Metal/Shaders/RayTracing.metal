@@ -62,6 +62,18 @@ struct RayTracer {
 	constant LightSource *lightSources;
 };
 
+float3 sampleSky(Sky sky, float3 direction) {
+	if (sky.hasSun) {
+		float cosThetaToSun = dot(direction, sky.sunPosition);
+		if (acos(cosThetaToSun) < sky.sunRadius) {
+			return sky.sunEmission;
+		}
+	}
+	
+	float cosThetaToTop = dot(direction, float3(0.0, 0.0, 1.0));
+	return mix(sky.bottomEmission, sky.topEmission, cosThetaToTop * 0.5 + 0.5);
+}
+
 // Cast a ray, continuing in the case of hitting a transparent surface.
 Hit castRay(thread RayTracer &rayTracer, ray ray)
 {
@@ -132,13 +144,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 		Hit hit = castRay(rayTracer, ray);
 
 		if (!hit.didHit) {
-			if (b == 0) {
-				float cosTheta = dot(ray.direction, -uniforms.sunDirection);
-				if (acos(cosTheta) < uniforms.sunRadius) {
-					tcol += fcol * uniforms.sunIntensity;
-				}
-			}
-
+			tcol += fcol * sampleSky(uniforms.sky, ray.direction);
 			break;
 		} else {
 			float3 hitPoint = hit.hitPoint;
@@ -163,8 +169,8 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 
 			// Directly sample a light source - choose randomly between sun and weapon flare
 			float2 random = hash2(seed);
-			float3 towardSun = randomDirectionInCone(random.x, random.y, -uniforms.sunDirection, uniforms.sunRadius);
-			bool couldHitSun = dot(normal, towardSun) > 0;
+			float3 towardSun = randomDirectionInCone(random.x, random.y, uniforms.sky.sunPosition, uniforms.sky.sunRadius);
+			bool couldHitSun = uniforms.sky.hasSun && dot(normal, towardSun) > 0;
 
 			float weaponFlare = uniforms.weaponFlare;
 			bool hasWeaponFlare = weaponFlare > 0;
@@ -193,8 +199,8 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 					// Modulate the irradiance by its incident angle on the surface
 					float contribution = clamp(dot(normal, towardSun), 0.0, 1.0);
 					// Weight by the PDF
-					float weight = 2 * M_PI_F * (1.0f - cos(uniforms.sunRadius));
-					tcol += fcol * uniforms.sunIntensity * contribution * weight;
+					float weight = 2 * M_PI_F * (1.0f - cos(uniforms.sky.sunRadius));
+					tcol += fcol * uniforms.sky.sunEmission * contribution * weight;
 				}
 			} else if (sampleWeaponFlare) {
 				int3 weaponFlarePosition = uniforms.origin + int3(0, 0, -256);

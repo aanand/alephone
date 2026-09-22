@@ -44,11 +44,6 @@ simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
 uint MAX_TRIANGLES = 10000;
 uint MAX_INSTANCES = 1000;
 
-static const simd_float3 sunDirection    = { -1.0, 1.0, 0.0 }; // sun is to the northwest
-static const simd_float3 sunRotationAxis = {  0.0, 1.0, 0.0 }; // sun rotates around the north-south axis
-static const float sunIntensity = 50.0;
-static const float sunDiameterDegrees = 10.0;
-
 static const NSString* PLACEHOLDER_TEXTURE_ID = @"PLACEHOLDER";
 
 const MTLPixelFormat AlbedoPixelFormat = MTLPixelFormatRGBA8Unorm_sRGB;
@@ -70,6 +65,7 @@ API_AVAILABLE(macos(26.0))
 	float fov, pitch, yaw;
 	simd_int3 origin;
 	float weaponFlare;
+	Sky sky;
 
 	uint64_t frameNumber;
 	
@@ -431,6 +427,10 @@ API_AVAILABLE(macos(26.0))
 	pitch = newPitch;
 	yaw = newYaw;
 	weaponFlare = newWeaponFlare;
+}
+
+- (void) updateSky:(Sky)newSky {
+	sky = newSky;
 }
 
 simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
@@ -804,8 +804,10 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 - (void) end {
-	simd_float4x4 sunRotation = rotationMatrix(fmod(frameNumber, 360.0), sunRotationAxis);
-	simd_float3 rotatedSunDirection = simd_mul(sunRotation, simd_make_float4(sunDirection, 1.0)).xyz;
+	// Rotate sun and ensure position is a unit vector
+	Sky adjustedSky = sky;
+	simd_quatf sunRotation = simd_quaternion(fmod(frameNumber * sky.sunRotationSpeed, 2*M_PI), sky.sunRotationAxis);
+	adjustedSky.sunPosition = simd_normalize(simd_mul(simd_matrix4x4(sunRotation), simd_make_float4(sky.sunPosition, 1.0)).xyz);
 
 	Uniforms uniforms;
 	uniforms.resolution = viewportSize;
@@ -816,9 +818,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	uniforms.yawMat = rotationMatrix(-yaw, simd_make_float3(0.0, 1.0, 0.0));
 	uniforms.rotateDirectionMat = simd_mul(rotationMatrix(yaw, simd_make_float3(0.0, 1.0, 0.0)), rotationMatrix(-pitch, simd_make_float3(1.0, 0.0, 0.0)));
 	uniforms.perspectiveMat = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
-	uniforms.sunDirection = simd_normalize(rotatedSunDirection);
-	uniforms.sunIntensity = sunIntensity;
-	uniforms.sunRadius = radians(sunDiameterDegrees/2);
+	uniforms.sky = adjustedSky;
 	uniforms.weaponFlare = weaponFlare;
 	memcpy(uniformsBuffer.contents, &uniforms, sizeof(Uniforms));
 		

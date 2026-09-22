@@ -32,6 +32,8 @@ API_AVAILABLE(macos(26.0))
 						  FOV:(float)fov
 				  weaponFlare:(float)weaponFlare;
 
+- (void) updateSky:(Sky)sky;
+
 - (void) begin;
 - (void) end;
 
