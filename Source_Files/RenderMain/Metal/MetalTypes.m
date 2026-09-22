@@ -139,6 +139,7 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 	return (WorldVertex){
 		.position = simd_make_int3(pos.x, pos.y, _height),
 		.textureCoordinate = _uv[vertexIdx],
+		.normal = _surface.normal,
 	};
 }
 
@@ -174,18 +175,22 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 	WorldVertex v0 = {
 		.position = { _v0.x, _v0.y, _bottom },
 		.textureCoordinate = _uv.columns[0],
+		.normal = _surface.normal,
 	};
 	WorldVertex v1 = {
 		.position = { _v0.x, _v0.y, _top },
 		.textureCoordinate = _uv.columns[1],
+		.normal = _surface.normal,
 	};
 	WorldVertex v2 = {
 		.position = { _v1.x, _v1.y, _top },
 		.textureCoordinate = _uv.columns[2],
+		.normal = _surface.normal,
 	};
 	WorldVertex v3 = {
 		.position = { _v1.x, _v1.y, _bottom },
 		.textureCoordinate = _uv.columns[3],
+		.normal = _surface.normal,
 	};
 	
 	Triangle *t0 = [[Triangle alloc] initWithV0:v0 v1:v1 v2:v2 surface:_surface];
@@ -240,9 +245,11 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 	WorldVertex v[4];
 	for (int i=0; i<4; i++) {
 		simd_float3 position = simd_mul(transform, simd_make_float4(VERTICAL_QUAD_VERTICES[i], 1.0)).xyz;
+		simd_float3 normal = simd_make_float3(-cos(theta), -sin(theta), 0.0);
 		v[i] = (WorldVertex){
 			.position = simd_make_int3(position.x, position.y, position.z),
 			.textureCoordinate = _uv.columns[i],
+			.normal = normal,
 		};
 	}
 	

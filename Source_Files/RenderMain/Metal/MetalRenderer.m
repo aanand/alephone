@@ -48,6 +48,7 @@ static const NSString* PLACEHOLDER_TEXTURE_ID = @"PLACEHOLDER";
 
 const MTLPixelFormat AlbedoPixelFormat = MTLPixelFormatRGBA8Unorm_sRGB;
 const MTLPixelFormat DepthPixelFormat = MTLPixelFormatR32Float;
+const MTLPixelFormat NormalPixelFormat = MTLPixelFormatRGBA16Float;
 
 
 API_AVAILABLE(macos(26.0))
@@ -89,6 +90,7 @@ API_AVAILABLE(macos(26.0))
 	
 	id<MTLTexture> initialRenderGBufferAlbedo;
 	id<MTLTexture> initialRenderGBufferDepth;
+	id<MTLTexture> initialRenderGBufferNormal;
 	id<MTLTexture> rayTracingOutputTexture;
 
 	// Constants shared across all pipelines
@@ -283,16 +285,19 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (void) setupIntermediateTextures {
-	MTLTextureDescriptor *initial = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm_sRGB
-																								 width:viewportSize.x
-																								height:viewportSize.y
-																							 mipmapped:NO];
+	MTLTextureDescriptor *initial = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:AlbedoPixelFormat
+																					   width:viewportSize.x
+																					  height:viewportSize.y
+																				   mipmapped:NO];
 	initial.storageMode = MTLStorageModePrivate;
 	initial.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
 	initialRenderGBufferAlbedo = [pipeline.device newTextureWithDescriptor:initial];
 	
-	initial.pixelFormat = MTLPixelFormatR32Float;
+	initial.pixelFormat = DepthPixelFormat;
 	initialRenderGBufferDepth = [pipeline.device newTextureWithDescriptor:initial];
+	
+	initial.pixelFormat = NormalPixelFormat;
+	initialRenderGBufferNormal = [pipeline.device newTextureWithDescriptor:initial];
 
 	MTLTextureDescriptor *raytrace = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRG11B10Float
 																								 width:viewportSize.x
@@ -302,9 +307,13 @@ API_AVAILABLE(macos(26.0))
 	raytrace.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
 	rayTracingOutputTexture = [pipeline.device newTextureWithDescriptor:raytrace];
 	
+	[initialRenderResidencySet addAllocation:initialRenderGBufferAlbedo];
+	[initialRenderResidencySet addAllocation:initialRenderGBufferDepth];
+	[initialRenderResidencySet addAllocation:initialRenderGBufferNormal];
+
 	[rayTracingResidencySet addAllocation:rayTracingOutputTexture];
+
 	[finalRenderResidencySet addAllocation:initialRenderGBufferAlbedo];
-	[finalRenderResidencySet addAllocation:initialRenderGBufferDepth];
 	[finalRenderResidencySet addAllocation:rayTracingOutputTexture];
 }
 
@@ -341,6 +350,9 @@ API_AVAILABLE(macos(26.0))
 	
 	MTL4RenderPipelineColorAttachmentDescriptor *depthAttachment = descriptor.colorAttachments[InitialRenderAttachmentDepth];
 	depthAttachment.pixelFormat = DepthPixelFormat;
+	
+	MTL4RenderPipelineColorAttachmentDescriptor *normalAttachment = descriptor.colorAttachments[InitialRenderAttachmentNormal];
+	normalAttachment.pixelFormat = NormalPixelFormat;
 
 	id<MTLRenderPipelineState> state = [compiler newRenderPipelineStateWithDescriptor:descriptor
 																  compilerTaskOptions:nil
@@ -861,6 +873,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	
 	[self encodeInitialRenderToAlbedoTexture:initialRenderGBufferAlbedo
 								depthTexture:initialRenderGBufferDepth
+							   normalTexture:initialRenderGBufferNormal
 							   updatingFence:initialPassFence];
 
 	[self encodeRayTracingPassToOutputTexture:rayTracingOutputTexture updatingFence:computePassFence];
@@ -889,21 +902,32 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 - (void) encodeInitialRenderToAlbedoTexture:(id<MTLTexture>)albedoTexture
 							   depthTexture:(id<MTLTexture>)depthTexture
+							  normalTexture:(id<MTLTexture>)normalTexture
 							  updatingFence:(id<MTLFence>)fence
 {
 	// Commit any textures that were added
 	[initialRenderResidencySet commit];
 
 	MTL4RenderPassDescriptor *configuration = [MTL4RenderPassDescriptor new];
-	configuration.colorAttachments[InitialRenderAttachmentAlbedo].texture = albedoTexture;
-	configuration.colorAttachments[InitialRenderAttachmentAlbedo].loadAction = MTLLoadActionClear;
+
+	MTLRenderPassColorAttachmentDescriptor *albedo = configuration.colorAttachments[InitialRenderAttachmentAlbedo];
+	albedo.texture = albedoTexture;
+	albedo.loadAction = MTLLoadActionClear;
 	// Render a white sky, which the raytracing pass will multiply down
-	configuration.colorAttachments[InitialRenderAttachmentAlbedo].clearColor = MTLClearColorMake(1.0, 1.0, 1.0, 1.0);
-	configuration.colorAttachments[InitialRenderAttachmentAlbedo].storeAction = MTLStoreActionStore;
-	configuration.colorAttachments[InitialRenderAttachmentDepth].texture = depthTexture;
-	configuration.colorAttachments[InitialRenderAttachmentDepth].loadAction = MTLLoadActionClear;
-	configuration.colorAttachments[InitialRenderAttachmentDepth].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
-	configuration.colorAttachments[InitialRenderAttachmentDepth].storeAction = MTLStoreActionStore;
+	albedo.clearColor = MTLClearColorMake(1.0, 1.0, 1.0, 1.0);
+	albedo.storeAction = MTLStoreActionStore;
+
+	MTLRenderPassColorAttachmentDescriptor *depth = configuration.colorAttachments[InitialRenderAttachmentDepth];
+	depth.texture = depthTexture;
+	depth.loadAction = MTLLoadActionClear;
+	depth.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+	depth.storeAction = MTLStoreActionStore;
+	
+	MTLRenderPassColorAttachmentDescriptor *normal = configuration.colorAttachments[InitialRenderAttachmentNormal];
+	normal.texture = normalTexture;
+	normal.loadAction = MTLLoadActionClear;
+	normal.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+	normal.storeAction = MTLStoreActionStore;
 	
 	id<MTL4RenderCommandEncoder> renderPassEncoder = [pipeline.commandBuffer renderCommandEncoderWithDescriptor:configuration];
 	if (!renderPassEncoder) {

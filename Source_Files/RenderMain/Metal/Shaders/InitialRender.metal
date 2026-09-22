@@ -14,6 +14,7 @@ using namespace metal;
 struct RasterizerData {
 	float4 position [[position]];
 	float depth;
+	float3 normal;
 	float2 textureCoordinate;
 };
 
@@ -43,6 +44,7 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 
 	out.position = uniforms.perspectiveMat * result;
 	out.depth = result.z;
+	out.normal = v.normal;
 	out.textureCoordinate = v.textureCoordinate;
 	
 	return out;
@@ -51,6 +53,7 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 struct GBuffer {
 	float4 albedo [[ color(InitialRenderAttachmentAlbedo) ]];
 	float depth [[ color(InitialRenderAttachmentDepth) ]];
+	float4 normal [[ color(InitialRenderAttachmentNormal) ]];
 };
 
 fragment GBuffer
@@ -65,5 +68,6 @@ initialRenderFragmentShader(RasterizerData in [[stage_in]],
 	return {
 		.albedo = float4(colorSample),
 		.depth = in.depth,
+		.normal = float4(in.normal, 1.0),
 	};
 }
