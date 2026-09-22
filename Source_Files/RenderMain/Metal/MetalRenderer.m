@@ -46,9 +46,10 @@ uint MAX_INSTANCES = 1000;
 
 static const NSString* PLACEHOLDER_TEXTURE_ID = @"PLACEHOLDER";
 
-const MTLPixelFormat AlbedoPixelFormat = MTLPixelFormatRGBA8Unorm_sRGB;
+const MTLPixelFormat AlbedoPixelFormat = MTLPixelFormatRGBA8Unorm;
 const MTLPixelFormat DepthPixelFormat = MTLPixelFormatR32Float;
 const MTLPixelFormat NormalPixelFormat = MTLPixelFormatRGBA16Float;
+const MTLPixelFormat RayTracingPixelFormat = MTLPixelFormatRGBA16Float;
 
 
 API_AVAILABLE(macos(26.0))
@@ -152,7 +153,7 @@ API_AVAILABLE(macos(26.0))
 		return nil;
 	}
 
-	initialRenderPipeline = [self compileInitialRenderPipeline:metalLayer.pixelFormat];
+	initialRenderPipeline = [self compileInitialRenderPipeline];
 	if (!initialRenderPipeline) {
 		return nil;
 	}
@@ -299,10 +300,10 @@ API_AVAILABLE(macos(26.0))
 	initial.pixelFormat = NormalPixelFormat;
 	initialRenderGBufferNormal = [pipeline.device newTextureWithDescriptor:initial];
 
-	MTLTextureDescriptor *raytrace = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRG11B10Float
-																								 width:viewportSize.x
-																								height:viewportSize.y
-																							 mipmapped:NO];
+	MTLTextureDescriptor *raytrace = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:RayTracingPixelFormat
+																						width:viewportSize.x
+																					   height:viewportSize.y
+																					mipmapped:NO];
 	raytrace.storageMode = MTLStorageModePrivate;
 	raytrace.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
 	rayTracingOutputTexture = [pipeline.device newTextureWithDescriptor:raytrace];
@@ -317,7 +318,7 @@ API_AVAILABLE(macos(26.0))
 	[finalRenderResidencySet addAllocation:rayTracingOutputTexture];
 }
 
-- (id<MTLRenderPipelineState>) compileInitialRenderPipeline:(MTLPixelFormat) colorPixelFormat {
+- (id<MTLRenderPipelineState>) compileInitialRenderPipeline {
 	NSError *error;
 	id<MTL4Compiler> compiler = [pipeline.device newCompilerWithDescriptor:[MTL4CompilerDescriptor new]
 															error:&error];
