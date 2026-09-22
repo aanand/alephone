@@ -137,7 +137,7 @@ API_AVAILABLE(macos(26.0))
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
 	
 	fov = 90.0;
-	viewportSize = simd_make_uint2(width, height) * ((uint) NSScreen.mainScreen.backingScaleFactor);
+	viewportSize = simd_make_uint2(width, height);
 	frameNumber = 0;
 	
 	metalLayer = (__bridge CAMetalLayer*)SDL_RenderGetMetalLayer(renderer);
@@ -886,7 +886,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	
 	[renderPassEncoder setRenderPipelineState:initialRenderPipeline];
 	[renderPassEncoder setDepthStencilState:depthState];
-	[renderPassEncoder setViewport:[self getViewport]];
+	[renderPassEncoder setViewport:[self getViewportWithPixelScaling:NO]];
 	
 	[vertexArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:InitialRenderVertexShaderUniformsIndex];
 	[vertexArgumentTable setAddress:triangleBuffer.gpuAddress atIndex:InitialRenderVertexShaderVertexDataIndex];
@@ -980,7 +980,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	}
 	
 	[encoder setRenderPipelineState:finalRenderPipeline];
-	[encoder setViewport:[self getViewport]];
+	[encoder setViewport:[self getViewportWithPixelScaling:YES]];
 
 	[encoder setArgumentTable:vertexArgumentTable atStages:MTLRenderStageVertex];
 
@@ -993,14 +993,16 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[encoder endEncoding];
 }
 
-- (MTLViewport) getViewport {
+- (MTLViewport) getViewportWithPixelScaling:(bool)scale {
+	float multiplier = scale ? ((float) NSScreen.mainScreen.backingScaleFactor) : 1.0;
+
 	MTLViewport viewPort;
 	viewPort.originX = 0.0;
 	viewPort.originY = 0.0;
 	viewPort.znear = 0.0;
 	viewPort.zfar = 1.0;
-	viewPort.width = (double)viewportSize.x;
-	viewPort.height = (double)viewportSize.y;
+	viewPort.width = (double)viewportSize.x * multiplier;
+	viewPort.height = (double)viewportSize.y * multiplier;
 	return viewPort;
 }
 
