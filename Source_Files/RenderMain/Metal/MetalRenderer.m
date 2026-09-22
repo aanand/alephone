@@ -902,7 +902,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	configuration.colorAttachments[InitialRenderAttachmentAlbedo].storeAction = MTLStoreActionStore;
 	configuration.colorAttachments[InitialRenderAttachmentDepth].texture = depthTexture;
 	configuration.colorAttachments[InitialRenderAttachmentDepth].loadAction = MTLLoadActionClear;
-	configuration.colorAttachments[InitialRenderAttachmentDepth].clearColor = MTLClearColorMake(1.0, 1.0, 1.0, 1.0);
+	configuration.colorAttachments[InitialRenderAttachmentDepth].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
 	configuration.colorAttachments[InitialRenderAttachmentDepth].storeAction = MTLStoreActionStore;
 	
 	id<MTL4RenderCommandEncoder> renderPassEncoder = [pipeline.commandBuffer renderCommandEncoderWithDescriptor:configuration];

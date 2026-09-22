@@ -13,6 +13,7 @@ using namespace metal;
 
 struct RasterizerData {
 	float4 position [[position]];
+	float depth;
 	float2 textureCoordinate;
 };
 
@@ -39,9 +40,9 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 	float4 result = float4(fromWorldSpace(v.position - uniforms.origin), 1.0);
 	result = uniforms.yawMat * result;
 	result = uniforms.pitchMat * result;
-	result = uniforms.perspectiveMat * result;
 
-	out.position = result;
+	out.position = uniforms.perspectiveMat * result;
+	out.depth = result.z;
 	out.textureCoordinate = v.textureCoordinate;
 	
 	return out;
@@ -63,6 +64,6 @@ initialRenderFragmentShader(RasterizerData in [[stage_in]],
 	}
 	return {
 		.albedo = float4(colorSample),
-		.depth = in.position.z,
+		.depth = in.depth,
 	};
 }
