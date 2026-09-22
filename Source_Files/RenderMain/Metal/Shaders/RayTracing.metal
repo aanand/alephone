@@ -166,10 +166,12 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 					tcol += emission;
 				}
 			}
+			
+			float2 uv;
 
 			// Directly sample a light source - choose randomly between sun and weapon flare
-			float2 random = hash2(seed);
-			float3 towardSun = randomDirectionInCone(random.x, random.y, uniforms.sky.sunPosition, uniforms.sky.sunRadius);
+			uv = hash2(seed);
+			float3 towardSun = sampleCone(uv, uniforms.sky.sunPosition, uniforms.sky.sunRadius);
 			bool couldHitSun = uniforms.sky.hasSun && dot(normal, towardSun) > 0;
 
 			float weaponFlare = uniforms.weaponFlare;
@@ -221,7 +223,10 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 
 			// Bounce
 			ray.origin = hitPoint;
-			ray.direction = randomDirectionOnUnitHemisphereCosineWeighted(normal, seed);
+			
+			uv = hash2(seed);
+			float3 newDirection = sampleUnitHemisphereCosineWeighted(uv, normal);
+			ray.direction = newDirection;
 			
 			fcol *= defaultAttenuation;
 		}
