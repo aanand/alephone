@@ -41,9 +41,10 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 	float4 result = float4(fromWorldSpace(v.position - uniforms.origin), 1.0);
 	result = uniforms.yawMat * result;
 	result = uniforms.pitchMat * result;
+	result = uniforms.perspectiveMat * result;
 
-	out.position = uniforms.perspectiveMat * result;
-	out.depth = result.z;
+	out.position = result;
+	out.depth = result.z/result.w;
 	out.normal = v.normal;
 	out.textureCoordinate = v.textureCoordinate;
 	

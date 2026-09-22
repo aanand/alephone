@@ -921,7 +921,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	MTLRenderPassColorAttachmentDescriptor *depth = configuration.colorAttachments[InitialRenderAttachmentDepth];
 	depth.texture = depthTexture;
 	depth.loadAction = MTLLoadActionClear;
-	depth.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+	depth.clearColor = MTLClearColorMake(1.0, 1.0, 1.0, 1.0);
 	depth.storeAction = MTLStoreActionStore;
 	
 	MTLRenderPassColorAttachmentDescriptor *normal = configuration.colorAttachments[InitialRenderAttachmentNormal];
