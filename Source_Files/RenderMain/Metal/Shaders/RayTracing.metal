@@ -16,31 +16,37 @@ using namespace raytracing;
 #include "Utils.h"
 
 
-float2 getQuadUV(intersector<triangle_data, instancing>::result_type intersection,
-				 InstanceRayTracingData instanceData)
+float2 getTriangleUV(intersector<triangle_data, instancing>::result_type intersection,
+					 float2 uv0, float2 uv1, float2 uv2)
 {
 	float3 bary = float3(1.0 - intersection.triangle_barycentric_coord.x - intersection.triangle_barycentric_coord.y,
 						 intersection.triangle_barycentric_coord.x,
 						 intersection.triangle_barycentric_coord.y);
 	
+	return uv0 * bary.x + uv1 * bary.y + uv2 * bary.z;
+}
+
+float2 getQuadUV(intersector<triangle_data, instancing>::result_type intersection,
+				 matrix_float4x2 uv)
+{
 	float2 uv0, uv1, uv2;
 	
 	if (intersection.primitive_id == 0) {
-		uv0 = instanceData.uv[0];
-		uv1 = instanceData.uv[1];
-		uv2 = instanceData.uv[2];
+		uv0 = uv[0];
+		uv1 = uv[1];
+		uv2 = uv[2];
 	} else {
-		uv0 = instanceData.uv[0];
-		uv1 = instanceData.uv[2];
-		uv2 = instanceData.uv[3];
+		uv0 = uv[0];
+		uv1 = uv[2];
+		uv2 = uv[3];
 	}
 	
-	return uv0 * bary.x + uv1 * bary.y + uv2 * bary.z;
+	return getTriangleUV(intersection, uv0, uv1, uv2);
 }
 
 #define MAX_SPRITE_TEXTURES 1024
 
-struct SpriteTextureArgs {
+struct TextureArgs {
 	array<texture2d<float>, MAX_SPRITE_TEXTURES> textures [[id(0)]];
 };
 
@@ -48,6 +54,7 @@ struct Hit {
 	bool didHit;
 	float3 hitPoint;
 	float3 normal;
+	float3 diffuse;
 	float3 emission;
 	float reflectivity;
 	int32_t lightSourceIndex;
@@ -59,7 +66,7 @@ struct RayTracer {
 	intersector<triangle_data, instancing> intersector;
 	instance_acceleration_structure accelerationStructure;
 	constant InstanceRayTracingData *perInstanceData;
-	constant SpriteTextureArgs *spriteTextures;
+	constant TextureArgs *textures;
 	constant LightSource *lightSources;
 };
 
@@ -86,15 +93,19 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 		}
 		
 		float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
-		
+
+		// Texture-derived values
+		float4 texel = float4(defaultAttenuation, defaultAttenuation, defaultAttenuation, 1.0);
+		bool instanceHasTexture = false;
+		constexpr sampler sam(mag_filter::nearest, min_filter::nearest, address::repeat);
+
 		const device PrimitiveRayTracingData *primitiveData;
 		primitiveData = (const device PrimitiveRayTracingData*) intersection.primitive_data;
 		float3 normal = primitiveData->surfaceNormal;
 		float3 emission = primitiveData->emission;
 		float reflectivity = primitiveData->reflectivity;
 		int32_t lightSourceIndex = primitiveData->lightSourceIndex;
-		float alpha = 1.0;
-		
+
 		uint32_t instanceId = intersection.user_instance_id;
 		if (instanceId > 0) {
 			InstanceRayTracingData instanceData = rayTracer.perInstanceData[instanceId];
@@ -103,14 +114,20 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 			reflectivity = instanceData.reflectivity;
 			
 			if (instanceData.textureIndex > 0) {
-				float2 uv = getQuadUV(intersection, instanceData);
-				texture2d<float> spriteTexture = rayTracer.spriteTextures->textures[instanceData.textureIndex];
-				constexpr sampler spriteSampler(mag_filter::nearest, min_filter::nearest, address::clamp_to_edge);
-				alpha = spriteTexture.sample(spriteSampler, uv).a;
+				instanceHasTexture = true;
+				float2 uv = getQuadUV(intersection, instanceData.uv);
+				texture2d<float> texture = rayTracer.textures->textures[instanceData.textureIndex];
+				texel = texture.sample(sam, uv);
 			}
 		}
 		
-		if (alpha < 0.5) {
+		if (!instanceHasTexture && primitiveData->textureIndex > 0) {
+			float2 uv = getTriangleUV(intersection, primitiveData->uv.columns[0], primitiveData->uv.columns[1], primitiveData->uv.columns[2]);
+			texture2d<float> texture = rayTracer.textures->textures[primitiveData->textureIndex];
+			texel = texture.sample(sam, uv);
+		}
+		
+		if (texel.a < 0.5) {
 			// We hit something transparent - continue the ray.
 			ray.origin = hitPoint + ray.direction * rayEpsilon;
 			ray.max_distance -= (intersection.distance + rayEpsilon);
@@ -119,6 +136,7 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 				.didHit = true,
 				.hitPoint = hitPoint,
 				.normal = normal,
+				.diffuse = texel.rgb,
 				.emission = emission,
 				.reflectivity = reflectivity,
 				.lightSourceIndex = lightSourceIndex,
@@ -141,7 +159,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 	ray.max_distance = INFINITY;
 
 	float3 tcol = float3(0.0);
-	float fcol = 1.0;
+	float3 fcol = float3(1.0);
 	uint b;
 	
 	for (b = 0; b < maxBounces; b++) {
@@ -162,13 +180,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 
 			if (length(emission) > 0) {
 				// We hit a light source
-				if (b == 0) {
-					// Desaturate the light value if we haven't bounced yet, so the texture doesn't appear tinted
-					float3 e = emission;
-					tcol += float3(e.r + e.g + e.b) / 3.0;
-				} else {
-					tcol += emission;
-				}
+				tcol += fcol * hit.diffuse * emission;
 			}
 			
 			float2 uv;
@@ -206,7 +218,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 					float contribution = clamp(dot(normal, towardSun), 0.0, 1.0);
 					// Weight by the PDF
 					float weight = 2 * M_PI_F * (1.0f - cos(uniforms.sky.sunRadius));
-					tcol += fcol * uniforms.sky.sunEmission * contribution * weight;
+					tcol += fcol * hit.diffuse * uniforms.sky.sunEmission * contribution * weight;
 				}
 			} else if (sampleWeaponFlare) {
 				int3 weaponFlarePosition = uniforms.origin + int3(0, 0, -256);
@@ -221,7 +233,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 				
 				if (!directRayHit.didHit){
 					float contribution = clamp(dot(normal, directRay.direction), 0.0, 1.0);
-					tcol += fcol * weaponFlare * contribution;
+					tcol += fcol * hit.diffuse * weaponFlare * contribution;
 				}
 			}
 
@@ -232,7 +244,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 			float3 newDirection = (hit.reflectivity > hash1(seed)) ? reflect(ray.direction, normal) : sampleUnitHemisphereCosineWeighted(uv, normal);
 			ray.direction = newDirection;
 			
-			fcol *= defaultAttenuation;
+			fcol *= hit.diffuse;
 		}
 	}
 
@@ -243,7 +255,7 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 							 instance_acceleration_structure accelerationStructure [[ buffer(RayTracingKernelAccelerationStructureIndex) ]],
 							 constant Uniforms &uniforms [[ buffer(RayTracingKernelUniformsIndex) ]],
 							 constant InstanceRayTracingData *perInstanceData [[ buffer(RayTracingKernelPerInstanceDataIndex) ]],
-							 constant SpriteTextureArgs &spriteTextures [[ buffer(RayTracingKernelSpriteTexturesIndex) ]],
+							 constant TextureArgs &textures [[ buffer(RayTracingKernelTexturesIndex) ]],
 							 constant LightSource &lightSources [[ buffer(RayTracingKernelLightSourcesIndex) ]],
 							 uint2 tid [[thread_position_in_grid]])
 {
@@ -274,7 +286,7 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 		.intersector = intersector,
 		.accelerationStructure = accelerationStructure,
 		.perInstanceData = perInstanceData,
-		.spriteTextures = &spriteTextures,
+		.textures = &textures,
 		.lightSources = &lightSources,
 	};
 

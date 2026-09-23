@@ -44,7 +44,7 @@ simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
 uint MAX_TRIANGLES = 10000;
 uint MAX_INSTANCES = 1000;
 
-static const NSString* PLACEHOLDER_TEXTURE_ID = @"PLACEHOLDER";
+NSString* const PLACEHOLDER_TEXTURE_ID = @"PLACEHOLDER";
 
 const MTLPixelFormat AlbedoPixelFormat = MTLPixelFormatRGBA8Unorm;
 const MTLPixelFormat DepthPixelFormat = MTLPixelFormatR32Float;
@@ -83,7 +83,7 @@ API_AVAILABLE(macos(26.0))
 	id<MTL4ArgumentTable> vertexArgumentTable;
 	id<MTL4ArgumentTable> fragmentArgumentTable;
 	id<MTL4ArgumentTable> computeArgumentTable;
-	id<MTLArgumentEncoder> spriteTextureArgumentEncoder;
+	id<MTLArgumentEncoder> textureArgumentEncoder;
 
 	id<MTLResidencySet> initialRenderResidencySet;
 	id<MTLResidencySet> rayTracingResidencySet;
@@ -104,10 +104,8 @@ API_AVAILABLE(macos(26.0))
 	id<MTLBuffer> perInstanceDataBuffer;
 	uint32_t numInstances;
 
-	// Sprite textures are passed into the raytracer for alpha testing
-	NSMutableOrderedSet<NSString*> *spriteTextureIDs;
-	id<MTLBuffer> spriteTextureArgumentBuffer;
-
+	NSMutableOrderedSet<NSString*> *textureIDs;
+	id<MTLBuffer> textureArgumentBuffer;
 	NSMutableDictionary<NSString *, id<MTLTexture>> *textures;
 
 	// Geometry primitives that get reused across levels
@@ -199,9 +197,6 @@ API_AVAILABLE(macos(26.0))
 	[initialRenderResidencySet commit];
 	[rayTracingResidencySet commit];
 	[finalRenderResidencySet commit];
-	
-	textures = [NSMutableDictionary dictionary];
-	[textures setObject:[self makeTextureFromImage:[self makePlaceholderTextureImage]] forKey:PLACEHOLDER_TEXTURE_ID];
 	
 	return self;
 }
@@ -414,15 +409,15 @@ API_AVAILABLE(macos(26.0))
 	NSError *error;
 	id<MTLFunction> function = [pipeline.defaultLibrary newFunctionWithName:@"rayTracingKernel"];
 	
-	spriteTextureArgumentEncoder = [function newArgumentEncoderWithBufferIndex:RayTracingKernelSpriteTexturesIndex];
-	spriteTextureArgumentEncoder.label = @"spriteTextureArgumentEncoder";
+	textureArgumentEncoder = [function newArgumentEncoderWithBufferIndex:RayTracingKernelTexturesIndex];
+	textureArgumentEncoder.label = @"spriteTextureArgumentEncoder";
 
-	spriteTextureArgumentBuffer = [pipeline.device newBufferWithLength:spriteTextureArgumentEncoder.encodedLength
+	textureArgumentBuffer = [pipeline.device newBufferWithLength:textureArgumentEncoder.encodedLength
 															   options:MTLResourceStorageModeShared];
-	spriteTextureArgumentBuffer.label = @"spriteTextureArgumentBuffer";
+	textureArgumentBuffer.label = @"spriteTextureArgumentBuffer";
 	
-	[spriteTextureArgumentEncoder setArgumentBuffer:spriteTextureArgumentBuffer offset:0];
-	[rayTracingResidencySet addAllocation:spriteTextureArgumentBuffer];
+	[textureArgumentEncoder setArgumentBuffer:textureArgumentBuffer offset:0];
+	[rayTracingResidencySet addAllocation:textureArgumentBuffer];
 	
 	id<MTLComputePipelineState> state = [pipeline.device newComputePipelineStateWithFunction:function
 																			  error:&error];
@@ -446,11 +441,11 @@ API_AVAILABLE(macos(26.0))
 	dynamicIASManager = nil;
 	pipeline = nil;
 	
+	textureIDs = nil;
 	textures = nil;
 	staticTriangles = nil;
 	dynamicTriangles = nil;
 	dynamicPolygonPrimitives = nil;
-	spriteTextureIDs = nil;
 	
 	metalLayer = nil;
 	
@@ -509,11 +504,6 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	assert(staticTriangles.count < MAX_TRIANGLES);
 }
 
-- (uint32_t) addSpriteTexture:(NSString*)textureID {
-	[spriteTextureIDs addObject:textureID];
-	return (uint32_t)[spriteTextureIDs indexOfObject:textureID];
-}
-
 - (uint32_t)addInstanceData:(InstanceRayTracingData)instanceData {
 	// Purposefully skip index 0, which is shorthand for "use the per-primitive data"
 	uint32_t instanceID = ++numInstances;
@@ -554,12 +544,14 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	}];
 	assert(dynamicTriangles.count < MAX_TRIANGLES);
 	
+	NSUInteger textureIndex = [textureIDs indexOfObject:wall.surface.textureID];
+	NSAssert(textureIndex != NSNotFound, @"Missing dynamic wall texture ID");
 	uint32_t instanceID = [self addInstanceData:(InstanceRayTracingData){
 		.surfaceNormal = wall.surface.normal,
 		.emission = wall.surface.emission,
 		.reflectivity = wall.surface.reflectivity,
 		.uv = wall.uv,
-		.textureIndex = 0,
+		.textureIndex = (uint32_t)textureIndex,
 	}];
 
 	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
@@ -575,13 +567,14 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	} forRotation:theta];
 	assert(dynamicTriangles.count < MAX_TRIANGLES);
 
-	uint32_t textureIndex = [self addSpriteTexture:sprite.surface.textureID];
+	NSUInteger textureIndex = [textureIDs indexOfObject:sprite.surface.textureID];
+	NSAssert(textureIndex != NSNotFound, @"Missing sprite texture ID");
 	uint32_t instanceID = [self addInstanceData:(InstanceRayTracingData){
 		.surfaceNormal = simd_make_float3(-cos(theta), -sin(theta), 0.0),
 		.emission = sprite.surface.emission,
 		.reflectivity = sprite.surface.reflectivity,
 		.uv = sprite.uv,
-		.textureIndex = textureIndex,
+		.textureIndex = (uint32_t)textureIndex,
 	}];
 
 	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
@@ -599,7 +592,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	
 	for (int b = 0; b < numTriangles; b += trianglesPerBatch) {
 		NSArray *triangles = [staticTriangles subarrayWithRange:NSMakeRange(b, MIN(trianglesPerBatch, numTriangles - b))];
-		TriangleBatch *batch = [[TriangleBatch alloc] initWithTriangles:triangles];
+		TriangleBatch *batch = [[TriangleBatch alloc] initWithTriangles:triangles
+															 textureIDs:textureIDs];
 		[staticIASManager addPrimitive:batch];
 		simd_float4x3 transform = {
 			.columns = {
@@ -684,7 +678,11 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	dynamicTriangles = [NSMutableArray array];
 	dynamicPolygonPrimitives = [NSMutableDictionary dictionary];
 	numInstances = 0;
-	spriteTextureIDs = [NSMutableOrderedSet orderedSetWithObject:PLACEHOLDER_TEXTURE_ID];
+
+	textureIDs = [NSMutableOrderedSet orderedSet];
+	textures = [NSMutableDictionary dictionary];
+	[self addPlaceholderTextureWithID:PLACEHOLDER_TEXTURE_ID];
+
 	if (!verticalQuadPrimitive) {
 		// spriteQuad initializes exactly once and is reused across frames + level changes
 		verticalQuadPrimitive = [[VerticalQuad alloc] init];
@@ -714,7 +712,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 - (void) startUpdatingDynamicGeometry {
 	dynamicTriangles = [NSMutableArray array];
 	numInstances = 0;
-	spriteTextureIDs = [NSMutableOrderedSet orderedSetWithObject:PLACEHOLDER_TEXTURE_ID];
+//	spriteTextureIDs = [NSMutableOrderedSet orderedSetWithObject:PLACEHOLDER_TEXTURE_ID];
 	[dynamicIASManager clearInstances];
 	[self clearLightSources];
 	[self clearTopLevelIAS];
@@ -810,6 +808,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 - (void) addTextureWithID:(NSString*)textureID image:(MetalImage *)image {
 	id<MTLTexture> texture = [self makeTextureFromImage:image];
 	texture.label = textureID;
+	[textureIDs addObject:textureID];
 	[textures setObject:texture forKey:textureID];
 	[initialRenderResidencySet addAllocation:texture];
 }
@@ -987,18 +986,18 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	
 	[encoder setComputePipelineState:rayTracingPipeline];
 
-	[spriteTextureArgumentEncoder setArgumentBuffer:spriteTextureArgumentBuffer offset:0];
+	[textureArgumentEncoder setArgumentBuffer:textureArgumentBuffer offset:0];
 	
-	for (NSUInteger i = 0; i < spriteTextureIDs.count; i++) {
-		id<MTLTexture> texture = textures[spriteTextureIDs[i]];
-		[spriteTextureArgumentEncoder setTexture:texture atIndex:i];
+	for (NSUInteger i = 0; i < textureIDs.count; i++) {
+		id<MTLTexture> texture = textures[textureIDs[i]];
+		[textureArgumentEncoder setTexture:texture atIndex:i];
 		[rayTracingResidencySet addAllocation:texture];
 	}
 	
 	[computeArgumentTable setResource:topLevelIAS.gpuResourceID atBufferIndex:RayTracingKernelAccelerationStructureIndex];
 	[computeArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:RayTracingKernelUniformsIndex];
 	[computeArgumentTable setAddress:perInstanceDataBuffer.gpuAddress atIndex:RayTracingKernelPerInstanceDataIndex];
-	[computeArgumentTable setAddress:spriteTextureArgumentBuffer.gpuAddress atIndex:RayTracingKernelSpriteTexturesIndex];
+	[computeArgumentTable setAddress:textureArgumentBuffer.gpuAddress atIndex:RayTracingKernelTexturesIndex];
 	[computeArgumentTable setAddress:lightSourcesBuffer.gpuAddress atIndex:RayTracingKernelLightSourcesIndex];
 	[computeArgumentTable setTexture:outputTexture.gpuResourceID atIndex:RayTracingKernelOutImageIndex];
 	[encoder setArgumentTable:computeArgumentTable];

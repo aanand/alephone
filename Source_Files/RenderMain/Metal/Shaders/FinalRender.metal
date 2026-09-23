@@ -84,10 +84,5 @@ finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
 	constexpr sampler sam(min_filter::nearest, mag_filter::nearest, mip_filter::none);
 
 	float4 rayTracingPassColor = rayTracingPassTex.sample(sam, in.uv);
-
-	float4 initialPassColor = initialPassTex.sample(sam, in.uv);
-	float3 color = clamp(initialPassColor.rgb * rayTracingPassColor.rgb * gain, 0.0, 1.0);
-//	return float4(rayTracingPassColor.rgb, 1.0f);
-//	color = ToneMapACES(color);
-	return float4(color, 1.0f);
+	return rayTracingPassColor;
 }

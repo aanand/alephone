@@ -285,7 +285,9 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 	PrimitiveRayTracingData *primitiveData;
 }
 
-- (TriangleBatch*) initWithTriangles:(NSArray<Triangle *> *)triangles {
+- (TriangleBatch*) initWithTriangles:(NSArray<Triangle *> *)triangles
+						  textureIDs:(NSOrderedSet<NSString*>*)textureIDs
+{
 	if (self = [super init]) {
 		_triangles = triangles;
 		
@@ -302,6 +304,15 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 			primitiveData[i].surfaceNormal = triangle.surface.normal;
 			primitiveData[i].emission = triangle.surface.emission;
 			primitiveData[i].reflectivity = triangle.surface.reflectivity;
+
+			NSUInteger textureIndex = [textureIDs indexOfObject:triangle.surface.textureID];
+			NSAssert(textureIndex != NSNotFound, @"Missing static triangle texture ID");
+			primitiveData[i].textureIndex = (uint32_t)textureIndex;
+
+			primitiveData[i].uv.columns[0] = triangle.v0.textureCoordinate;
+			primitiveData[i].uv.columns[1] = triangle.v1.textureCoordinate;
+			primitiveData[i].uv.columns[2] = triangle.v2.textureCoordinate;
+
 			primitiveData[i].lightSourceIndex = triangle.surface.lightSourceIndex;
 		}
 	}

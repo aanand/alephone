@@ -31,7 +31,7 @@ enum {
 	RayTracingKernelAccelerationStructureIndex,
 	RayTracingKernelUniformsIndex,
 	RayTracingKernelPerInstanceDataIndex,
-	RayTracingKernelSpriteTexturesIndex,
+	RayTracingKernelTexturesIndex,
 	RayTracingKernelLightSourcesIndex,
 	RayTracingKernel_NumBuffers,
 };
@@ -104,6 +104,7 @@ typedef struct {
 // A vertex in Marathon world-space: X = east, Y = north, Z = up
 typedef struct {
 	vector_int3 position;
+	uint32_t textureIndex;
 	vector_float2 textureCoordinate;
 	vector_float3 normal;
 } WorldVertex;
@@ -116,6 +117,10 @@ typedef struct {
 	vector_float3 surfaceNormal;
 	vector_float3 emission;
 	float reflectivity;
+
+	matrix_float3x2 uv;
+	uint32_t textureIndex;
+
 	int32_t lightSourceIndex;
 } PrimitiveRayTracingData;
 
@@ -123,6 +128,7 @@ typedef struct {
 	vector_float3 surfaceNormal;
 	vector_float3 emission;
 	float reflectivity;
+
 	matrix_float4x2 uv;
 	uint32_t textureIndex;
 } InstanceRayTracingData;

@@ -77,7 +77,8 @@
  A raytracing primitive that's just an arbitrary batch of wall/floor/ceiling triangles, instanced once.
  */
 @interface TriangleBatch : NSObject <ASTrianglePrimitive>
-- (TriangleBatch*) initWithTriangles:(NSArray<Triangle*>*)triangles;
+- (TriangleBatch*) initWithTriangles:(NSArray<Triangle*>*)triangles
+						  textureIDs:(NSOrderedSet<NSString*>*)textureIDs;
 @end
 
 /**
