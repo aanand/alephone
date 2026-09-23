@@ -68,7 +68,12 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 	PrimitiveRayTracingData *primitiveData;
 }
 
--(MetalPolygonPrimitive *)initWithVertexCount:(NSUInteger)vertexCount vertices:(simd_int2 *)vs surface:(MetalSurface *)surface {
+-(MetalPolygonPrimitive *)initWithVertexCount:(NSUInteger)vertexCount
+									 vertices:(simd_int2 *)vs
+										   uv:(simd_float2*)uv
+									  surface:(MetalSurface *)surface
+								   textureIDs:(NSOrderedSet*)textureIDs
+{
 	if (self = [super init]) {
 		numTriangles = vertexCount - 2;
 		
@@ -80,12 +85,20 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 			vertices[i*3]   = (simd_float3){ vs[  0].x, vs[  0].y, 0.0 };
 			vertices[i*3+1] = (simd_float3){ vs[i+1].x, vs[i+1].y, 0.0 };
 			vertices[i*3+2] = (simd_float3){ vs[i+2].x, vs[i+2].y, 0.0 };
+
 			primitiveData[i] = (PrimitiveRayTracingData){
 				.surfaceNormal = surface.normal,
 				.emission = surface.emission,
 				.reflectivity = surface.reflectivity,
 				.lightSourceIndex = surface.lightSourceIndex,
 			};
+
+			NSUInteger textureIndex = [textureIDs indexOfObject:surface.textureID];
+			NSAssert(textureIndex != NSNotFound, @"Missing dynamic polygon texture ID");
+			primitiveData[i].textureIndex = (uint32_t)textureIndex;
+			primitiveData[i].uv.columns[0] = uv[0];
+			primitiveData[i].uv.columns[1] = uv[i+1];
+			primitiveData[i].uv.columns[2] = uv[i+2];
 		}
 	}
 	return self;
@@ -121,8 +134,12 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 	free(_uv);
 }
 
--(id<ASTrianglePrimitive>)primitive {
-	return [[MetalPolygonPrimitive alloc] initWithVertexCount:_vertexCount vertices:_vertices surface:_surface];
+-(id<ASTrianglePrimitive>)primitiveForTextureIDs:(NSOrderedSet<NSString *> *)textureIDs {
+	return [[MetalPolygonPrimitive alloc] initWithVertexCount:_vertexCount
+													 vertices:_vertices
+														   uv:_uv
+													  surface:_surface
+												   textureIDs:textureIDs];
 }
 
 - (simd_float4x3) instanceTransform {

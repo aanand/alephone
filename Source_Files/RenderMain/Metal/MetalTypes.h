@@ -94,9 +94,11 @@
  */
 @interface MetalPolygonPrimitive : NSObject <ASTrianglePrimitive>
 
-- (MetalPolygonPrimitive*) initWithVertexCount:(NSUInteger)vertexCount
-									  vertices:(simd_int2*)vertices
-									   surface:(MetalSurface*)surface;
+-(MetalPolygonPrimitive *)initWithVertexCount:(NSUInteger)vertexCount
+									 vertices:(simd_int2 *)vs
+										   uv:(simd_float2*)uv
+									  surface:(MetalSurface *)surface
+								   textureIDs:(NSOrderedSet*)textureIDs;
 
 @end
 
@@ -121,7 +123,7 @@
 							  surface:(MetalSurface*)surface;
 
 - (void) eachTriangle:(void (^)(Triangle *triangle))callback;
-- (id<ASTrianglePrimitive>) primitive;
+- (id<ASTrianglePrimitive>) primitiveForTextureIDs:(NSOrderedSet<NSString*>*)textureIDs;
 - (simd_float4x3) instanceTransform;
 
 @end

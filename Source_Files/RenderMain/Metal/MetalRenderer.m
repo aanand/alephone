@@ -520,7 +520,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 	id<ASTrianglePrimitive> primitive = [dynamicPolygonPrimitives objectForKey:[NSNumber numberWithInt:ID]];
 	if (primitive == nil) {
-		primitive = polygon.primitive;
+		primitive = [polygon primitiveForTextureIDs:textureIDs];
 		[dynamicIASManager addPrimitive:primitive];
 		[dynamicPolygonPrimitives setObject:primitive forKey:[NSNumber numberWithInt:ID]];
 	}
