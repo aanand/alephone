@@ -47,11 +47,12 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 
 @implementation MetalSurface
 
--(MetalSurface *)initWithTextureID:(NSString *)textureID emission:(simd_float3)emission normal:(simd_float3)normal lightSourceIndex:(int32_t)lightSourceIndex
+-(MetalSurface *)initWithTextureID:(NSString *)textureID emission:(simd_float3)emission reflectivity:(float)reflectivity normal:(simd_float3)normal lightSourceIndex:(int32_t)lightSourceIndex
 {
 	if (self = [super init]) {
 		_textureID = textureID;
 		_emission = emission;
+		_reflectivity = reflectivity;
 		_normal = normal;
 		_lightSourceIndex = lightSourceIndex;
 	}
@@ -82,6 +83,7 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 			primitiveData[i] = (PrimitiveRayTracingData){
 				.surfaceNormal = surface.normal,
 				.emission = surface.emission,
+				.reflectivity = surface.reflectivity,
 				.lightSourceIndex = surface.lightSourceIndex,
 			};
 		}
@@ -299,6 +301,7 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 
 			primitiveData[i].surfaceNormal = triangle.surface.normal;
 			primitiveData[i].emission = triangle.surface.emission;
+			primitiveData[i].reflectivity = triangle.surface.reflectivity;
 			primitiveData[i].lightSourceIndex = triangle.surface.lightSourceIndex;
 		}
 	}

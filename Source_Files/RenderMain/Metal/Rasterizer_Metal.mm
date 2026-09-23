@@ -215,6 +215,11 @@ std::unordered_map<std::string, simd_float3> emissiveTextures = {
 	{ "[ShapeDesc=4353/Collection=17/CTable=0/Frame=1/Bitmap=1]", simd_make_float3(1.0, 1.0, 1.0) },
 };
 
+std::unordered_map<std::string, float> reflectiveTextures = {
+	// Water (M2)
+	{ "[ShapeDesc=4371/Collection=17/CTable=0/Frame=19/Bitmap=19]", 0.5 },
+};
+
 std::unordered_map<std::string, Sky> skies = {
 	{ "Marathon 1.2", (Sky){
 		.bottomEmission = { 0.0, 0.0, 0.0 },
@@ -241,6 +246,15 @@ simd_float3 emissionForTextureID(NSString *textureID) {
 		return iterator->second;
 	}
 	return simd_make_float3(0.0, 0.0, 0.0);
+}
+
+float reflectivityForTextureID(NSString *textureID) {
+	std::string key = textureID.UTF8String;
+	auto iterator = reflectiveTextures.find(key);
+	if (iterator != reflectiveTextures.end()) {
+		return iterator->second;
+	}
+	return 0.0;
 }
 
 void AddWall(polygon_data *polygon,
@@ -282,6 +296,7 @@ void AddWall(polygon_data *polygon,
 	
 	MetalSurface *mSurface = [[MetalSurface alloc] initWithTextureID:textureID
 														   emission:emissionForTextureID(textureID)
+														reflectivity:reflectivityForTextureID(textureID)
 															 normal:normal
 												   lightSourceIndex:surface->lightsource_index];
 
@@ -323,6 +338,7 @@ void AddHorizontalSurface(short polygonIdx, polygon_data *polygon, horizontal_su
 	
 	MetalSurface *mSurface = [[MetalSurface alloc] initWithTextureID:textureID
 														   emission:emissionForTextureID(textureID)
+														reflectivity:reflectivityForTextureID(textureID)
 															 normal:simd_make_float3(0.0, 0.0, isCeiling ? -1.0 : 1.0)
 												   lightSourceIndex:surface->lightsource_index];
 
@@ -468,6 +484,7 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 	// Normal is ignored here and set based on the sprite's rotation
 	MetalSurface *surface = [[MetalSurface alloc] initWithTextureID:textureID
 														   emission:emissionForTextureID(textureID)
+													   reflectivity:reflectivityForTextureID(textureID)
 															 normal:simd_make_float3(1.0, 0.0, 0.0)
 												   lightSourceIndex:NONE];
 	

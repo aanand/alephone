@@ -49,6 +49,7 @@ struct Hit {
 	float3 hitPoint;
 	float3 normal;
 	float3 emission;
+	float reflectivity;
 	int32_t lightSourceIndex;
 };
 
@@ -90,6 +91,7 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 		primitiveData = (const device PrimitiveRayTracingData*) intersection.primitive_data;
 		float3 normal = primitiveData->surfaceNormal;
 		float3 emission = primitiveData->emission;
+		float reflectivity = primitiveData->reflectivity;
 		int32_t lightSourceIndex = primitiveData->lightSourceIndex;
 		float alpha = 1.0;
 		
@@ -98,6 +100,7 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 			InstanceRayTracingData instanceData = rayTracer.perInstanceData[instanceId];
 			normal = instanceData.surfaceNormal;
 			emission = instanceData.emission;
+			reflectivity = instanceData.reflectivity;
 			
 			if (instanceData.textureIndex > 0) {
 				float2 uv = getQuadUV(intersection, instanceData);
@@ -117,6 +120,7 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 				.hitPoint = hitPoint,
 				.normal = normal,
 				.emission = emission,
+				.reflectivity = reflectivity,
 				.lightSourceIndex = lightSourceIndex,
 			};
 		}
@@ -225,7 +229,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 			ray.origin = hitPoint;
 			
 			uv = hash2(seed);
-			float3 newDirection = sampleUnitHemisphereCosineWeighted(uv, normal);
+			float3 newDirection = (hit.reflectivity > hash1(seed)) ? reflect(ray.direction, normal) : sampleUnitHemisphereCosineWeighted(uv, normal);
 			ray.direction = newDirection;
 			
 			fcol *= defaultAttenuation;

@@ -29,11 +29,13 @@
 
 @property (nonatomic, readonly) NSString* textureID;
 @property (nonatomic, readonly) simd_float3 emission;
+@property (nonatomic, readonly) float reflectivity;
 @property (nonatomic, readonly) simd_float3 normal;
 @property (nonatomic, readonly) int32_t lightSourceIndex;
 
 - (MetalSurface*) initWithTextureID:(NSString*)textureID
 						   emission:(simd_float3)emission
+					   reflectivity:(float)reflectivity
 							 normal:(simd_float3)normal
 				   lightSourceIndex:(int32_t)lightSourceIndex;
 

@@ -115,12 +115,14 @@ typedef struct {
 typedef struct {
 	vector_float3 surfaceNormal;
 	vector_float3 emission;
+	float reflectivity;
 	int32_t lightSourceIndex;
 } PrimitiveRayTracingData;
 
 typedef struct {
 	vector_float3 surfaceNormal;
 	vector_float3 emission;
+	float reflectivity;
 	matrix_float4x2 uv;
 	uint32_t textureIndex;
 } InstanceRayTracingData;
