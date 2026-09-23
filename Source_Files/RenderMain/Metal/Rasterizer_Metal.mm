@@ -236,7 +236,10 @@ std::unordered_map<std::string, Sky> skies = {
 Sky defaultSky = {
 	.bottomEmission = { 0.2, 0.2, 0.2 },
 	.topEmission = { 2.0, 2.0, 2.0 },
-	.hasSun = false,
+	.hasSun = true,
+	.sunEmission = { 10.0, 10.0, 10.0 },
+	.sunPosition = { 0.0, 0.0, 1.0 },
+	.sunRadius = 10.0 * M_PI / 180.0,
 };
 
 simd_float3 emissionForTextureID(NSString *textureID) {
