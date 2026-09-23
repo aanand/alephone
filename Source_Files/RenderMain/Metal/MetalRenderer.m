@@ -240,6 +240,7 @@ API_AVAILABLE(macos(26.0))
 	NSError *error;
 
 	MTLResidencySetDescriptor *residencySetDescriptor = [MTLResidencySetDescriptor new];
+	residencySetDescriptor.label = @"initialRenderResidencySet";
 	initialRenderResidencySet = [pipeline.device newResidencySetWithDescriptor:residencySetDescriptor
 												   error:&error];
 	if (error) {
@@ -247,6 +248,7 @@ API_AVAILABLE(macos(26.0))
 		return false;
 	}
 	
+	residencySetDescriptor.label = @"rayTracingResidencySet";
 	rayTracingResidencySet = [pipeline.device newResidencySetWithDescriptor:residencySetDescriptor
 															 error:&error];
 	if (error) {
@@ -254,6 +256,7 @@ API_AVAILABLE(macos(26.0))
 		return false;
 	}
 
+	residencySetDescriptor.label = @"finalRenderResidencySet";
 	finalRenderResidencySet = [pipeline.device newResidencySetWithDescriptor:residencySetDescriptor
 															  error:&error];
 	if (error) {
@@ -271,12 +274,15 @@ API_AVAILABLE(macos(26.0))
 
 - (void) setupBuffers {
 	uniformsBuffer = [pipeline.device newBufferWithLength:sizeof(Uniforms) options:MTLResourceStorageModeShared];
+	uniformsBuffer.label = @"Uniforms";
 	[initialRenderResidencySet addAllocation:uniformsBuffer];
 	
 	triangleBuffer = [pipeline.device newBufferWithLength:(sizeof(WorldVertex) * MAX_TRIANGLES * 3) options:MTLResourceStorageModeShared];
+	triangleBuffer.label = @"Triangle vertices";
 	[initialRenderResidencySet addAllocation:triangleBuffer];
 	
 	perInstanceDataBuffer = [pipeline.device newBufferWithLength:(sizeof(InstanceRayTracingData) * MAX_INSTANCES) options:MTLResourceStorageModeShared];
+	perInstanceDataBuffer.label = @"Per-instance data";
 	[rayTracingResidencySet addAllocation:perInstanceDataBuffer];
 }
 
@@ -302,6 +308,7 @@ API_AVAILABLE(macos(26.0))
 	raytrace.storageMode = MTLStorageModePrivate;
 	raytrace.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
 	rayTracingOutputTexture = [pipeline.device newTextureWithDescriptor:raytrace];
+	rayTracingOutputTexture.label = @"Ray-tracing output";
 	
 	[initialRenderResidencySet addAllocation:initialRenderGBufferAlbedo];
 	[initialRenderResidencySet addAllocation:initialRenderGBufferDepth];
@@ -410,11 +417,11 @@ API_AVAILABLE(macos(26.0))
 	id<MTLFunction> function = [pipeline.defaultLibrary newFunctionWithName:@"rayTracingKernel"];
 	
 	textureArgumentEncoder = [function newArgumentEncoderWithBufferIndex:RayTracingKernelTexturesIndex];
-	textureArgumentEncoder.label = @"spriteTextureArgumentEncoder";
+	textureArgumentEncoder.label = @"textureArgumentEncoder";
 
 	textureArgumentBuffer = [pipeline.device newBufferWithLength:textureArgumentEncoder.encodedLength
 															   options:MTLResourceStorageModeShared];
-	textureArgumentBuffer.label = @"spriteTextureArgumentBuffer";
+	textureArgumentBuffer.label = @"textureArgumentBuffer";
 	
 	[textureArgumentEncoder setArgumentBuffer:textureArgumentBuffer offset:0];
 	[rayTracingResidencySet addAllocation:textureArgumentBuffer];
