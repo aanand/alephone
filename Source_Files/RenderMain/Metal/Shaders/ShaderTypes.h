@@ -22,9 +22,12 @@ enum {
 };
 
 enum {
-	InitialRenderAttachmentAlbedo,
+	InitialRenderAttachmentDiffuseAlbedo,
+	InitialRenderAttachmentSpecularAlbedo,
+	InitialRenderAttachmentRoughness,
 	InitialRenderAttachmentDepth,
 	InitialRenderAttachmentNormal,
+	InitialRenderAttachmentMotion,
 };
 
 enum {

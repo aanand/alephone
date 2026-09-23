@@ -52,9 +52,12 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 }
 
 struct GBuffer {
-	float4 albedo [[ color(InitialRenderAttachmentAlbedo) ]];
+	float4 diffuseAlbedo [[ color(InitialRenderAttachmentDiffuseAlbedo) ]];
+	float4 specularAlbedo [[ color(InitialRenderAttachmentSpecularAlbedo) ]];
+	float roughness [[ color(InitialRenderAttachmentRoughness) ]];
 	float depth [[ color(InitialRenderAttachmentDepth) ]];
 	float4 normal [[ color(InitialRenderAttachmentNormal) ]];
+	float2 motion [[ color(InitialRenderAttachmentMotion) ]];
 };
 
 fragment GBuffer
@@ -67,8 +70,11 @@ initialRenderFragmentShader(RasterizerData in [[stage_in]],
 		discard_fragment();
 	}
 	return {
-		.albedo = float4(colorSample),
+		.diffuseAlbedo = float4(colorSample),
+		.specularAlbedo = float4(0.0),
+		.roughness = 1.0,
 		.depth = in.depth,
 		.normal = float4(in.normal, 1.0),
+		.motion = float2(0.0),
 	};
 }

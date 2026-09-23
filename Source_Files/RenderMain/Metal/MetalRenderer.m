@@ -12,6 +12,7 @@
 
 #include <Cocoa/Cocoa.h>
 #include <MetalKit/MetalKit.h>
+#include <MetalFX/MetalFX.h>
 #include <dispatch/dispatch.h>
 
 #include "Shaders/ShaderTypes.h"
@@ -46,9 +47,12 @@ uint MAX_INSTANCES = 1000;
 
 NSString* const PLACEHOLDER_TEXTURE_ID = @"PLACEHOLDER";
 
-const MTLPixelFormat AlbedoPixelFormat = MTLPixelFormatRGBA8Unorm;
+const MTLPixelFormat DiffuseAlbedoPixelFormat = MTLPixelFormatRGBA16Float;
+const MTLPixelFormat SpecularAlbedoPixelFormat = MTLPixelFormatRGBA16Float;
+const MTLPixelFormat RoughnessPixelFormat = MTLPixelFormatR32Float;
 const MTLPixelFormat DepthPixelFormat = MTLPixelFormatR32Float;
 const MTLPixelFormat NormalPixelFormat = MTLPixelFormatRGBA16Float;
+const MTLPixelFormat MotionPixelFormat = MTLPixelFormatRG16Float;
 const MTLPixelFormat RayTracingPixelFormat = MTLPixelFormatRGBA16Float;
 
 
@@ -84,15 +88,21 @@ API_AVAILABLE(macos(26.0))
 	id<MTL4ArgumentTable> fragmentArgumentTable;
 	id<MTL4ArgumentTable> computeArgumentTable;
 	id<MTLArgumentEncoder> textureArgumentEncoder;
+	id<MTLFXTemporalDenoisedScaler> scaler;
 
 	id<MTLResidencySet> initialRenderResidencySet;
 	id<MTLResidencySet> rayTracingResidencySet;
 	id<MTLResidencySet> finalRenderResidencySet;
 	
-	id<MTLTexture> initialRenderGBufferAlbedo;
+	id<MTLTexture> initialRenderGBufferDiffuseAlbedo;
+	id<MTLTexture> initialRenderGBufferSpecularAlbedo;
+	id<MTLTexture> initialRenderGBufferRoughness;
 	id<MTLTexture> initialRenderGBufferDepth;
 	id<MTLTexture> initialRenderGBufferNormal;
+	id<MTLTexture> initialRenderGBufferMotion;
+
 	id<MTLTexture> rayTracingOutputTexture;
+	id<MTLTexture> denoisedRayTracingOutputTexture;
 
 	// Constants shared across all pipelines
 	id<MTLBuffer> uniformsBuffer;
@@ -169,6 +179,10 @@ API_AVAILABLE(macos(26.0))
 	depthState = [self configureDepth];
 	
 	if (![self setupArgumentTables]) {
+		return nil;
+	}
+	
+	if (![self setupScaler]) {
 		return nil;
 	}
 
@@ -287,19 +301,34 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (void) setupIntermediateTextures {
-	MTLTextureDescriptor *initial = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:AlbedoPixelFormat
+	MTLTextureDescriptor *initial = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:DiffuseAlbedoPixelFormat
 																					   width:viewportSize.x
 																					  height:viewportSize.y
 																				   mipmapped:NO];
 	initial.storageMode = MTLStorageModePrivate;
 	initial.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
-	initialRenderGBufferAlbedo = [pipeline.device newTextureWithDescriptor:initial];
+	initialRenderGBufferDiffuseAlbedo = [pipeline.device newTextureWithDescriptor:initial];
+	initialRenderGBufferDiffuseAlbedo.label = @"Diffuse Albedo";
+	
+	initial.pixelFormat = SpecularAlbedoPixelFormat;
+	initialRenderGBufferSpecularAlbedo = [pipeline.device newTextureWithDescriptor:initial];
+	initialRenderGBufferSpecularAlbedo.label = @"Specular Albedo";
+	
+	initial.pixelFormat = RoughnessPixelFormat;
+	initialRenderGBufferRoughness = [pipeline.device newTextureWithDescriptor:initial];
+	initialRenderGBufferRoughness.label = @"Roughness";
 	
 	initial.pixelFormat = DepthPixelFormat;
 	initialRenderGBufferDepth = [pipeline.device newTextureWithDescriptor:initial];
+	initialRenderGBufferDepth.label = @"Depth";
 	
 	initial.pixelFormat = NormalPixelFormat;
 	initialRenderGBufferNormal = [pipeline.device newTextureWithDescriptor:initial];
+	initialRenderGBufferNormal.label = @"Normal";
+	
+	initial.pixelFormat = MotionPixelFormat;
+	initialRenderGBufferMotion = [pipeline.device newTextureWithDescriptor:initial];
+	initialRenderGBufferMotion.label = @"Motion";
 
 	MTLTextureDescriptor *raytrace = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:RayTracingPixelFormat
 																						width:viewportSize.x
@@ -310,14 +339,60 @@ API_AVAILABLE(macos(26.0))
 	rayTracingOutputTexture = [pipeline.device newTextureWithDescriptor:raytrace];
 	rayTracingOutputTexture.label = @"Ray-tracing output";
 	
-	[initialRenderResidencySet addAllocation:initialRenderGBufferAlbedo];
+	MTLTextureDescriptor *denoised = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:RayTracingPixelFormat
+																						width:viewportSize.x
+																					   height:viewportSize.y
+																					mipmapped:NO];
+	denoised.storageMode = MTLStorageModePrivate;
+	denoised.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+	denoisedRayTracingOutputTexture = [pipeline.device newTextureWithDescriptor:denoised];
+	denoisedRayTracingOutputTexture.label = @"Denoised output";
+	
+	[initialRenderResidencySet addAllocation:initialRenderGBufferDiffuseAlbedo];
+	[initialRenderResidencySet addAllocation:initialRenderGBufferSpecularAlbedo];
+	[initialRenderResidencySet addAllocation:initialRenderGBufferRoughness];
 	[initialRenderResidencySet addAllocation:initialRenderGBufferDepth];
 	[initialRenderResidencySet addAllocation:initialRenderGBufferNormal];
+	[initialRenderResidencySet addAllocation:initialRenderGBufferMotion];
 
 	[rayTracingResidencySet addAllocation:rayTracingOutputTexture];
 
-	[finalRenderResidencySet addAllocation:initialRenderGBufferAlbedo];
+	[finalRenderResidencySet addAllocation:initialRenderGBufferDiffuseAlbedo];
 	[finalRenderResidencySet addAllocation:rayTracingOutputTexture];
+	[finalRenderResidencySet addAllocation:denoisedRayTracingOutputTexture];
+}
+
+- (bool) setupScaler {
+	if (![MTLFXTemporalDenoisedScalerDescriptor supportsMetal4FX:pipeline.device]) {
+		NSLog(@"Temporal denoised scaler is unsupported");
+		return false;
+	}
+
+	MTLFXTemporalDenoisedScalerDescriptor *descriptor = [MTLFXTemporalDenoisedScalerDescriptor new];
+	descriptor.inputWidth = viewportSize.x;
+	descriptor.inputHeight = viewportSize.y;
+	descriptor.outputWidth = viewportSize.x;
+	descriptor.outputHeight = viewportSize.y;
+
+	descriptor.colorTextureFormat = RayTracingPixelFormat;
+	descriptor.outputTextureFormat = RayTracingPixelFormat;
+	descriptor.diffuseAlbedoTextureFormat = DiffuseAlbedoPixelFormat;
+	descriptor.specularAlbedoTextureFormat = SpecularAlbedoPixelFormat;
+	descriptor.roughnessTextureFormat = RoughnessPixelFormat;
+	descriptor.depthTextureFormat = DepthPixelFormat;
+	descriptor.normalTextureFormat = NormalPixelFormat;
+	descriptor.motionTextureFormat = MotionPixelFormat;
+	
+	descriptor.requiresSynchronousInitialization = YES;
+	
+	scaler = [descriptor newTemporalDenoisedScalerWithDevice:pipeline.device];
+	
+	if (scaler == nil) {
+		NSLog(@"Failed to create scaler");
+		return false;
+	}
+	
+	return true;
 }
 
 - (id<MTLRenderPipelineState>) compileInitialRenderPipeline {
@@ -343,19 +418,28 @@ API_AVAILABLE(macos(26.0))
 	descriptor.vertexFunctionDescriptor = vertexFunction;
 	descriptor.fragmentFunctionDescriptor = fragmentFunction;
 
-	MTL4RenderPipelineColorAttachmentDescriptor *albedoAttachment = descriptor.colorAttachments[InitialRenderAttachmentAlbedo];
-	albedoAttachment.pixelFormat = AlbedoPixelFormat;
+	MTL4RenderPipelineColorAttachmentDescriptor *albedoAttachment = descriptor.colorAttachments[InitialRenderAttachmentDiffuseAlbedo];
+	albedoAttachment.pixelFormat = DiffuseAlbedoPixelFormat;
 	albedoAttachment.blendingState = MTL4BlendStateEnabled;
 	albedoAttachment.sourceAlphaBlendFactor = MTLBlendFactorSourceAlpha;
 	albedoAttachment.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
 	albedoAttachment.sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
 	albedoAttachment.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
 	
+	MTL4RenderPipelineColorAttachmentDescriptor *specularAlbedoAttachment = descriptor.colorAttachments[InitialRenderAttachmentSpecularAlbedo];
+	specularAlbedoAttachment.pixelFormat = SpecularAlbedoPixelFormat;
+	
+	MTL4RenderPipelineColorAttachmentDescriptor *roughnessAttachment = descriptor.colorAttachments[InitialRenderAttachmentRoughness];
+	roughnessAttachment.pixelFormat = RoughnessPixelFormat;
+	
 	MTL4RenderPipelineColorAttachmentDescriptor *depthAttachment = descriptor.colorAttachments[InitialRenderAttachmentDepth];
 	depthAttachment.pixelFormat = DepthPixelFormat;
 	
 	MTL4RenderPipelineColorAttachmentDescriptor *normalAttachment = descriptor.colorAttachments[InitialRenderAttachmentNormal];
 	normalAttachment.pixelFormat = NormalPixelFormat;
+	
+	MTL4RenderPipelineColorAttachmentDescriptor *motionAttachment = descriptor.colorAttachments[InitialRenderAttachmentMotion];
+	motionAttachment.pixelFormat = MotionPixelFormat;
 
 	id<MTLRenderPipelineState> state = [compiler newRenderPipelineStateWithDescriptor:descriptor
 																  compilerTaskOptions:nil
@@ -876,23 +960,16 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 	id<MTL4CommandBuffer> commandBuffer = pipeline.commandBuffer;
 	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
-	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu (render)", frameNumber];
+	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu (initial + raytracing)", frameNumber];
 	
 	id<MTLFence> initialPassFence = [pipeline.device newFence];
 	id<MTLFence> computePassFence = [pipeline.device newFence];
+	id<MTLFence> denoisingFence = [pipeline.device newFence];
 	
-	[self encodeInitialRenderToAlbedoTexture:initialRenderGBufferAlbedo
-								depthTexture:initialRenderGBufferDepth
-							   normalTexture:initialRenderGBufferNormal
-							   updatingFence:initialPassFence];
+	[self encodeInitialRenderUpdatingFence:initialPassFence];
 
 	[self encodeRayTracingPassToOutputTexture:rayTracingOutputTexture updatingFence:computePassFence];
 
-	[self encodeFinalRenderFromAlbedoTexture:initialRenderGBufferAlbedo
-					   rayTracingPassTexture:rayTracingOutputTexture
-							 toOutputTexture:currentDrawable.texture
-								 afterFences:@[initialPassFence, computePassFence]];
-	
 	[commandBuffer endCommandBuffer];
 	
 	// Block until rendering has completed. This is inefficient, but Marathon is locked to 30fps,
@@ -900,44 +977,89 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	// reads/writes to buffers and textures
 	uint64_t renderSignalValue = pipeline.sharedEvent.signaledValue + 1;
 	
+	[pipeline.commandQueue commit:&commandBuffer count:1];
+	[pipeline.commandQueue signalEvent:pipeline.sharedEvent value:renderSignalValue];
+	[pipeline.sharedEvent waitUntilSignaledValue:renderSignalValue timeoutMS:5000];
+	[pipeline.commandAllocator reset];
+	
+	id<MTLCommandQueue> mtl3queue = [pipeline.device newCommandQueue];
+	id<MTLCommandBuffer> mtl3buffer = [mtl3queue commandBuffer];
+	mtl3buffer.label = [NSString stringWithFormat:@"Frame %llu (denoise)", frameNumber];
+	
+	scaler.colorTexture = rayTracingOutputTexture;
+	scaler.diffuseAlbedoTexture = initialRenderGBufferDiffuseAlbedo;
+	scaler.specularAlbedoTexture = initialRenderGBufferSpecularAlbedo;
+	scaler.roughnessTexture = initialRenderGBufferRoughness;
+	scaler.depthTexture = initialRenderGBufferDepth;
+	scaler.normalTexture = initialRenderGBufferNormal;
+	scaler.motionTexture = initialRenderGBufferMotion;
+	scaler.outputTexture = denoisedRayTracingOutputTexture;
+	scaler.fence = denoisingFence;
+	[scaler encodeToCommandBuffer:mtl3buffer];
+	[mtl3buffer commit];
+	[mtl3buffer waitUntilCompleted];
+	
+	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
+	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu (final pass)", frameNumber];
+	[self encodeFinalRenderFromAlbedoTexture:initialRenderGBufferDiffuseAlbedo
+					   rayTracingPassTexture:denoisedRayTracingOutputTexture
+							 toOutputTexture:currentDrawable.texture
+								 afterFences:@[denoisingFence]];
+	[commandBuffer endCommandBuffer];
+
+	renderSignalValue = pipeline.sharedEvent.signaledValue + 1;
 	[pipeline.commandQueue waitForDrawable:currentDrawable];
 	[pipeline.commandQueue commit:&commandBuffer count:1];
 	[pipeline.commandQueue signalDrawable:currentDrawable];
 	[currentDrawable present];
-	
 	[pipeline.commandQueue signalEvent:pipeline.sharedEvent value:renderSignalValue];
 	[pipeline.sharedEvent waitUntilSignaledValue:renderSignalValue timeoutMS:5000];
 	[pipeline.commandAllocator reset];
 }
 
-- (void) encodeInitialRenderToAlbedoTexture:(id<MTLTexture>)albedoTexture
-							   depthTexture:(id<MTLTexture>)depthTexture
-							  normalTexture:(id<MTLTexture>)normalTexture
-							  updatingFence:(id<MTLFence>)fence
+- (void) encodeInitialRenderUpdatingFence:(id<MTLFence>)fence
 {
 	// Commit any textures that were added
 	[initialRenderResidencySet commit];
 
 	MTL4RenderPassDescriptor *configuration = [MTL4RenderPassDescriptor new];
 
-	MTLRenderPassColorAttachmentDescriptor *albedo = configuration.colorAttachments[InitialRenderAttachmentAlbedo];
-	albedo.texture = albedoTexture;
-	albedo.loadAction = MTLLoadActionClear;
+	MTLRenderPassColorAttachmentDescriptor *diffuseAlbedo = configuration.colorAttachments[InitialRenderAttachmentDiffuseAlbedo];
+	diffuseAlbedo.texture = initialRenderGBufferDiffuseAlbedo;
+	diffuseAlbedo.loadAction = MTLLoadActionClear;
 	// Render a white sky, which the raytracing pass will multiply down
-	albedo.clearColor = MTLClearColorMake(1.0, 1.0, 1.0, 1.0);
-	albedo.storeAction = MTLStoreActionStore;
+	diffuseAlbedo.clearColor = MTLClearColorMake(1.0, 1.0, 1.0, 1.0);
+	diffuseAlbedo.storeAction = MTLStoreActionStore;
 
+	MTLRenderPassColorAttachmentDescriptor *specularAlbedo = configuration.colorAttachments[InitialRenderAttachmentSpecularAlbedo];
+	specularAlbedo.texture = initialRenderGBufferSpecularAlbedo;
+	specularAlbedo.loadAction = MTLLoadActionClear;
+	specularAlbedo.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+	specularAlbedo.storeAction = MTLStoreActionStore;
+
+	MTLRenderPassColorAttachmentDescriptor *roughness = configuration.colorAttachments[InitialRenderAttachmentRoughness];
+	roughness.texture = initialRenderGBufferRoughness;
+	roughness.loadAction = MTLLoadActionClear;
+	roughness.clearColor = MTLClearColorMake(1.0, 1.0, 1.0, 1.0);
+	roughness.storeAction = MTLStoreActionStore;
+	
 	MTLRenderPassColorAttachmentDescriptor *depth = configuration.colorAttachments[InitialRenderAttachmentDepth];
-	depth.texture = depthTexture;
+	depth.texture = initialRenderGBufferDepth;
 	depth.loadAction = MTLLoadActionClear;
 	depth.clearColor = MTLClearColorMake(1.0, 1.0, 1.0, 1.0);
 	depth.storeAction = MTLStoreActionStore;
 	
 	MTLRenderPassColorAttachmentDescriptor *normal = configuration.colorAttachments[InitialRenderAttachmentNormal];
-	normal.texture = normalTexture;
+	normal.texture = initialRenderGBufferNormal;
 	normal.loadAction = MTLLoadActionClear;
 	normal.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
 	normal.storeAction = MTLStoreActionStore;
+	
+	MTLRenderPassColorAttachmentDescriptor *motion = configuration.colorAttachments[InitialRenderAttachmentMotion];
+	motion.texture = initialRenderGBufferMotion;
+	motion.loadAction = MTLLoadActionClear;
+	motion.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+	motion.storeAction = MTLStoreActionStore;
 	
 	id<MTL4RenderCommandEncoder> renderPassEncoder = [pipeline.commandBuffer renderCommandEncoderWithDescriptor:configuration];
 	if (!renderPassEncoder) {
