@@ -205,14 +205,14 @@ std::unordered_map<std::string, simd_float3> emissiveTextures = {
 	{ "[ShapeDesc=4893/Collection=19/CTable=0/Frame=29/Bitmap=29]", simd_make_float3(2.0, 1.0, 0.0) },
 	
 	// Light panels (M2)
-	{ "[ShapeDesc=4377/Collection=17/CTable=0/Frame=25/Bitmap=25]", simd_make_float3(2.0, 2.0, 2.0) },
-	{ "[ShapeDesc=4886/Collection=19/CTable=0/Frame=22/Bitmap=22]", simd_make_float3(2.0, 2.0, 2.0) },
+	{ "[ShapeDesc=4377/Collection=17/CTable=0/Frame=25/Bitmap=25]", simd_make_float3(20.0, 20.0, 20.0) },
+	{ "[ShapeDesc=4886/Collection=19/CTable=0/Frame=22/Bitmap=22]", simd_make_float3(20.0, 20.0, 20.0) },
 	
 	// Green wall panels (M2)
-	{ "[ShapeDesc=4361/Collection=17/CTable=0/Frame=9/Bitmap=9]", simd_make_float3(0.0, 1.0, 0.0) },
+	{ "[ShapeDesc=4361/Collection=17/CTable=0/Frame=9/Bitmap=9]", simd_make_float3(0.0, 10.0, 0.0) },
 	
 	// Switches (M2)
-	{ "[ShapeDesc=4353/Collection=17/CTable=0/Frame=1/Bitmap=1]", simd_make_float3(1.0, 1.0, 1.0) },
+	{ "[ShapeDesc=4353/Collection=17/CTable=0/Frame=1/Bitmap=1]", simd_make_float3(10.0, 10.0, 10.0) },
 };
 
 std::unordered_map<std::string, float> reflectiveTextures = {
