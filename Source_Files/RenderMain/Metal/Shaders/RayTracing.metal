@@ -185,10 +185,14 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 			
 			float2 uv;
 
-			// Directly sample a light source - choose randomly between sun and weapon flare
-			uv = hash2(seed);
-			float3 towardSun = sampleCone(uv, uniforms.sky.sunPosition, uniforms.sky.sunRadius);
-			bool couldHitSun = uniforms.sky.hasSun && dot(normal, towardSun) > 0;
+			bool couldHitSun = false;
+			float3 towardSun;
+			if (b == 0 && uniforms.sky.hasSun) {
+				// Directly sample a light source - choose randomly between sun and weapon flare
+				uv = hash2(seed);
+				towardSun = sampleCone(uv, uniforms.sky.sunPosition, uniforms.sky.sunRadius);
+				couldHitSun = dot(normal, towardSun) > 0;
+			}
 
 			float weaponFlare = uniforms.weaponFlare;
 			bool hasWeaponFlare = weaponFlare > 0;
