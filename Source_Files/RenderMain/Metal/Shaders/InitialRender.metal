@@ -13,6 +13,7 @@ using namespace metal;
 
 struct RasterizerData {
 	float4 position [[position]];
+	float2 dXY;
 	float depth;
 	float3 normal;
 	float2 textureCoordinate;
@@ -29,6 +30,14 @@ float3 fromWorldSpace(int3 worldPosition) {
 	return fromWorldSpace(float3(worldPosition));
 }
 
+float4 transform(int3 worldPosition, Camera camera) {
+	float4 result = float4(fromWorldSpace(worldPosition - camera.origin), 1.0);
+	result = camera.yawMat * result;
+	result = camera.pitchMat * result;
+	result = camera.perspectiveMat * result;
+	return result;
+}
+
 vertex RasterizerData
 initialRenderVertexShader(uint vertexID [[vertex_id]],
 						  constant WorldVertex *vertexData [[buffer(InitialRenderVertexShaderVertexDataIndex)]],
@@ -38,13 +47,12 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 	
 	WorldVertex v = vertexData[vertexID];
 
-	float4 result = float4(fromWorldSpace(v.position - uniforms.origin), 1.0);
-	result = uniforms.yawMat * result;
-	result = uniforms.pitchMat * result;
-	result = uniforms.perspectiveMat * result;
+	float4 position = transform(v.position, uniforms.camera);
+	float4 previousPosition = transform(v.position, uniforms.previousCamera);
 
-	out.position = result;
-	out.depth = result.z/result.w;
+	out.position = position;
+	out.dXY = position.xy - previousPosition.xy;
+	out.depth = position.z/position.w;
 	out.normal = v.normal;
 	out.textureCoordinate = v.textureCoordinate;
 	
@@ -75,6 +83,6 @@ initialRenderFragmentShader(RasterizerData in [[stage_in]],
 		.roughness = 1.0,
 		.depth = in.depth,
 		.normal = float4(in.normal, 1.0),
-		.motion = float2(0.0),
+		.motion = in.dXY,
 	};
 }

@@ -225,7 +225,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 					tcol += fcol * hit.diffuse * uniforms.sky.sunEmission * contribution * weight;
 				}
 			} else if (sampleWeaponFlare) {
-				int3 weaponFlarePosition = uniforms.origin + int3(0, 0, -256);
+				int3 weaponFlarePosition = uniforms.camera.origin + int3(0, 0, -256);
 				float3 surfaceToWeapon = float3(weaponFlarePosition) - hitPoint;
 				struct ray directRay;
 				directRay.origin = hitPoint;
@@ -270,7 +270,7 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 
 	float seed = getRandomSeed(xy, uniforms.frameNumber);
 
-	float frustumWidth = tan(radians(uniforms.fov/2));
+	float frustumWidth = tan(radians(uniforms.camera.fov/2));
 	float frustumHeight = frustumWidth * uniforms.resolution.y / uniforms.resolution.x;
 	
 	// View-space directions, which then get transformed by the matrices (which expect view-space), then transposed to world-space.
@@ -279,9 +279,9 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 	float4 up      = float4(0.0, 1.0, 0.0, 1.0) * frustumHeight;
 	float4 forward = float4(0.0, 0.0, 1.0, 1.0);
 
-	right   = uniforms.rotateDirectionMat * right;
-	up      = uniforms.rotateDirectionMat * up;
-	forward = uniforms.rotateDirectionMat * forward;
+	right   = uniforms.camera.rotateDirectionMat * right;
+	up      = uniforms.camera.rotateDirectionMat * up;
+	forward = uniforms.camera.rotateDirectionMat * forward;
 	
 	float3 sumColor = float3(0.0);
 	
@@ -304,7 +304,7 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 		// Ray direction in world-space
 		float3 direction = normalize(uv.x * right.zxy + uv.y * up.zxy + forward.zxy);
 		
-		sumColor += rayTraceSoft(float3(uniforms.origin), direction, rayTracer, uniforms, seed);
+		sumColor += rayTraceSoft(float3(uniforms.camera.origin), direction, rayTracer, uniforms, seed);
 	}
 	
 	float3 averageColor = sumColor / (float)samplesPerPixel;

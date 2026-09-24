@@ -77,9 +77,6 @@ typedef struct {
 } Sky;
 
 typedef struct {
-	vector_uint2 resolution;
-	uint64_t frameNumber;
-	
 	// Horizontal FOV
 	float fov;
 	
@@ -97,9 +94,17 @@ typedef struct {
 	
 	// Transforms a view-space vector to clip-space
 	matrix_float4x4 perspectiveMat;
+} Camera;
+
+typedef struct {
+	vector_uint2 resolution;
+	uint64_t frameNumber;
 	
 	// Global light parameters
 	Sky sky;
+	
+	Camera camera;
+	Camera previousCamera;
 	
 	float weaponFlare; // Intensity of the weapon flare (0 if it's inactive)
 } Uniforms;

@@ -72,6 +72,7 @@ API_AVAILABLE(macos(26.0))
 	simd_int3 origin;
 	float weaponFlare;
 	Sky sky;
+	Camera camera;
 
 	uint64_t frameNumber;
 	
@@ -943,15 +944,19 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	simd_quatf sunRotation = simd_quaternion(fmod(frameNumber * sky.sunRotationSpeed, 2*M_PI), sky.sunRotationAxis);
 	adjustedSky.sunPosition = simd_normalize(simd_mul(simd_matrix4x4(sunRotation), simd_make_float4(sky.sunPosition, 1.0)).xyz);
 
+	Camera previousCamera = camera;
+	camera.fov = fov;
+	camera.origin = origin;
+	camera.pitchMat = rotationMatrix(pitch, simd_make_float3(1.0, 0.0, 0.0));
+	camera.yawMat = rotationMatrix(-yaw, simd_make_float3(0.0, 1.0, 0.0));
+	camera.rotateDirectionMat = simd_mul(rotationMatrix(yaw, simd_make_float3(0.0, 1.0, 0.0)), rotationMatrix(-pitch, simd_make_float3(1.0, 0.0, 0.0)));
+	camera.perspectiveMat = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
+	
 	Uniforms uniforms;
 	uniforms.resolution = viewportSize;
 	uniforms.frameNumber = frameNumber;
-	uniforms.fov = fov;
-	uniforms.origin = origin;
-	uniforms.pitchMat = rotationMatrix(pitch, simd_make_float3(1.0, 0.0, 0.0));
-	uniforms.yawMat = rotationMatrix(-yaw, simd_make_float3(0.0, 1.0, 0.0));
-	uniforms.rotateDirectionMat = simd_mul(rotationMatrix(yaw, simd_make_float3(0.0, 1.0, 0.0)), rotationMatrix(-pitch, simd_make_float3(1.0, 0.0, 0.0)));
-	uniforms.perspectiveMat = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
+	uniforms.camera = camera;
+	uniforms.previousCamera = (frameNumber > 1) ? previousCamera : camera;
 	uniforms.sky = adjustedSky;
 	uniforms.weaponFlare = weaponFlare;
 	memcpy(uniformsBuffer.contents, &uniforms, sizeof(Uniforms));
@@ -993,6 +998,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	scaler.depthTexture = initialRenderGBufferDepth;
 	scaler.normalTexture = initialRenderGBufferNormal;
 	scaler.motionTexture = initialRenderGBufferMotion;
+	scaler.motionVectorScaleX = initialRenderGBufferMotion.width;
+	scaler.motionVectorScaleY = initialRenderGBufferMotion.height;
 	scaler.outputTexture = denoisedRayTracingOutputTexture;
 	scaler.fence = denoisingFence;
 	[scaler encodeToCommandBuffer:mtl3buffer];
