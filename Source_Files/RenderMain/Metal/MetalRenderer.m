@@ -55,6 +55,7 @@ const MTLPixelFormat NormalPixelFormat = MTLPixelFormatRGBA16Float;
 const MTLPixelFormat MotionPixelFormat = MTLPixelFormatRG16Float;
 const MTLPixelFormat RayTracingPixelFormat = MTLPixelFormatRGBA16Float;
 
+const bool USE_DENOISING_UPSCALER = false;
 
 API_AVAILABLE(macos(26.0))
 @implementation MetalRenderer
@@ -986,32 +987,17 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[pipeline.commandQueue signalEvent:pipeline.sharedEvent value:renderSignalValue];
 	[pipeline.sharedEvent waitUntilSignaledValue:renderSignalValue timeoutMS:5000];
 	[pipeline.commandAllocator reset];
-	
-	id<MTLCommandQueue> mtl3queue = [pipeline.device newCommandQueue];
-	id<MTLCommandBuffer> mtl3buffer = [mtl3queue commandBuffer];
-	mtl3buffer.label = [NSString stringWithFormat:@"Frame %llu (denoise)", frameNumber];
-	
-	scaler.colorTexture = rayTracingOutputTexture;
-	scaler.diffuseAlbedoTexture = initialRenderGBufferDiffuseAlbedo;
-	scaler.specularAlbedoTexture = initialRenderGBufferSpecularAlbedo;
-	scaler.roughnessTexture = initialRenderGBufferRoughness;
-	scaler.depthTexture = initialRenderGBufferDepth;
-	scaler.normalTexture = initialRenderGBufferNormal;
-	scaler.motionTexture = initialRenderGBufferMotion;
-	scaler.motionVectorScaleX = initialRenderGBufferMotion.width;
-	scaler.motionVectorScaleY = initialRenderGBufferMotion.height;
-	scaler.outputTexture = denoisedRayTracingOutputTexture;
-	scaler.fence = denoisingFence;
-	[scaler encodeToCommandBuffer:mtl3buffer];
-	[mtl3buffer commit];
-	[mtl3buffer waitUntilCompleted];
+
+	if (USE_DENOISING_UPSCALER) {
+		[self encodeDenoiseUpdatingFence:denoisingFence];
+	}
 	
 	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
 	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu (final pass)", frameNumber];
 	[self encodeFinalRenderFromAlbedoTexture:initialRenderGBufferDiffuseAlbedo
-					   rayTracingPassTexture:denoisedRayTracingOutputTexture
+					   rayTracingPassTexture:USE_DENOISING_UPSCALER ? denoisedRayTracingOutputTexture : rayTracingOutputTexture
 							 toOutputTexture:currentDrawable.texture
-								 afterFences:@[denoisingFence]];
+								 afterFences:USE_DENOISING_UPSCALER ? @[denoisingFence] : @[]];
 	[commandBuffer endCommandBuffer];
 
 	renderSignalValue = pipeline.sharedEvent.signaledValue + 1;
@@ -1146,6 +1132,27 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	
 	[encoder updateFence:fence afterEncoderStages:MTLStageDispatch];
 	[encoder endEncoding];
+}
+
+-(void) encodeDenoiseUpdatingFence:(id<MTLFence>)fence {
+	id<MTLCommandQueue> mtl3queue = [pipeline.device newCommandQueue];
+	id<MTLCommandBuffer> mtl3buffer = [mtl3queue commandBuffer];
+	mtl3buffer.label = [NSString stringWithFormat:@"Frame %llu (denoise)", frameNumber];
+	
+	scaler.colorTexture = rayTracingOutputTexture;
+	scaler.diffuseAlbedoTexture = initialRenderGBufferDiffuseAlbedo;
+	scaler.specularAlbedoTexture = initialRenderGBufferSpecularAlbedo;
+	scaler.roughnessTexture = initialRenderGBufferRoughness;
+	scaler.depthTexture = initialRenderGBufferDepth;
+	scaler.normalTexture = initialRenderGBufferNormal;
+	scaler.motionTexture = initialRenderGBufferMotion;
+	scaler.motionVectorScaleX = initialRenderGBufferMotion.width;
+	scaler.motionVectorScaleY = initialRenderGBufferMotion.height;
+	scaler.outputTexture = denoisedRayTracingOutputTexture;
+	scaler.fence = fence;
+	[scaler encodeToCommandBuffer:mtl3buffer];
+	[mtl3buffer commit];
+	[mtl3buffer waitUntilCompleted];
 }
 
 -(void) encodeFinalRenderFromAlbedoTexture:(id<MTLTexture>)albedoTexture
