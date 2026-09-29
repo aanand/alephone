@@ -28,14 +28,12 @@
 @interface MetalSurface : NSObject
 
 @property (nonatomic, readonly) NSString* textureID;
-@property (nonatomic, readonly) simd_float3 emission;
-@property (nonatomic, readonly) float reflectivity;
+@property (nonatomic, readonly) Material material;
 @property (nonatomic, readonly) simd_float3 normal;
 @property (nonatomic, readonly) int32_t lightSourceIndex;
 
 - (MetalSurface*) initWithTextureID:(NSString*)textureID
-						   emission:(simd_float3)emission
-					   reflectivity:(float)reflectivity
+						   material:(Material)material
 							 normal:(simd_float3)normal
 				   lightSourceIndex:(int32_t)lightSourceIndex;
 

@@ -182,42 +182,44 @@ NSString* LoadTextureIntoRenderer(TextureManager *TMgr, bool didSetupSucceed) {
 	return textureID;
 }
 
-std::unordered_map<std::string, simd_float3> emissiveTextures = {
+std::unordered_map<std::string, Material> materials = {
 	// Light panels (M1)
-	{ "[ShapeDesc=4622/Collection=18/CTable=0/Frame=14/Bitmap=14]", simd_make_float3(2.0, 2.0, 2.0) },
-	{ "[ShapeDesc=4357/Collection=17/CTable=0/Frame=5/Bitmap=5]", simd_make_float3(2.0, 2.0, 2.0) },
-	{ "[ShapeDesc=4358/Collection=17/CTable=0/Frame=6/Bitmap=6]", simd_make_float3(2.0, 2.0, 2.0) },
+	{ "[ShapeDesc=4622/Collection=18/CTable=0/Frame=14/Bitmap=14]", { .emission = simd_make_float3(2.0, 2.0, 2.0) } },
+	{ "[ShapeDesc=4357/Collection=17/CTable=0/Frame=5/Bitmap=5]", { .emission = simd_make_float3(2.0, 2.0, 2.0) } },
+	{ "[ShapeDesc=4358/Collection=17/CTable=0/Frame=6/Bitmap=6]", { .emission = simd_make_float3(2.0, 2.0, 2.0) } },
 	
 	// Terminals and pattern buffers (M1)
-	{ "[ShapeDesc=2048/Collection=8/CTable=0/Frame=0/Bitmap=0]", simd_make_float3(0.0, 1.0, 0.0) },
+	{ "[ShapeDesc=2048/Collection=8/CTable=0/Frame=0/Bitmap=0]", { .emission = simd_make_float3(0.0, 1.0, 0.0) } },
 	
 	// Health recharge panels
-	{ "[ShapeDesc=2052/Collection=8/CTable=0/Frame=4/Bitmap=4]", simd_make_float3(0.0, 0.0, 1.0) },
+	{ "[ShapeDesc=2052/Collection=8/CTable=0/Frame=4/Bitmap=4]", { .emission = simd_make_float3(0.0, 0.0, 1.0) } },
 	
 	// Switches (M1)
-	{ "[ShapeDesc=2049/Collection=8/CTable=0/Frame=1/Bitmap=1]", simd_make_float3(1.0, 1.0, 1.0) },
-	{ "[ShapeDesc=2050/Collection=8/CTable=0/Frame=2/Bitmap=2]", simd_make_float3(1.0, 1.0, 1.0) },
+	{ "[ShapeDesc=2049/Collection=8/CTable=0/Frame=1/Bitmap=1]", { .emission = simd_make_float3(1.0, 1.0, 1.0) } },
+	{ "[ShapeDesc=2050/Collection=8/CTable=0/Frame=2/Bitmap=2]", { .emission = simd_make_float3(1.0, 1.0, 1.0) } },
 	
 	// Panels on columns in that one side room in Arrival (M1)
-	{ "[ShapeDesc=4617/Collection=18/CTable=0/Frame=9/Bitmap=9]", simd_make_float3(0.2, 0.2, 0.2) },
+	{ "[ShapeDesc=4617/Collection=18/CTable=0/Frame=9/Bitmap=9]", { .emission = simd_make_float3(0.2, 0.2, 0.2) } },
 	
 	// Lava (M1)
-	{ "[ShapeDesc=4893/Collection=19/CTable=0/Frame=29/Bitmap=29]", simd_make_float3(2.0, 1.0, 0.0) },
+	{ "[ShapeDesc=4893/Collection=19/CTable=0/Frame=29/Bitmap=29]", { .emission = simd_make_float3(2.0, 1.0, 0.0) } },
 	
 	// Light panels (M2)
-	{ "[ShapeDesc=4377/Collection=17/CTable=0/Frame=25/Bitmap=25]", simd_make_float3(20.0, 20.0, 20.0) },
-	{ "[ShapeDesc=4886/Collection=19/CTable=0/Frame=22/Bitmap=22]", simd_make_float3(20.0, 20.0, 20.0) },
+	{ "[ShapeDesc=4377/Collection=17/CTable=0/Frame=25/Bitmap=25]", { .emission = simd_make_float3(20.0, 20.0, 20.0) } },
+	{ "[ShapeDesc=4886/Collection=19/CTable=0/Frame=22/Bitmap=22]", { .emission = simd_make_float3(20.0, 20.0, 20.0) } },
 	
 	// Green wall panels (M2)
-	{ "[ShapeDesc=4361/Collection=17/CTable=0/Frame=9/Bitmap=9]", simd_make_float3(0.0, 10.0, 0.0) },
+	{ "[ShapeDesc=4361/Collection=17/CTable=0/Frame=9/Bitmap=9]", { .emission = simd_make_float3(0.0, 10.0, 0.0) } },
 	
 	// Switches (M2)
-	{ "[ShapeDesc=4353/Collection=17/CTable=0/Frame=1/Bitmap=1]", simd_make_float3(10.0, 10.0, 10.0) },
-};
+	{ "[ShapeDesc=4353/Collection=17/CTable=0/Frame=1/Bitmap=1]", { .emission = simd_make_float3(10.0, 10.0, 10.0) } },
 
-std::unordered_map<std::string, float> reflectiveTextures = {
 	// Water (M2)
-	{ "[ShapeDesc=4371/Collection=17/CTable=0/Frame=19/Bitmap=19]", 0.5 },
+	{ "[ShapeDesc=4371/Collection=17/CTable=0/Frame=19/Bitmap=19]", {
+		.reflectivity = 0.5,
+		.transparency = 0.5,
+		.refractiveIndex = 0.02,
+	} },
 };
 
 std::unordered_map<std::string, Sky> skies = {
@@ -242,22 +244,13 @@ Sky defaultSky = {
 	.sunRadius = 10.0 * M_PI / 180.0,
 };
 
-simd_float3 emissionForTextureID(NSString *textureID) {
+Material materialForTextureID(NSString *textureID) {
 	std::string key = textureID.UTF8String;
-	auto iterator = emissiveTextures.find(key);
-	if (iterator != emissiveTextures.end()) {
+	auto iterator = materials.find(key);
+	if (iterator != materials.end()) {
 		return iterator->second;
 	}
-	return simd_make_float3(0.0, 0.0, 0.0);
-}
-
-float reflectivityForTextureID(NSString *textureID) {
-	std::string key = textureID.UTF8String;
-	auto iterator = reflectiveTextures.find(key);
-	if (iterator != reflectiveTextures.end()) {
-		return iterator->second;
-	}
-	return 0.0;
+	return {};
 }
 
 void AddWall(polygon_data *polygon,
@@ -297,9 +290,10 @@ void AddWall(polygon_data *polygon,
 		(simd_float2){ (tOffset - surface->h0) / (float) div, (x0 + line->length) / (float) div },
 	};
 	
+	Material material = materialForTextureID(textureID);
+	
 	MetalSurface *mSurface = [[MetalSurface alloc] initWithTextureID:textureID
-														   emission:emissionForTextureID(textureID)
-														reflectivity:reflectivityForTextureID(textureID)
+															material:material
 															 normal:normal
 												   lightSourceIndex:surface->lightsource_index];
 
@@ -339,9 +333,10 @@ void AddHorizontalSurface(short polygonIdx, polygon_data *polygon, horizontal_su
 		uv[i] = { (position.x + surface->origin.x) / scale, (position.y + surface->origin.y) / scale };
 	}
 	
+	Material material = materialForTextureID(textureID);
+
 	MetalSurface *mSurface = [[MetalSurface alloc] initWithTextureID:textureID
-														   emission:emissionForTextureID(textureID)
-														reflectivity:reflectivityForTextureID(textureID)
+														   material:material
 															 normal:simd_make_float3(0.0, 0.0, isCeiling ? -1.0 : 1.0)
 												   lightSourceIndex:surface->lightsource_index];
 
@@ -484,10 +479,11 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 		(simd_float2){ texB, texR },
 	};
 	
+	Material material = materialForTextureID(textureID);
+	
 	// Normal is ignored here and set based on the sprite's rotation
 	MetalSurface *surface = [[MetalSurface alloc] initWithTextureID:textureID
-														   emission:emissionForTextureID(textureID)
-													   reflectivity:reflectivityForTextureID(textureID)
+														   material:material
 															 normal:simd_make_float3(1.0, 0.0, 0.0)
 												   lightSourceIndex:NONE];
 	

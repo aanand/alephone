@@ -47,12 +47,11 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 
 @implementation MetalSurface
 
--(MetalSurface *)initWithTextureID:(NSString *)textureID emission:(simd_float3)emission reflectivity:(float)reflectivity normal:(simd_float3)normal lightSourceIndex:(int32_t)lightSourceIndex
+-(MetalSurface *)initWithTextureID:(NSString *)textureID material:(Material)material normal:(simd_float3)normal lightSourceIndex:(int32_t)lightSourceIndex
 {
 	if (self = [super init]) {
 		_textureID = textureID;
-		_emission = emission;
-		_reflectivity = reflectivity;
+		_material = material;
 		_normal = normal;
 		_lightSourceIndex = lightSourceIndex;
 	}
@@ -88,8 +87,7 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 
 			primitiveData[i] = (PrimitiveRayTracingData){
 				.surfaceNormal = surface.normal,
-				.emission = surface.emission,
-				.reflectivity = surface.reflectivity,
+				.material = surface.material,
 				.lightSourceIndex = surface.lightSourceIndex,
 			};
 
@@ -319,8 +317,7 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 			vertices[i*3+2] = simd_make_float3(triangle.v2.position.x, triangle.v2.position.y, triangle.v2.position.z);
 
 			primitiveData[i].surfaceNormal = triangle.surface.normal;
-			primitiveData[i].emission = triangle.surface.emission;
-			primitiveData[i].reflectivity = triangle.surface.reflectivity;
+			primitiveData[i].material = triangle.surface.material;
 
 			NSUInteger textureIndex = [textureIDs indexOfObject:triangle.surface.textureID];
 			NSAssert(textureIndex != NSNotFound, @"Missing static triangle texture ID");
@@ -374,8 +371,8 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 		vertices[5] = VERTICAL_QUAD_VERTICES[3];
 		
 		// Normals here are wrong, because rotation is applied to instances, but this needs to go away anyway
-		primitiveData[0] = (PrimitiveRayTracingData){ .surfaceNormal = { -1.0, 0.0, 0.0 }, .emission = { 0.0, 0.0, 0.0 } };
-		primitiveData[1] = (PrimitiveRayTracingData){ .surfaceNormal = { -1.0, 0.0, 0.0 }, .emission = { 0.0, 0.0, 0.0 } };
+		primitiveData[0] = (PrimitiveRayTracingData){ .surfaceNormal = { -1.0, 0.0, 0.0 } };
+		primitiveData[1] = (PrimitiveRayTracingData){ .surfaceNormal = { -1.0, 0.0, 0.0 } };
 	}
 	return self;
 }

@@ -55,8 +55,7 @@ struct Hit {
 	float3 hitPoint;
 	float3 normal;
 	float3 diffuse;
-	float3 emission;
-	float reflectivity;
+	Material material;
 	int32_t lightSourceIndex;
 };
 
@@ -102,16 +101,14 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 		const device PrimitiveRayTracingData *primitiveData;
 		primitiveData = (const device PrimitiveRayTracingData*) intersection.primitive_data;
 		float3 normal = primitiveData->surfaceNormal;
-		float3 emission = primitiveData->emission;
-		float reflectivity = primitiveData->reflectivity;
+		Material material = primitiveData->material;
 		int32_t lightSourceIndex = primitiveData->lightSourceIndex;
 
 		uint32_t instanceId = intersection.user_instance_id;
 		if (instanceId > 0) {
 			InstanceRayTracingData instanceData = rayTracer.perInstanceData[instanceId];
 			normal = instanceData.surfaceNormal;
-			emission = instanceData.emission;
-			reflectivity = instanceData.reflectivity;
+			material = instanceData.material;
 			
 			if (instanceData.textureIndex > 0) {
 				instanceHasTexture = true;
@@ -137,8 +134,7 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 				.hitPoint = hitPoint,
 				.normal = normal,
 				.diffuse = texel.rgb,
-				.emission = emission,
-				.reflectivity = reflectivity,
+				.material = material,
 				.lightSourceIndex = lightSourceIndex,
 			};
 		}
@@ -171,7 +167,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 		} else {
 			float3 hitPoint = hit.hitPoint;
 			float3 normal = hit.normal;
-			float3 emission = hit.emission;
+			float3 emission = hit.material.emission;
 			
 			if (hit.lightSourceIndex >= 0) {
 				float intensity = rayTracer.lightSources[hit.lightSourceIndex].intensity;
@@ -245,7 +241,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 			ray.origin = hitPoint;
 			
 			uv = hash2(seed);
-			float3 newDirection = (hit.reflectivity > hash1(seed)) ? reflect(ray.direction, normal) : sampleUnitHemisphereCosineWeighted(uv, normal);
+			float3 newDirection = (hit.material.reflectivity > hash1(seed)) ? reflect(ray.direction, normal) : sampleUnitHemisphereCosineWeighted(uv, normal);
 			ray.direction = newDirection;
 			
 			fcol *= hit.diffuse;

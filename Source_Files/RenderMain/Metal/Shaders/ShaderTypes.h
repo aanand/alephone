@@ -122,9 +122,15 @@ typedef struct {
 } LightSource;
 
 typedef struct {
-	vector_float3 surfaceNormal;
-	vector_float3 emission;
+	simd_float3 emission;
 	float reflectivity;
+	float transparency;
+	float refractiveIndex;
+} Material;
+
+typedef struct {
+	vector_float3 surfaceNormal;
+	Material material;
 
 	matrix_float3x2 uv;
 	uint32_t textureIndex;
@@ -134,8 +140,7 @@ typedef struct {
 
 typedef struct {
 	vector_float3 surfaceNormal;
-	vector_float3 emission;
-	float reflectivity;
+	Material material;
 
 	matrix_float4x2 uv;
 	uint32_t textureIndex;

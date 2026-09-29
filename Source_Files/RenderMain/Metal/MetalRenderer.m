@@ -620,8 +620,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	
 	uint32_t instanceID = [self addInstanceData:(InstanceRayTracingData){
 		.surfaceNormal = polygon.surface.normal,
-		.emission = polygon.surface.emission,
-		.reflectivity = polygon.surface.reflectivity,
+		.material = polygon.surface.material,
 		// TODO: figure out how to pass in UV data for polygons
 		.textureIndex = 0,
 	}];
@@ -641,8 +640,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	NSAssert(textureIndex != NSNotFound, @"Missing dynamic wall texture ID");
 	uint32_t instanceID = [self addInstanceData:(InstanceRayTracingData){
 		.surfaceNormal = wall.surface.normal,
-		.emission = wall.surface.emission,
-		.reflectivity = wall.surface.reflectivity,
+		.material = wall.surface.material,
 		.uv = wall.uv,
 		.textureIndex = (uint32_t)textureIndex,
 	}];
@@ -664,8 +662,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	NSAssert(textureIndex != NSNotFound, @"Missing sprite texture ID");
 	uint32_t instanceID = [self addInstanceData:(InstanceRayTracingData){
 		.surfaceNormal = simd_make_float3(-cos(theta), -sin(theta), 0.0),
-		.emission = sprite.surface.emission,
-		.reflectivity = sprite.surface.reflectivity,
+		.material = sprite.surface.material,
 		.uv = sprite.uv,
 		.textureIndex = (uint32_t)textureIndex,
 	}];
