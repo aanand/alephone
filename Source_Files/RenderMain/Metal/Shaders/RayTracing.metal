@@ -331,7 +331,6 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 	}
 	
 	float3 averageColor = sumColor / (float)samplesPerPixel;
-	float3 adjusted = mix(float3(ambientLightIntensity), float3(1.0), averageColor);
 
-	outImage.write(float4(adjusted, 1.0), tid);
+	outImage.write(float4(averageColor, 1.0), tid);
 }

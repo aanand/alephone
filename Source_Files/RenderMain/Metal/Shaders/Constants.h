@@ -12,7 +12,6 @@
 using namespace metal;
 
 
-constant float ambientLightIntensity = 0.1;
 constant float gain = 1.0;
 constant float defaultAttenuation = 0.9;
 
