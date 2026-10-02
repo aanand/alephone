@@ -212,6 +212,12 @@ std::unordered_map<std::string, Material> materials = {
 	// Green wall panels (M2)
 	{ "[ShapeDesc=4361/Collection=17/CTable=0/Frame=9/Bitmap=9]", { .emission = simd_make_float3(0.0, 10.0, 0.0) } },
 	
+	// Terminals and pattern buffers (M2)
+	{ "[ShapeDesc=4356/Collection=17/CTable=0/Frame=4/Bitmap=4]", { .emission = simd_make_float3(1.0, 1.0, 1.0) } },
+	
+	// Health/air recharge panels (M2)
+	{ "[ShapeDesc=4355/Collection=17/CTable=0/Frame=3/Bitmap=3]", { .emission = simd_make_float3(1.0, 1.0, 1.0) } },
+	
 	// Switches (M2)
 	{ "[ShapeDesc=4353/Collection=17/CTable=0/Frame=1/Bitmap=1]", { .emission = simd_make_float3(10.0, 10.0, 10.0) } },
 
