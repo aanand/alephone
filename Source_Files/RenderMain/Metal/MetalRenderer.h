@@ -32,7 +32,8 @@ API_AVAILABLE(macos(26.0))
 						pitch:(float)pitch
 						  yaw:(float)yaw
 						  FOV:(float)fov
-				  weaponFlare:(float)weaponFlare;
+				  weaponFlare:(float)weaponFlare
+				   isInMedium:(bool)isInMedium;
 
 - (void) updateSky:(Sky)sky;
 

@@ -157,7 +157,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 	float3 tcol = float3(0.0);
 	float3 fcol = float3(1.0);
 	uint b;
-	bool isInMedium = false;
+	bool isInMedium = uniforms.isInMedium;
 	
 	for (b = 0; b < maxBounces; b++) {
 		Hit hit = castRay(rayTracer, ray);
@@ -183,19 +183,23 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 			// Apply absorption if we just traversed a medium
 			if (isInMedium) {
 				float dist = distance(ray.origin, hitPoint);
-				fcol *= exp(-float3(5.0, 3.0, 1.0) * dist * 0.001);
+				fcol *= exp(-float3(0.5, 0.3, 0.1) * dist * 0.001);
 			}
 
 			// If the material we just hit is a medium, decide whether to enter it
-			bool isEnteringMedium = (hit.material.transparency > hash1(seed));
-			isInMedium = isEnteringMedium;
+			if (hit.material.transparency > hash1(seed)) {
+				// This will produce the wrong result if transitioning from medium to medium, e.g. water to lava, but I don't know if that's possible
+				isInMedium = !isInMedium;
 
-			if (isEnteringMedium) {
+				bool isEntering = dot(ray.direction, normal) < 0.0;
+				float3 refracted = refract(ray.direction,
+										   isEntering ? normal : -normal,
+										   isEntering ? 1.0/hit.material.refractiveIndex : hit.material.refractiveIndex);
+				float3 direction = length(refracted) < 0.5 ? reflect(ray.direction, normal) : refracted;
+
 				ray.origin = hitPoint;
-				if (dot(ray.direction, normal) < 0.0) {
-					float3 refracted = refract(normalize(ray.direction), normalize(normal), 1.0/hit.material.refractiveIndex);
-					ray.direction = length(refracted) < 0.5 ? reflect(ray.direction, normal) : refracted;
-				}
+				ray.direction = direction;
+
 				continue;
 			}
 			

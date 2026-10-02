@@ -73,7 +73,8 @@ void Rasterizer_Metal_Class::SetView(view_data &View) {
 								  pitch:View.virtual_pitch * FixedAngleToDegrees
 									yaw:View.virtual_yaw * FixedAngleToDegrees
 									   FOV:View.field_of_view
-							   weaponFlare:weaponFlare];
+							   weaponFlare:weaponFlare
+								isInMedium:View.under_media_boundary];
 		}
 	}
 }

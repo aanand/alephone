@@ -107,6 +107,7 @@ typedef struct {
 	Camera previousCamera;
 	
 	float weaponFlare; // Intensity of the weapon flare (0 if it's inactive)
+	bool isInMedium; // True if player is underwater (i.e. over their head)
 } Uniforms;
 
 // A vertex in Marathon world-space: X = east, Y = north, Z = up
