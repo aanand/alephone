@@ -157,6 +157,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 	float3 tcol = float3(0.0);
 	float3 fcol = float3(1.0);
 	uint b;
+	bool isInMedium = false;
 	
 	for (b = 0; b < maxBounces; b++) {
 		Hit hit = castRay(rayTracer, ray);
@@ -177,6 +178,31 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 			if (length(emission) > 0) {
 				// We hit a light source
 				tcol += fcol * hit.diffuse * emission;
+			}
+			
+			// Apply absorption if we just traversed a medium
+			if (isInMedium) {
+				float dist = distance(ray.origin, hitPoint);
+				fcol *= exp(-float3(5.0, 3.0, 1.0) * dist * 0.001);
+			}
+
+			// If the material we just hit is a medium, decide whether to enter it
+			bool isEnteringMedium = (hit.material.transparency > hash1(seed));
+			isInMedium = isEnteringMedium;
+
+			if (isEnteringMedium) {
+				ray.origin = hitPoint;
+				if (dot(ray.direction, normal) < 0.0) {
+					float3 refracted = refract(normalize(ray.direction), normalize(normal), 1.0/hit.material.refractiveIndex);
+					ray.direction = length(refracted) < 0.5 ? reflect(ray.direction, normal) : refracted;
+				}
+				continue;
+			}
+			
+			if (hit.material.reflectivity > hash1(seed)) {
+				ray.origin = hitPoint;
+				ray.direction = reflect(ray.direction, normal);
+				continue;
 			}
 			
 			float2 uv;
@@ -236,15 +262,12 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 					tcol += fcol * hit.diffuse * weaponFlare * contribution;
 				}
 			}
-
-			// Bounce
-			ray.origin = hitPoint;
 			
-			uv = hash2(seed);
-			float3 newDirection = (hit.material.reflectivity > hash1(seed)) ? reflect(ray.direction, normal) : sampleUnitHemisphereCosineWeighted(uv, normal);
-			ray.direction = newDirection;
-			
-			fcol *= hit.diffuse;
+			{
+				ray.origin = hitPoint;
+				ray.direction = sampleUnitHemisphereCosineWeighted(hash2(seed), normal);
+				fcol *= hit.diffuse;
+			}
 		}
 	}
 
