@@ -351,11 +351,14 @@ API_AVAILABLE(macos(26.0))
 	denoisedRayTracingOutputTexture.label = @"Denoised output";
 	
 	[initialRenderResidencySet addAllocation:initialRenderGBufferDiffuseAlbedo];
-	[initialRenderResidencySet addAllocation:initialRenderGBufferSpecularAlbedo];
-	[initialRenderResidencySet addAllocation:initialRenderGBufferRoughness];
-	[initialRenderResidencySet addAllocation:initialRenderGBufferDepth];
-	[initialRenderResidencySet addAllocation:initialRenderGBufferNormal];
-	[initialRenderResidencySet addAllocation:initialRenderGBufferMotion];
+	
+	if (USE_DENOISING_UPSCALER) {
+		[initialRenderResidencySet addAllocation:initialRenderGBufferSpecularAlbedo];
+		[initialRenderResidencySet addAllocation:initialRenderGBufferRoughness];
+		[initialRenderResidencySet addAllocation:initialRenderGBufferDepth];
+		[initialRenderResidencySet addAllocation:initialRenderGBufferNormal];
+		[initialRenderResidencySet addAllocation:initialRenderGBufferMotion];
+	}
 
 	[rayTracingResidencySet addAllocation:rayTracingOutputTexture];
 
@@ -428,20 +431,22 @@ API_AVAILABLE(macos(26.0))
 	albedoAttachment.sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
 	albedoAttachment.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
 	
-	MTL4RenderPipelineColorAttachmentDescriptor *specularAlbedoAttachment = descriptor.colorAttachments[InitialRenderAttachmentSpecularAlbedo];
-	specularAlbedoAttachment.pixelFormat = SpecularAlbedoPixelFormat;
-	
-	MTL4RenderPipelineColorAttachmentDescriptor *roughnessAttachment = descriptor.colorAttachments[InitialRenderAttachmentRoughness];
-	roughnessAttachment.pixelFormat = RoughnessPixelFormat;
-	
-	MTL4RenderPipelineColorAttachmentDescriptor *depthAttachment = descriptor.colorAttachments[InitialRenderAttachmentDepth];
-	depthAttachment.pixelFormat = DepthPixelFormat;
-	
-	MTL4RenderPipelineColorAttachmentDescriptor *normalAttachment = descriptor.colorAttachments[InitialRenderAttachmentNormal];
-	normalAttachment.pixelFormat = NormalPixelFormat;
-	
-	MTL4RenderPipelineColorAttachmentDescriptor *motionAttachment = descriptor.colorAttachments[InitialRenderAttachmentMotion];
-	motionAttachment.pixelFormat = MotionPixelFormat;
+	if (USE_DENOISING_UPSCALER) {
+		MTL4RenderPipelineColorAttachmentDescriptor *specularAlbedoAttachment = descriptor.colorAttachments[InitialRenderAttachmentSpecularAlbedo];
+		specularAlbedoAttachment.pixelFormat = SpecularAlbedoPixelFormat;
+		
+		MTL4RenderPipelineColorAttachmentDescriptor *roughnessAttachment = descriptor.colorAttachments[InitialRenderAttachmentRoughness];
+		roughnessAttachment.pixelFormat = RoughnessPixelFormat;
+		
+		MTL4RenderPipelineColorAttachmentDescriptor *depthAttachment = descriptor.colorAttachments[InitialRenderAttachmentDepth];
+		depthAttachment.pixelFormat = DepthPixelFormat;
+		
+		MTL4RenderPipelineColorAttachmentDescriptor *normalAttachment = descriptor.colorAttachments[InitialRenderAttachmentNormal];
+		normalAttachment.pixelFormat = NormalPixelFormat;
+		
+		MTL4RenderPipelineColorAttachmentDescriptor *motionAttachment = descriptor.colorAttachments[InitialRenderAttachmentMotion];
+		motionAttachment.pixelFormat = MotionPixelFormat;
+	}
 
 	id<MTLRenderPipelineState> state = [compiler newRenderPipelineStateWithDescriptor:descriptor
 																  compilerTaskOptions:nil
@@ -1021,35 +1026,37 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	diffuseAlbedo.clearColor = MTLClearColorMake(1.0, 1.0, 1.0, 1.0);
 	diffuseAlbedo.storeAction = MTLStoreActionStore;
 
-	MTLRenderPassColorAttachmentDescriptor *specularAlbedo = configuration.colorAttachments[InitialRenderAttachmentSpecularAlbedo];
-	specularAlbedo.texture = initialRenderGBufferSpecularAlbedo;
-	specularAlbedo.loadAction = MTLLoadActionClear;
-	specularAlbedo.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
-	specularAlbedo.storeAction = MTLStoreActionStore;
-
-	MTLRenderPassColorAttachmentDescriptor *roughness = configuration.colorAttachments[InitialRenderAttachmentRoughness];
-	roughness.texture = initialRenderGBufferRoughness;
-	roughness.loadAction = MTLLoadActionClear;
-	roughness.clearColor = MTLClearColorMake(1.0, 1.0, 1.0, 1.0);
-	roughness.storeAction = MTLStoreActionStore;
-	
-	MTLRenderPassColorAttachmentDescriptor *depth = configuration.colorAttachments[InitialRenderAttachmentDepth];
-	depth.texture = initialRenderGBufferDepth;
-	depth.loadAction = MTLLoadActionClear;
-	depth.clearColor = MTLClearColorMake(1.0, 1.0, 1.0, 1.0);
-	depth.storeAction = MTLStoreActionStore;
-	
-	MTLRenderPassColorAttachmentDescriptor *normal = configuration.colorAttachments[InitialRenderAttachmentNormal];
-	normal.texture = initialRenderGBufferNormal;
-	normal.loadAction = MTLLoadActionClear;
-	normal.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
-	normal.storeAction = MTLStoreActionStore;
-	
-	MTLRenderPassColorAttachmentDescriptor *motion = configuration.colorAttachments[InitialRenderAttachmentMotion];
-	motion.texture = initialRenderGBufferMotion;
-	motion.loadAction = MTLLoadActionClear;
-	motion.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
-	motion.storeAction = MTLStoreActionStore;
+	if (USE_DENOISING_UPSCALER) {
+		MTLRenderPassColorAttachmentDescriptor *specularAlbedo = configuration.colorAttachments[InitialRenderAttachmentSpecularAlbedo];
+		specularAlbedo.texture = initialRenderGBufferSpecularAlbedo;
+		specularAlbedo.loadAction = MTLLoadActionClear;
+		specularAlbedo.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+		specularAlbedo.storeAction = MTLStoreActionStore;
+		
+		MTLRenderPassColorAttachmentDescriptor *roughness = configuration.colorAttachments[InitialRenderAttachmentRoughness];
+		roughness.texture = initialRenderGBufferRoughness;
+		roughness.loadAction = MTLLoadActionClear;
+		roughness.clearColor = MTLClearColorMake(1.0, 1.0, 1.0, 1.0);
+		roughness.storeAction = MTLStoreActionStore;
+		
+		MTLRenderPassColorAttachmentDescriptor *depth = configuration.colorAttachments[InitialRenderAttachmentDepth];
+		depth.texture = initialRenderGBufferDepth;
+		depth.loadAction = MTLLoadActionClear;
+		depth.clearColor = MTLClearColorMake(1.0, 1.0, 1.0, 1.0);
+		depth.storeAction = MTLStoreActionStore;
+		
+		MTLRenderPassColorAttachmentDescriptor *normal = configuration.colorAttachments[InitialRenderAttachmentNormal];
+		normal.texture = initialRenderGBufferNormal;
+		normal.loadAction = MTLLoadActionClear;
+		normal.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+		normal.storeAction = MTLStoreActionStore;
+		
+		MTLRenderPassColorAttachmentDescriptor *motion = configuration.colorAttachments[InitialRenderAttachmentMotion];
+		motion.texture = initialRenderGBufferMotion;
+		motion.loadAction = MTLLoadActionClear;
+		motion.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+		motion.storeAction = MTLStoreActionStore;
+	}
 	
 	id<MTL4RenderCommandEncoder> renderPassEncoder = [pipeline.commandBuffer renderCommandEncoderWithDescriptor:configuration];
 	if (!renderPassEncoder) {
