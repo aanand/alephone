@@ -72,6 +72,7 @@ API_AVAILABLE(macos(26.0))
 	float fov, pitch, yaw;
 	simd_int3 origin;
 	float weaponFlare;
+	float flashlight;
 	bool isInMedium;
 
 	Sky sky;
@@ -557,12 +558,13 @@ API_AVAILABLE(macos(26.0))
 	window = nil;
 }
 
-- (void) updateViewWithOrigin:(simd_int3)newOrigin pitch:(float)newPitch yaw:(float)newYaw FOV:(float)newFOV weaponFlare:(float)newWeaponFlare isInMedium:(bool)newIsInMedium {
+- (void) updateViewWithOrigin:(simd_int3)newOrigin pitch:(float)newPitch yaw:(float)newYaw FOV:(float)newFOV weaponFlare:(float)newWeaponFlare flashlight:(float)newFlashlight isInMedium:(bool)newIsInMedium {
 	origin = newOrigin;
 	fov = newFOV;
 	pitch = newPitch;
 	yaw = newYaw;
 	weaponFlare = newWeaponFlare;
+	flashlight = newFlashlight;
 	isInMedium = newIsInMedium;
 }
 
@@ -965,6 +967,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	uniforms.previousCamera = (frameNumber > 1) ? previousCamera : camera;
 	uniforms.sky = adjustedSky;
 	uniforms.weaponFlare = weaponFlare;
+	uniforms.flashlight = flashlight;
 	uniforms.isInMedium = isInMedium;
 	memcpy(uniformsBuffer.contents, &uniforms, sizeof(Uniforms));
 		

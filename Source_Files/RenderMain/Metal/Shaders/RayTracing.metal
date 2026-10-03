@@ -67,6 +67,7 @@ struct RayTracer {
 	constant InstanceRayTracingData *perInstanceData;
 	constant TextureArgs *textures;
 	constant LightSource *lightSources;
+	float3 forward; // Unit vector representing the player's look direction in world-space
 };
 
 float3 sampleSky(Sky sky, float3 direction) {
@@ -262,9 +263,18 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 				Hit directRayHit = castRay(rayTracer, directRay);
 				
 				if (!directRayHit.didHit){
-					float contribution = clamp(dot(normal, directRay.direction), 0.0, 1.0);
-					tcol += fcol * hit.diffuse * weaponFlare * contribution;
+					float angleWeight = clamp(dot(normal, directRay.direction), 0.0, 1.0);
+					float distanceWeight = clamp(pow(length(surfaceToWeapon) * 0.001, -2.0), 0.0, 1.0);
+					tcol += fcol * hit.diffuse * weaponFlare * angleWeight * distanceWeight;
 				}
+			}
+
+			if (uniforms.flashlight > 0.0 && b == 0) {
+				float angleWeight = clamp(dot(normal, -ray.direction), 0.0, 1.0);
+				float distanceWeight = clamp(pow(distance(float3(uniforms.camera.origin), hitPoint) * 0.001, -2.0), 0.0, 1.0);
+				float theta = acos(dot(ray.direction, rayTracer.forward));
+				float coneWeight = 1.0 - clamp(theta/(M_PI_F/6.0), 0.0, 1.0);
+				tcol += fcol * hit.diffuse * uniforms.flashlight * angleWeight * distanceWeight * coneWeight;
 			}
 			
 			{
@@ -315,6 +325,7 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 		.perInstanceData = perInstanceData,
 		.textures = &textures,
 		.lightSources = &lightSources,
+		.forward = forward.zxy,
 	};
 
 	for (uint s = 0; s < samplesPerPixel; s++) {
