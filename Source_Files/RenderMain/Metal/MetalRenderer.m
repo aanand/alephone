@@ -99,6 +99,10 @@ API_AVAILABLE(macos(26.0))
 	id<MTLResidencySet> rayTracingResidencySet;
 	id<MTLResidencySet> finalRenderResidencySet;
 	
+	id<MTLFence> initialPassFence;
+	id<MTLFence> computePassFence;
+	id<MTLFence> denoisingFence;
+	
 	id<MTLTexture> initialRenderGBufferDiffuseAlbedo;
 	id<MTLTexture> initialRenderGBufferSpecularAlbedo;
 	id<MTLTexture> initialRenderGBufferRoughness;
@@ -186,6 +190,10 @@ API_AVAILABLE(macos(26.0))
 	if (![self setupArgumentTables]) {
 		return nil;
 	}
+
+	initialPassFence = [pipeline.device newFence];
+	computePassFence = [pipeline.device newFence];
+	denoisingFence = [pipeline.device newFence];
 	
 	if (![self setupScaler]) {
 		return nil;
@@ -976,11 +984,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	id<MTL4CommandBuffer> commandBuffer = pipeline.commandBuffer;
 	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
 	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu (initial + raytracing)", frameNumber];
-	
-	id<MTLFence> initialPassFence = [pipeline.device newFence];
-	id<MTLFence> computePassFence = [pipeline.device newFence];
-	id<MTLFence> denoisingFence = [pipeline.device newFence];
-	
+		
 	[self encodeInitialRenderUpdatingFence:initialPassFence];
 
 	[self encodeRayTracingPassToOutputTexture:rayTracingOutputTexture updatingFence:computePassFence];
