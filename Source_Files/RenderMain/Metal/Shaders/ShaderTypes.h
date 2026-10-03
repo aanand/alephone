@@ -69,7 +69,7 @@ enum {
 
 enum {
 	FinalRenderFragmentShaderRawOutputTextureIndex,
-	FinalRenderFragmentShaderDenoisedOutputTextureIndex,
+	FinalRenderFragmentShaderProcessedOutputTextureIndex,
 	FinalRenderFragmentShader_NumTextures,
 };
 

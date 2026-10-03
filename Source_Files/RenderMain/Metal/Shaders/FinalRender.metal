@@ -59,8 +59,8 @@ fragment float4
 finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
 						  constant Uniforms &uniforms [[ buffer(FinalRenderFragmentShaderUniformsIndex) ]],
 						  texture2d<float> rawOutputTex [[ texture(FinalRenderFragmentShaderRawOutputTextureIndex) ]],
-						  texture2d<float> denoisedOutputTex [[ texture(FinalRenderFragmentShaderDenoisedOutputTextureIndex) ]])
+						  texture2d<float> processedOutputTex [[ texture(FinalRenderFragmentShaderProcessedOutputTextureIndex) ]])
 {
 	constexpr sampler sam(min_filter::nearest, mag_filter::nearest, mip_filter::none);
-	return denoisedOutputTex.sample(sam, in.uv);
+	return processedOutputTex.sample(sam, in.uv);
 }

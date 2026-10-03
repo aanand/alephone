@@ -61,7 +61,7 @@ typedef enum {
 	TemporalDenoise,
 } DenoiseType;
 
-const DenoiseType DENOISE_TYPE = WaveletDenoise;
+const DenoiseType DENOISE_TYPE = NoDenoise;
 
 NSArray<NSNumber*> *waveletDenoisePasses = @[@2, @1];
 
@@ -1059,59 +1059,14 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[pipeline.commandAllocator reset];
 
 	if (DENOISE_TYPE == TemporalDenoise) {
-		[self encodeDenoiseUpdatingFence:denoisingFence];
+		[self encodeTemporalDenoiseUpdatingFence:denoisingFence];
 	}
 	
 	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
 	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu (final pass)", frameNumber];
 
 	if (DENOISE_TYPE == WaveletDenoise) {
-		id<MTL4ComputeCommandEncoder> encoder = [pipeline.commandBuffer computeCommandEncoder];
-		if (!encoder) {
-			NSLog(@"Failed to create encoder for denoise pipeline");
-			return;
-		}
-		encoder.label = @"Denoise";
-		[encoder setComputePipelineState:denoisePipeline];
-
-		NSUInteger w = rayTracingPipeline.threadExecutionWidth;
-		NSUInteger h = rayTracingPipeline.maxTotalThreadsPerThreadgroup / w;
-		MTLSize threadsPerThreadgroup = MTLSizeMake( w, h, 1 );
-		MTLSize threadsPerGrid = MTLSizeMake(rayTracingOutputTexture.width, rayTracingOutputTexture.height, 1);
-		
-		DenoiseConfig *configs = (DenoiseConfig*)denoiseConfigBuffer.contents;
-		for (int i = 0; i < waveletDenoisePasses.count; i++) {
-			configs[i].step = waveletDenoisePasses[i].unsignedIntValue;
-		}
-		
-		id<MTLTexture> currentInput = rayTracingOutputTexture;
-		id<MTLTexture> currentOutput = (waveletDenoisePasses.count % 2 == 1) ? denoiseOutputTexture : denoiseScratchTexture;
-
-		for (int i = 0; i < waveletDenoisePasses.count; i++) {
-			MTLGPUAddress configAddress = denoiseConfigBuffer.gpuAddress + (i * sizeof(DenoiseConfig));
-
-			[computeArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:DenoisePassUniformsIndex];
-			[computeArgumentTable setAddress:configAddress atIndex:DenoisePassConfigIndex];
-			[computeArgumentTable setTexture:initialRenderGBufferNormal.gpuResourceID atIndex:DenoisePassNormalTextureIndex];
-			[computeArgumentTable setTexture:initialRenderGBufferDepth.gpuResourceID atIndex:DenoisePassDepthTextureIndex];
-			[computeArgumentTable setTexture:currentInput.gpuResourceID atIndex:DenoisePassInputTextureIndex];
-			[computeArgumentTable setTexture:currentOutput.gpuResourceID atIndex:DenoisePassOutputTextureIndex];
-			[encoder setArgumentTable:computeArgumentTable];
-			
-			[encoder dispatchThreads:threadsPerGrid threadsPerThreadgroup:threadsPerThreadgroup];
-			
-			if (i < waveletDenoisePasses.count - 1) {
-				[encoder barrierAfterEncoderStages:MTLStageDispatch
-							   beforeEncoderStages:MTLStageDispatch
-								 visibilityOptions:MTL4VisibilityOptionDevice];
-				
-				currentInput = currentOutput;
-				currentOutput = (currentInput == denoiseOutputTexture) ? denoiseScratchTexture : denoiseOutputTexture;
-			}
-		}
-
-		[encoder updateFence:denoisingFence afterEncoderStages:MTLStageDispatch];
-		[encoder endEncoding];
+		[self encodeWaveletDenoiseUpdatingFence:denoisingFence];
 	}
 
 	[self encodeFinalRenderToOutputTexture:currentDrawable.texture
@@ -1256,7 +1211,56 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[encoder endEncoding];
 }
 
--(void) encodeDenoiseUpdatingFence:(id<MTLFence>)fence {
+-(void) encodeWaveletDenoiseUpdatingFence:(id<MTLFence>)fence {
+	id<MTL4ComputeCommandEncoder> encoder = [pipeline.commandBuffer computeCommandEncoder];
+	if (!encoder) {
+		NSLog(@"Failed to create encoder for denoise pipeline");
+		return;
+	}
+	encoder.label = @"Denoise";
+	[encoder setComputePipelineState:denoisePipeline];
+
+	NSUInteger w = rayTracingPipeline.threadExecutionWidth;
+	NSUInteger h = rayTracingPipeline.maxTotalThreadsPerThreadgroup / w;
+	MTLSize threadsPerThreadgroup = MTLSizeMake( w, h, 1 );
+	MTLSize threadsPerGrid = MTLSizeMake(rayTracingOutputTexture.width, rayTracingOutputTexture.height, 1);
+	
+	DenoiseConfig *configs = (DenoiseConfig*)denoiseConfigBuffer.contents;
+	for (int i = 0; i < waveletDenoisePasses.count; i++) {
+		configs[i].step = waveletDenoisePasses[i].unsignedIntValue;
+	}
+	
+	id<MTLTexture> currentInput = rayTracingOutputTexture;
+	id<MTLTexture> currentOutput = (waveletDenoisePasses.count % 2 == 1) ? denoiseOutputTexture : denoiseScratchTexture;
+
+	for (int i = 0; i < waveletDenoisePasses.count; i++) {
+		MTLGPUAddress configAddress = denoiseConfigBuffer.gpuAddress + (i * sizeof(DenoiseConfig));
+
+		[computeArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:DenoisePassUniformsIndex];
+		[computeArgumentTable setAddress:configAddress atIndex:DenoisePassConfigIndex];
+		[computeArgumentTable setTexture:initialRenderGBufferNormal.gpuResourceID atIndex:DenoisePassNormalTextureIndex];
+		[computeArgumentTable setTexture:initialRenderGBufferDepth.gpuResourceID atIndex:DenoisePassDepthTextureIndex];
+		[computeArgumentTable setTexture:currentInput.gpuResourceID atIndex:DenoisePassInputTextureIndex];
+		[computeArgumentTable setTexture:currentOutput.gpuResourceID atIndex:DenoisePassOutputTextureIndex];
+		[encoder setArgumentTable:computeArgumentTable];
+		
+		[encoder dispatchThreads:threadsPerGrid threadsPerThreadgroup:threadsPerThreadgroup];
+		
+		if (i < waveletDenoisePasses.count - 1) {
+			[encoder barrierAfterEncoderStages:MTLStageDispatch
+						   beforeEncoderStages:MTLStageDispatch
+							 visibilityOptions:MTL4VisibilityOptionDevice];
+			
+			currentInput = currentOutput;
+			currentOutput = (currentInput == denoiseOutputTexture) ? denoiseScratchTexture : denoiseOutputTexture;
+		}
+	}
+
+	[encoder updateFence:fence afterEncoderStages:MTLStageDispatch];
+	[encoder endEncoding];
+}
+
+-(void) encodeTemporalDenoiseUpdatingFence:(id<MTLFence>)fence {
 	id<MTLCommandQueue> mtl3queue = [pipeline.device newCommandQueue];
 	id<MTLCommandBuffer> mtl3buffer = [mtl3queue commandBuffer];
 	mtl3buffer.label = [NSString stringWithFormat:@"Frame %llu (denoise)", frameNumber];
@@ -1301,10 +1305,12 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[encoder setViewport:[self getViewportWithPixelScaling:YES]];
 
 	[encoder setArgumentTable:vertexArgumentTable atStages:MTLRenderStageVertex];
+	
+	id<MTLTexture> processedOutput = (DENOISE_TYPE == NoDenoise) ? rayTracingOutputTexture : denoiseOutputTexture;
 
 	[fragmentArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:FinalRenderFragmentShaderUniformsIndex];
 	[fragmentArgumentTable setTexture:rayTracingOutputTexture.gpuResourceID atIndex:FinalRenderFragmentShaderRawOutputTextureIndex];
-	[fragmentArgumentTable setTexture:denoiseOutputTexture.gpuResourceID atIndex:FinalRenderFragmentShaderDenoisedOutputTextureIndex];
+	[fragmentArgumentTable setTexture:processedOutput.gpuResourceID atIndex:FinalRenderFragmentShaderProcessedOutputTextureIndex];
 	[encoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
 	[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
 	
