@@ -253,10 +253,10 @@ std::unordered_map<std::string, Material> materials = {
 
 std::unordered_map<std::string, Sky> skies = {
 	{ "Marathon 1.2", (Sky){
-		.bottomEmission = { 0.0, 0.0, 0.0 },
-		.topEmission = { 0.0, 0.0, 0.0 },
+		.bottomEmission = { 5.0, 5.0, 5.0 },
+		.topEmission = { 10.0, 10.0, 10.0 },
 		.hasSun = true,
-		.sunEmission = { 10.0, 10.0, 10.0 },
+		.sunEmission = { 50.0, 50.0, 50.0 },
 		.sunPosition = { 1.0, -1.0, 0.0 },
 		.sunRadius = 10.0 * M_PI / 180.0,
 		.sunRotationSpeed = 1.0 * M_PI / 180.0,
