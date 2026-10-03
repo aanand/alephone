@@ -1936,6 +1936,7 @@
 		E25D2B56304194AA001A6224 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Shaders/Denoise.metal,
 				Shaders/FinalRender.metal,
 				Shaders/InitialRender.metal,
 				Shaders/RayTracing.metal,
@@ -1945,6 +1946,7 @@
 		E25D2B57304194AA001A6224 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Shaders/Denoise.metal,
 				Shaders/FinalRender.metal,
 				Shaders/InitialRender.metal,
 				Shaders/RayTracing.metal,
@@ -1954,6 +1956,7 @@
 		E25D2B58304194AA001A6224 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Shaders/Denoise.metal,
 				Shaders/FinalRender.metal,
 				Shaders/InitialRender.metal,
 				Shaders/RayTracing.metal,
@@ -1963,6 +1966,7 @@
 		E25D2B59304194AA001A6224 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Shaders/Denoise.metal,
 				Shaders/FinalRender.metal,
 				Shaders/InitialRender.metal,
 				Shaders/RayTracing.metal,
@@ -1972,6 +1976,7 @@
 		E25D2B5A304194AA001A6224 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Shaders/Denoise.metal,
 				Shaders/FinalRender.metal,
 				Shaders/InitialRender.metal,
 				Shaders/RayTracing.metal,
@@ -1981,6 +1986,7 @@
 		E25D2B5B304194AA001A6224 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Shaders/Denoise.metal,
 				Shaders/FinalRender.metal,
 				Shaders/InitialRender.metal,
 				Shaders/RayTracing.metal,
@@ -1990,6 +1996,7 @@
 		E25D2B5C304194AB001A6224 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Shaders/Denoise.metal,
 				Shaders/FinalRender.metal,
 				Shaders/InitialRender.metal,
 				Shaders/RayTracing.metal,
@@ -1999,6 +2006,7 @@
 		E25D2B5D304194AB001A6224 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Shaders/Denoise.metal,
 				Shaders/FinalRender.metal,
 				Shaders/InitialRender.metal,
 				Shaders/RayTracing.metal,
@@ -2008,6 +2016,7 @@
 		E25D2B5E304194AB001A6224 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Shaders/Denoise.metal,
 				Shaders/FinalRender.metal,
 				Shaders/InitialRender.metal,
 				Shaders/RayTracing.metal,

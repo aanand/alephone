@@ -55,7 +55,15 @@ const MTLPixelFormat NormalPixelFormat = MTLPixelFormatRGBA16Float;
 const MTLPixelFormat MotionPixelFormat = MTLPixelFormatRG16Float;
 const MTLPixelFormat RayTracingPixelFormat = MTLPixelFormatRGBA16Float;
 
-const bool USE_DENOISING_UPSCALER = false;
+typedef enum {
+	NoDenoise,
+	WaveletDenoise,
+	TemporalDenoise,
+} DenoiseType;
+
+const DenoiseType DENOISE_TYPE = WaveletDenoise;
+
+NSArray<NSNumber*> *waveletDenoisePasses = @[@2, @1];
 
 API_AVAILABLE(macos(26.0))
 @implementation MetalRenderer
@@ -86,6 +94,7 @@ API_AVAILABLE(macos(26.0))
 
 	id<MTLRenderPipelineState> initialRenderPipeline;
 	id<MTLComputePipelineState> rayTracingPipeline;
+	id<MTLComputePipelineState> denoisePipeline;
 	id<MTLRenderPipelineState> finalRenderPipeline;
 	id<MTLDepthStencilState> depthState;
 
@@ -97,6 +106,7 @@ API_AVAILABLE(macos(26.0))
 
 	id<MTLResidencySet> initialRenderResidencySet;
 	id<MTLResidencySet> rayTracingResidencySet;
+	id<MTLResidencySet> denoiseResidencySet;
 	id<MTLResidencySet> finalRenderResidencySet;
 	
 	id<MTLFence> initialPassFence;
@@ -111,7 +121,8 @@ API_AVAILABLE(macos(26.0))
 	id<MTLTexture> initialRenderGBufferMotion;
 
 	id<MTLTexture> rayTracingOutputTexture;
-	id<MTLTexture> denoisedRayTracingOutputTexture;
+	id<MTLTexture> denoiseScratchTexture;
+	id<MTLTexture> denoiseOutputTexture;
 
 	// Constants shared across all pipelines
 	id<MTLBuffer> uniformsBuffer;
@@ -146,6 +157,8 @@ API_AVAILABLE(macos(26.0))
 	id<MTLBuffer> topLevelIASInstanceBuffer;
 	id<MTLAccelerationStructure> topLevelIAS;
 	MTL4InstanceAccelerationStructureDescriptor *topLevelIASDescriptor;
+	
+	id<MTLBuffer> denoiseConfigBuffer;
 }
 
 - (MetalRenderer *) initializeWithWindow:(SDL_Window *)sdlWindow width:(int)width height:(int)height {
@@ -177,6 +190,11 @@ API_AVAILABLE(macos(26.0))
 	
 	rayTracingPipeline = [self compileRayTracingPipeline];
 	if (!rayTracingPipeline) {
+		return nil;
+	}
+	
+	denoisePipeline = [self compileDenoisePipeline];
+	if (!denoisePipeline) {
 		return nil;
 	}
 	
@@ -251,8 +269,8 @@ API_AVAILABLE(macos(26.0))
 	}
 	
 	MTL4ArgumentTableDescriptor *computeArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
-	computeArgumentTableDescriptor.maxBufferBindCount = RayTracingKernel_NumBuffers;
-	computeArgumentTableDescriptor.maxTextureBindCount = RayTracingKernel_NumTextures;
+	computeArgumentTableDescriptor.maxBufferBindCount = MAX(RayTracingKernel_NumBuffers, DenoisePass_NumBuffers);
+	computeArgumentTableDescriptor.maxTextureBindCount = MAX(RayTracingKernel_NumTextures, DenoisePass_NumTextures);
 	computeArgumentTableDescriptor.label = @"Compute argument table";
 	computeArgumentTable = [pipeline.device newArgumentTableWithDescriptor:computeArgumentTableDescriptor error:&error];
 	if (error) {
@@ -282,6 +300,14 @@ API_AVAILABLE(macos(26.0))
 		NSLog(@"%@", error);
 		return false;
 	}
+	
+	residencySetDescriptor.label = @"denoiseResidencySet";
+	denoiseResidencySet = [pipeline.device newResidencySetWithDescriptor:residencySetDescriptor
+																   error:&error];
+	if (error) {
+		NSLog(@"%@", error);
+		return false;
+	}
 
 	residencySetDescriptor.label = @"finalRenderResidencySet";
 	finalRenderResidencySet = [pipeline.device newResidencySetWithDescriptor:residencySetDescriptor
@@ -293,6 +319,7 @@ API_AVAILABLE(macos(26.0))
 	
 	[pipeline.commandQueue addResidencySet:initialRenderResidencySet];
 	[pipeline.commandQueue addResidencySet:rayTracingResidencySet];
+	[pipeline.commandQueue addResidencySet:denoiseResidencySet];
 	[pipeline.commandQueue addResidencySet:finalRenderResidencySet];
 	[pipeline.commandQueue addResidencySet:metalLayer.residencySet];
 
@@ -303,6 +330,9 @@ API_AVAILABLE(macos(26.0))
 	uniformsBuffer = [pipeline.device newBufferWithLength:sizeof(Uniforms) options:MTLResourceStorageModeShared];
 	uniformsBuffer.label = @"Uniforms";
 	[initialRenderResidencySet addAllocation:uniformsBuffer];
+	[rayTracingResidencySet addAllocation:uniformsBuffer];
+	[denoiseResidencySet addAllocation:uniformsBuffer];
+	[finalRenderResidencySet addAllocation:uniformsBuffer];
 	
 	triangleBuffer = [pipeline.device newBufferWithLength:(sizeof(WorldVertex) * MAX_TRIANGLES * 3) options:MTLResourceStorageModeShared];
 	triangleBuffer.label = @"Triangle vertices";
@@ -311,6 +341,10 @@ API_AVAILABLE(macos(26.0))
 	perInstanceDataBuffer = [pipeline.device newBufferWithLength:(sizeof(InstanceRayTracingData) * MAX_INSTANCES) options:MTLResourceStorageModeShared];
 	perInstanceDataBuffer.label = @"Per-instance data";
 	[rayTracingResidencySet addAllocation:perInstanceDataBuffer];
+	
+	denoiseConfigBuffer = [pipeline.device newBufferWithLength:sizeof(DenoiseConfig) * waveletDenoisePasses.count options:MTLResourceStorageModeShared];
+	denoiseConfigBuffer.label = @"Denoise config";
+	[denoiseResidencySet addAllocation:denoiseConfigBuffer];
 }
 
 - (void) setupIntermediateTextures {
@@ -358,24 +392,32 @@ API_AVAILABLE(macos(26.0))
 																					mipmapped:NO];
 	denoised.storageMode = MTLStorageModePrivate;
 	denoised.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
-	denoisedRayTracingOutputTexture = [pipeline.device newTextureWithDescriptor:denoised];
-	denoisedRayTracingOutputTexture.label = @"Denoised output";
+	denoiseScratchTexture = [pipeline.device newTextureWithDescriptor:denoised];
+	denoiseScratchTexture.label = @"Denoise pass (scratch)";
+	denoiseOutputTexture = [pipeline.device newTextureWithDescriptor:denoised];
+	denoiseOutputTexture.label = @"Denoise pass (output)";
 	
 	[initialRenderResidencySet addAllocation:initialRenderGBufferDiffuseAlbedo];
-	
-	if (USE_DENOISING_UPSCALER) {
-		[initialRenderResidencySet addAllocation:initialRenderGBufferSpecularAlbedo];
-		[initialRenderResidencySet addAllocation:initialRenderGBufferRoughness];
+
+	if (DENOISE_TYPE == WaveletDenoise || DENOISE_TYPE == TemporalDenoise) {
 		[initialRenderResidencySet addAllocation:initialRenderGBufferDepth];
 		[initialRenderResidencySet addAllocation:initialRenderGBufferNormal];
+	}
+
+	if (DENOISE_TYPE == TemporalDenoise) {
+		[initialRenderResidencySet addAllocation:initialRenderGBufferSpecularAlbedo];
+		[initialRenderResidencySet addAllocation:initialRenderGBufferRoughness];
 		[initialRenderResidencySet addAllocation:initialRenderGBufferMotion];
 	}
 
 	[rayTracingResidencySet addAllocation:rayTracingOutputTexture];
+	
+	[denoiseResidencySet addAllocation:denoiseScratchTexture];
+	[denoiseResidencySet addAllocation:denoiseOutputTexture];
 
-	[finalRenderResidencySet addAllocation:initialRenderGBufferDiffuseAlbedo];
 	[finalRenderResidencySet addAllocation:rayTracingOutputTexture];
-	[finalRenderResidencySet addAllocation:denoisedRayTracingOutputTexture];
+	[finalRenderResidencySet addAllocation:denoiseScratchTexture];
+	[finalRenderResidencySet addAllocation:denoiseOutputTexture];
 }
 
 - (bool) setupScaler {
@@ -442,18 +484,20 @@ API_AVAILABLE(macos(26.0))
 	albedoAttachment.sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
 	albedoAttachment.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
 	
-	if (USE_DENOISING_UPSCALER) {
-		MTL4RenderPipelineColorAttachmentDescriptor *specularAlbedoAttachment = descriptor.colorAttachments[InitialRenderAttachmentSpecularAlbedo];
-		specularAlbedoAttachment.pixelFormat = SpecularAlbedoPixelFormat;
-		
-		MTL4RenderPipelineColorAttachmentDescriptor *roughnessAttachment = descriptor.colorAttachments[InitialRenderAttachmentRoughness];
-		roughnessAttachment.pixelFormat = RoughnessPixelFormat;
-		
+	if (DENOISE_TYPE == WaveletDenoise || DENOISE_TYPE == TemporalDenoise) {
 		MTL4RenderPipelineColorAttachmentDescriptor *depthAttachment = descriptor.colorAttachments[InitialRenderAttachmentDepth];
 		depthAttachment.pixelFormat = DepthPixelFormat;
 		
 		MTL4RenderPipelineColorAttachmentDescriptor *normalAttachment = descriptor.colorAttachments[InitialRenderAttachmentNormal];
 		normalAttachment.pixelFormat = NormalPixelFormat;
+	}
+	
+	if (DENOISE_TYPE == TemporalDenoise) {
+		MTL4RenderPipelineColorAttachmentDescriptor *specularAlbedoAttachment = descriptor.colorAttachments[InitialRenderAttachmentSpecularAlbedo];
+		specularAlbedoAttachment.pixelFormat = SpecularAlbedoPixelFormat;
+		
+		MTL4RenderPipelineColorAttachmentDescriptor *roughnessAttachment = descriptor.colorAttachments[InitialRenderAttachmentRoughness];
+		roughnessAttachment.pixelFormat = RoughnessPixelFormat;
 		
 		MTL4RenderPipelineColorAttachmentDescriptor *motionAttachment = descriptor.colorAttachments[InitialRenderAttachmentMotion];
 		motionAttachment.pixelFormat = MotionPixelFormat;
@@ -531,6 +575,19 @@ API_AVAILABLE(macos(26.0))
 	id<MTLComputePipelineState> state = [pipeline.device newComputePipelineStateWithFunction:function
 																			  error:&error];
 	
+	if (error) {
+		NSLog(@"%@", error);
+	}
+	
+	return state;
+}
+
+- (id<MTLComputePipelineState>) compileDenoisePipeline {
+	NSError *error;
+	id<MTLFunction> function = [pipeline.defaultLibrary newFunctionWithName:@"denoiseKernel"];
+	
+	id<MTLComputePipelineState> state = [pipeline.device newComputePipelineStateWithFunction:function
+																					   error:&error];
 	if (error) {
 		NSLog(@"%@", error);
 	}
@@ -1001,16 +1058,64 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[pipeline.sharedEvent waitUntilSignaledValue:renderSignalValue timeoutMS:5000];
 	[pipeline.commandAllocator reset];
 
-	if (USE_DENOISING_UPSCALER) {
+	if (DENOISE_TYPE == TemporalDenoise) {
 		[self encodeDenoiseUpdatingFence:denoisingFence];
 	}
 	
 	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
 	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu (final pass)", frameNumber];
-	[self encodeFinalRenderFromAlbedoTexture:initialRenderGBufferDiffuseAlbedo
-					   rayTracingPassTexture:USE_DENOISING_UPSCALER ? denoisedRayTracingOutputTexture : rayTracingOutputTexture
-							 toOutputTexture:currentDrawable.texture
-								 afterFences:USE_DENOISING_UPSCALER ? @[denoisingFence] : @[]];
+
+	if (DENOISE_TYPE == WaveletDenoise) {
+		id<MTL4ComputeCommandEncoder> encoder = [pipeline.commandBuffer computeCommandEncoder];
+		if (!encoder) {
+			NSLog(@"Failed to create encoder for denoise pipeline");
+			return;
+		}
+		encoder.label = @"Denoise";
+		[encoder setComputePipelineState:denoisePipeline];
+
+		NSUInteger w = rayTracingPipeline.threadExecutionWidth;
+		NSUInteger h = rayTracingPipeline.maxTotalThreadsPerThreadgroup / w;
+		MTLSize threadsPerThreadgroup = MTLSizeMake( w, h, 1 );
+		MTLSize threadsPerGrid = MTLSizeMake(rayTracingOutputTexture.width, rayTracingOutputTexture.height, 1);
+		
+		DenoiseConfig *configs = (DenoiseConfig*)denoiseConfigBuffer.contents;
+		for (int i = 0; i < waveletDenoisePasses.count; i++) {
+			configs[i].step = waveletDenoisePasses[i].unsignedIntValue;
+		}
+		
+		id<MTLTexture> currentInput = rayTracingOutputTexture;
+		id<MTLTexture> currentOutput = (waveletDenoisePasses.count % 2 == 1) ? denoiseOutputTexture : denoiseScratchTexture;
+
+		for (int i = 0; i < waveletDenoisePasses.count; i++) {
+			MTLGPUAddress configAddress = denoiseConfigBuffer.gpuAddress + (i * sizeof(DenoiseConfig));
+
+			[computeArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:DenoisePassUniformsIndex];
+			[computeArgumentTable setAddress:configAddress atIndex:DenoisePassConfigIndex];
+			[computeArgumentTable setTexture:initialRenderGBufferNormal.gpuResourceID atIndex:DenoisePassNormalTextureIndex];
+			[computeArgumentTable setTexture:initialRenderGBufferDepth.gpuResourceID atIndex:DenoisePassDepthTextureIndex];
+			[computeArgumentTable setTexture:currentInput.gpuResourceID atIndex:DenoisePassInputTextureIndex];
+			[computeArgumentTable setTexture:currentOutput.gpuResourceID atIndex:DenoisePassOutputTextureIndex];
+			[encoder setArgumentTable:computeArgumentTable];
+			
+			[encoder dispatchThreads:threadsPerGrid threadsPerThreadgroup:threadsPerThreadgroup];
+			
+			if (i < waveletDenoisePasses.count - 1) {
+				[encoder barrierAfterEncoderStages:MTLStageDispatch
+							   beforeEncoderStages:MTLStageDispatch
+								 visibilityOptions:MTL4VisibilityOptionDevice];
+				
+				currentInput = currentOutput;
+				currentOutput = (currentInput == denoiseOutputTexture) ? denoiseScratchTexture : denoiseOutputTexture;
+			}
+		}
+
+		[encoder updateFence:denoisingFence afterEncoderStages:MTLStageDispatch];
+		[encoder endEncoding];
+	}
+
+	[self encodeFinalRenderToOutputTexture:currentDrawable.texture
+							   afterFences:@[denoisingFence]];
 	[commandBuffer endCommandBuffer];
 
 	renderSignalValue = pipeline.sharedEvent.signaledValue + 1;
@@ -1037,19 +1142,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	diffuseAlbedo.clearColor = MTLClearColorMake(1.0, 1.0, 1.0, 1.0);
 	diffuseAlbedo.storeAction = MTLStoreActionStore;
 
-	if (USE_DENOISING_UPSCALER) {
-		MTLRenderPassColorAttachmentDescriptor *specularAlbedo = configuration.colorAttachments[InitialRenderAttachmentSpecularAlbedo];
-		specularAlbedo.texture = initialRenderGBufferSpecularAlbedo;
-		specularAlbedo.loadAction = MTLLoadActionClear;
-		specularAlbedo.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
-		specularAlbedo.storeAction = MTLStoreActionStore;
-		
-		MTLRenderPassColorAttachmentDescriptor *roughness = configuration.colorAttachments[InitialRenderAttachmentRoughness];
-		roughness.texture = initialRenderGBufferRoughness;
-		roughness.loadAction = MTLLoadActionClear;
-		roughness.clearColor = MTLClearColorMake(1.0, 1.0, 1.0, 1.0);
-		roughness.storeAction = MTLStoreActionStore;
-		
+	if (DENOISE_TYPE == WaveletDenoise || DENOISE_TYPE == TemporalDenoise) {
 		MTLRenderPassColorAttachmentDescriptor *depth = configuration.colorAttachments[InitialRenderAttachmentDepth];
 		depth.texture = initialRenderGBufferDepth;
 		depth.loadAction = MTLLoadActionClear;
@@ -1061,6 +1154,20 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 		normal.loadAction = MTLLoadActionClear;
 		normal.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
 		normal.storeAction = MTLStoreActionStore;
+	}
+	
+	if (DENOISE_TYPE == TemporalDenoise) {
+		MTLRenderPassColorAttachmentDescriptor *specularAlbedo = configuration.colorAttachments[InitialRenderAttachmentSpecularAlbedo];
+		specularAlbedo.texture = initialRenderGBufferSpecularAlbedo;
+		specularAlbedo.loadAction = MTLLoadActionClear;
+		specularAlbedo.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+		specularAlbedo.storeAction = MTLStoreActionStore;
+		
+		MTLRenderPassColorAttachmentDescriptor *roughness = configuration.colorAttachments[InitialRenderAttachmentRoughness];
+		roughness.texture = initialRenderGBufferRoughness;
+		roughness.loadAction = MTLLoadActionClear;
+		roughness.clearColor = MTLClearColorMake(1.0, 1.0, 1.0, 1.0);
+		roughness.storeAction = MTLStoreActionStore;
 		
 		MTLRenderPassColorAttachmentDescriptor *motion = configuration.colorAttachments[InitialRenderAttachmentMotion];
 		motion.texture = initialRenderGBufferMotion;
@@ -1163,17 +1270,15 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	scaler.motionTexture = initialRenderGBufferMotion;
 	scaler.motionVectorScaleX = initialRenderGBufferMotion.width;
 	scaler.motionVectorScaleY = initialRenderGBufferMotion.height;
-	scaler.outputTexture = denoisedRayTracingOutputTexture;
+	scaler.outputTexture = denoiseOutputTexture;
 	scaler.fence = fence;
 	[scaler encodeToCommandBuffer:mtl3buffer];
 	[mtl3buffer commit];
 	[mtl3buffer waitUntilCompleted];
 }
 
--(void) encodeFinalRenderFromAlbedoTexture:(id<MTLTexture>)albedoTexture
-					 rayTracingPassTexture:(id<MTLTexture>)rayTracingPassTexture
-						   toOutputTexture:(id<MTLTexture>)outputTexture
-							   afterFences:(NSArray<id<MTLFence>>*)fences
+-(void) encodeFinalRenderToOutputTexture:(id<MTLTexture>)outputTexture
+							 afterFences:(NSArray<id<MTLFence>>*)fences
 {
 	MTL4RenderPassDescriptor *configuration = [MTL4RenderPassDescriptor new];
 	configuration.colorAttachments[0].texture = outputTexture;
@@ -1198,8 +1303,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[encoder setArgumentTable:vertexArgumentTable atStages:MTLRenderStageVertex];
 
 	[fragmentArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:FinalRenderFragmentShaderUniformsIndex];
-	[fragmentArgumentTable setTexture:albedoTexture.gpuResourceID atIndex:FinalRenderFragmentShaderInitialPassTextureIndex];
-	[fragmentArgumentTable setTexture:rayTracingPassTexture.gpuResourceID atIndex:FinalRenderFragmentShaderRayTracingPassTextureIndex];
+	[fragmentArgumentTable setTexture:rayTracingOutputTexture.gpuResourceID atIndex:FinalRenderFragmentShaderRawOutputTextureIndex];
+	[fragmentArgumentTable setTexture:denoiseOutputTexture.gpuResourceID atIndex:FinalRenderFragmentShaderDenoisedOutputTextureIndex];
 	[encoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
 	[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
 	

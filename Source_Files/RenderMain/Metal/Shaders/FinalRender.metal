@@ -43,26 +43,6 @@ finalRenderVertexShader(unsigned short vid [[vertex_id]])
 	return out;
 }
 
-float4 denoisedSample(texture2d<float> texture,
-					  uint2 textureSize,
-					  sampler sam,
-					  float2 uv)
-{
-	float2 dXY = float2(1.0, 1.0) / float2(textureSize);
-	float4 accumulation = float4(0.0);
-
-	int c = 0;
-	for (int i = -denoiseRadius; i <= denoiseRadius; i++) {
-		for (int j = -denoiseRadius; j <= denoiseRadius; j++) {
-			float2 pos = uv + dXY * float2(i, j);
-			accumulation += texture.sample(sam, pos);
-			c++;
-		}
-	}
-
-	return accumulation/c;
-}
-
 // Pulled from Apple's code examples. Might need this later
 //static float3 ToneMapACES(float3 x)
 //{
@@ -78,11 +58,9 @@ float4 denoisedSample(texture2d<float> texture,
 fragment float4
 finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
 						  constant Uniforms &uniforms [[ buffer(FinalRenderFragmentShaderUniformsIndex) ]],
-						  texture2d<float> initialPassTex [[ texture(FinalRenderFragmentShaderInitialPassTextureIndex) ]],
-						  texture2d<float> rayTracingPassTex [[ texture(FinalRenderFragmentShaderRayTracingPassTextureIndex) ]])
+						  texture2d<float> rawOutputTex [[ texture(FinalRenderFragmentShaderRawOutputTextureIndex) ]],
+						  texture2d<float> denoisedOutputTex [[ texture(FinalRenderFragmentShaderDenoisedOutputTextureIndex) ]])
 {
 	constexpr sampler sam(min_filter::nearest, mag_filter::nearest, mip_filter::none);
-
-	float4 rayTracingPassColor = rayTracingPassTex.sample(sam, in.uv);
-	return rayTracingPassColor;
+	return denoisedOutputTex.sample(sam, in.uv);
 }

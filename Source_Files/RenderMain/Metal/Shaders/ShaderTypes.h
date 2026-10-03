@@ -45,6 +45,20 @@ enum {
 };
 
 enum {
+	DenoisePassUniformsIndex,
+	DenoisePassConfigIndex,
+	DenoisePass_NumBuffers,
+};
+
+enum {
+	DenoisePassNormalTextureIndex,
+	DenoisePassDepthTextureIndex,
+	DenoisePassInputTextureIndex,
+	DenoisePassOutputTextureIndex,
+	DenoisePass_NumTextures,
+};
+
+enum {
 	FinalRenderVertexShader_NumBuffers,
 };
 
@@ -54,8 +68,8 @@ enum {
 };
 
 enum {
-	FinalRenderFragmentShaderInitialPassTextureIndex,
-	FinalRenderFragmentShaderRayTracingPassTextureIndex,
+	FinalRenderFragmentShaderRawOutputTextureIndex,
+	FinalRenderFragmentShaderDenoisedOutputTextureIndex,
 	FinalRenderFragmentShader_NumTextures,
 };
 
@@ -110,6 +124,10 @@ typedef struct {
 	float flashlight; // Intensity of the flashlight (0 if it's inactive)
 	bool isInMedium; // True if player is underwater (i.e. over their head)
 } Uniforms;
+
+typedef struct {
+	uint step;
+} DenoiseConfig;
 
 // A vertex in Marathon world-space: X = east, Y = north, Z = up
 typedef struct {
