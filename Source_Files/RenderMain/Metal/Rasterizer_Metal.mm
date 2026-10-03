@@ -501,6 +501,13 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 	float texT = TMgr->U_Offset;
 	float texB = TMgr->U_Scale+TMgr->U_Offset;
 	
+	if (shape_information->flags & _X_MIRRORED_BIT) {
+		std::swap(texL, texR);
+	}
+	if (shape_information->flags & _Y_MIRRORED_BIT) {
+		std::swap(texB, texT);
+	}
+	
 	simd_float4x2 uv = {
 		(simd_float2){ texB, texL },
 		(simd_float2){ texT, texL },
