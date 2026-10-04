@@ -62,7 +62,7 @@ typedef enum {
 } DenoiseType;
 
 const bool FULL_PATH_TRACING = false;
-const DenoiseType DENOISE_TYPE = WaveletDenoise;
+const DenoiseType DENOISE_TYPE = NoDenoise;
 
 NSArray<NSNumber*> *waveletDenoisePasses = @[@8, @4, @2, @1];
 
