@@ -61,9 +61,10 @@ typedef enum {
 	TemporalDenoise,
 } DenoiseType;
 
-const DenoiseType DENOISE_TYPE = NoDenoise;
+const bool FULL_PATH_TRACING = false;
+const DenoiseType DENOISE_TYPE = WaveletDenoise;
 
-NSArray<NSNumber*> *waveletDenoisePasses = @[@2, @1];
+NSArray<NSNumber*> *waveletDenoisePasses = @[@8, @4, @2, @1];
 
 API_AVAILABLE(macos(26.0))
 @implementation MetalRenderer
@@ -1026,6 +1027,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	camera.perspectiveMat = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
 	
 	Uniforms uniforms;
+	uniforms.fullPathTracing = FULL_PATH_TRACING;
 	uniforms.resolution = viewportSize;
 	uniforms.frameNumber = frameNumber;
 	uniforms.camera = camera;
@@ -1309,8 +1311,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	id<MTLTexture> processedOutput = (DENOISE_TYPE == NoDenoise) ? rayTracingOutputTexture : denoiseOutputTexture;
 
 	[fragmentArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:FinalRenderFragmentShaderUniformsIndex];
-	[fragmentArgumentTable setTexture:rayTracingOutputTexture.gpuResourceID atIndex:FinalRenderFragmentShaderRawOutputTextureIndex];
-	[fragmentArgumentTable setTexture:processedOutput.gpuResourceID atIndex:FinalRenderFragmentShaderProcessedOutputTextureIndex];
+	[fragmentArgumentTable setTexture:initialRenderGBufferDiffuseAlbedo.gpuResourceID atIndex:FinalRenderFragmentShaderAlbedoTextureIndex];
+	[fragmentArgumentTable setTexture:processedOutput.gpuResourceID atIndex:FinalRenderFragmentShaderRayTracingTextureIndex];
 	[encoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
 	[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
 	

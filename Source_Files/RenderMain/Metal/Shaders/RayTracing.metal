@@ -171,6 +171,10 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 			float3 normal = hit.normal;
 			float3 emission = hit.material.emission;
 			
+			// If we're not doing full path tracing, the initial ray shouldn't pick up the albedo of the surface it hits,
+			// because that will be applied in the final pass
+			float3 diffuse = (uniforms.fullPathTracing || b > 0) ? hit.diffuse : float3(1.0);
+			
 			if (hit.lightSourceIndex >= 0) {
 				float intensity = rayTracer.lightSources[hit.lightSourceIndex].intensity;
 				emission *= intensity;
@@ -178,7 +182,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 
 			if (length(emission) > 0) {
 				// We hit a light source
-				tcol += fcol * hit.diffuse * emission;
+				tcol += fcol * diffuse * emission;
 			}
 			
 			// Apply absorption if we just traversed a medium
@@ -249,7 +253,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 					float contribution = clamp(dot(normal, towardSun), 0.0, 1.0);
 					// Weight by the PDF
 					float weight = 2 * M_PI_F * (1.0f - cos(uniforms.sky.sunRadius));
-					tcol += fcol * hit.diffuse * uniforms.sky.sunEmission * contribution * weight;
+					tcol += fcol * diffuse * uniforms.sky.sunEmission * contribution * weight;
 				}
 			} else if (sampleWeaponFlare) {
 				int3 weaponFlarePosition = uniforms.camera.origin + int3(0, 0, -256);
@@ -265,7 +269,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 				if (!directRayHit.didHit){
 					float angleWeight = clamp(dot(normal, directRay.direction), 0.0, 1.0);
 					float distanceWeight = clamp(pow(length(surfaceToWeapon) * 0.001, -2.0), 0.0, 1.0);
-					tcol += fcol * hit.diffuse * weaponFlare * angleWeight * distanceWeight;
+					tcol += fcol * diffuse * weaponFlare * angleWeight * distanceWeight;
 				}
 			}
 
@@ -274,13 +278,13 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 				float distanceWeight = clamp(pow(distance(float3(uniforms.camera.origin), hitPoint) * 0.001, -2.0), 0.0, 1.0);
 				float theta = acos(dot(ray.direction, rayTracer.forward));
 				float coneWeight = 1.0 - clamp(theta/(M_PI_F/6.0), 0.0, 1.0);
-				tcol += fcol * hit.diffuse * uniforms.flashlight * angleWeight * distanceWeight * coneWeight;
+				tcol += fcol * diffuse * uniforms.flashlight * angleWeight * distanceWeight * coneWeight;
 			}
 			
 			{
 				ray.origin = hitPoint;
 				ray.direction = sampleUnitHemisphereCosineWeighted(hash2(seed), normal);
-				fcol *= hit.diffuse;
+				fcol *= diffuse;
 			}
 		}
 	}

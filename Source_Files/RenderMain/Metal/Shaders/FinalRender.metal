@@ -54,13 +54,17 @@ finalRenderVertexShader(unsigned short vid [[vertex_id]])
 //	return saturate((x*(a*x+b))/(x*(c*x+d)+e));
 //}
 
-// Adapted from https://developer.apple.com/documentation/metal/accelerating-ray-tracing-using-metal?language=objc
 fragment float4
 finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
 						  constant Uniforms &uniforms [[ buffer(FinalRenderFragmentShaderUniformsIndex) ]],
-						  texture2d<float> rawOutputTex [[ texture(FinalRenderFragmentShaderRawOutputTextureIndex) ]],
-						  texture2d<float> processedOutputTex [[ texture(FinalRenderFragmentShaderProcessedOutputTextureIndex) ]])
+						  texture2d<float> albedoTex [[ texture(FinalRenderFragmentShaderAlbedoTextureIndex) ]],
+						  texture2d<float> rayTracingTex [[ texture(FinalRenderFragmentShaderRayTracingTextureIndex) ]])
 {
 	constexpr sampler sam(min_filter::nearest, mag_filter::nearest, mip_filter::none);
-	return processedOutputTex.sample(sam, in.uv);
+	
+	if (uniforms.fullPathTracing) {
+		return rayTracingTex.sample(sam, in.uv);
+	} else {
+		return albedoTex.sample(sam, in.uv) * rayTracingTex.sample(sam, in.uv);
+	}
 }

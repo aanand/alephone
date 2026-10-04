@@ -19,9 +19,11 @@ constant float weights[25] = {
 	1.f/256.f, 1.f/64.f, 3.f/128.f, 1.f/64.f, 1.f/256.f,
 };
 
-constant float cPhi = 10.0;
+constant float cPhi = 100.0;
 constant float nPhi = 0.5;
-constant float dPhi = 0.1;
+constant float dPhi = 0.05;
+
+constant float depthMultiplier = 1.0/1024.0;
 
 kernel void denoiseKernel(constant Uniforms &uniforms [[ buffer(DenoisePassUniformsIndex) ]],
 						  constant DenoiseConfig &config [[ buffer(DenoisePassConfigIndex) ]],
@@ -36,7 +38,7 @@ kernel void denoiseKernel(constant Uniforms &uniforms [[ buffer(DenoisePassUnifo
 
 	float4 centerColor = inputTexture.read(xy);
 	float4 centerNormal = normalTexture.read(xy);
-	float4 centerDepth = depthTexture.read(xy);
+	float centerDepth = depthTexture.read(xy).r * depthMultiplier;
 	
 	float4 accumulation = float4(0.0);
 
@@ -57,8 +59,8 @@ kernel void denoiseKernel(constant Uniforms &uniforms [[ buffer(DenoisePassUnifo
 				float normalDistSquared = distance_squared(normal, centerNormal);
 				float normalWeight = min(exp(-normalDistSquared/nPhi), 1.0);
 				
-				float4 depth = depthTexture.read(pos);
-				float depthDistSquared = distance_squared(depth, centerDepth);
+				float depth = depthTexture.read(pos).r * depthMultiplier;
+				float depthDistSquared = depth*depth - centerDepth*centerDepth;
 				float depthWeight = min(exp(-depthDistSquared/dPhi), 1.0);
 				
 				float weight = colorWeight * normalWeight * depthWeight * kernelWeight;

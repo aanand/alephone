@@ -68,8 +68,8 @@ enum {
 };
 
 enum {
-	FinalRenderFragmentShaderRawOutputTextureIndex,
-	FinalRenderFragmentShaderProcessedOutputTextureIndex,
+	FinalRenderFragmentShaderAlbedoTextureIndex,
+	FinalRenderFragmentShaderRayTracingTextureIndex,
 	FinalRenderFragmentShader_NumTextures,
 };
 
@@ -111,6 +111,10 @@ typedef struct {
 } Camera;
 
 typedef struct {
+	// true = full path tracing: raytracer does everything
+	// false = raytracer does a lighting-only pass, to be mixed with rasterized albedo
+	bool fullPathTracing;
+
 	vector_uint2 resolution;
 	uint64_t frameNumber;
 	

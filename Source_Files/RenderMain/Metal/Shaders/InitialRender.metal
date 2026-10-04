@@ -52,7 +52,7 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 
 	out.position = position;
 	out.dXY = (position.xy - previousPosition.xy) * float2(uniforms.resolution);
-	out.depth = position.z/position.w;
+	out.depth = 1.0 / (1.0 - position.z/position.w);
 	out.normal = v.normal;
 	out.textureCoordinate = v.textureCoordinate;
 	
