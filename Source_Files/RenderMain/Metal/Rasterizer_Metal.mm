@@ -310,7 +310,7 @@ void AddWall(polygon_data *polygon,
 	int div = GetTextureScale(TMgr.get(), surface->transfer_mode, didSetup);
 	world_distance x0 = surface->texture_definition->x0 % div;
 	world_distance y0 = surface->texture_definition->y0 % div;
-	float tOffset = polygon->ceiling_height + y0;
+	float tOffset = surface->h1 + y0;
 	
 	simd_float4x2 uv = {
 		(simd_float2){ (tOffset - surface->h0) / (float) div, (x0               ) / (float) div },
