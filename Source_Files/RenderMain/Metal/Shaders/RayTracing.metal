@@ -169,20 +169,27 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 		} else {
 			float3 hitPoint = hit.hitPoint;
 			float3 normal = hit.normal;
-			float3 emission = hit.material.emission;
 			
 			// If we're not doing full path tracing, the initial ray shouldn't pick up the albedo of the surface it hits,
 			// because that will be applied in the final pass
 			float3 diffuse = (uniforms.fullPathTracing || b > 0) ? hit.diffuse : float3(1.0);
-			
-			if (hit.lightSourceIndex >= 0) {
-				float intensity = rayTracer.lightSources[hit.lightSourceIndex].intensity;
-				emission *= intensity;
-			}
 
-			if (length(emission) > 0) {
-				// We hit a light source
-				tcol += fcol * diffuse * emission;
+			if (length(hit.material.emission) > 0) {
+				if (b == 0) {
+					tcol += diffuse;
+				} else {
+					float3 emission = hit.material.emission;
+					
+					if (hit.lightSourceIndex >= 0) {
+						float intensity = rayTracer.lightSources[hit.lightSourceIndex].intensity;
+						emission *= intensity;
+					}
+					
+					if (length(emission) > 0) {
+						// We hit a light source
+						tcol += fcol * emission;
+					}
+				}
 			}
 			
 			// Apply absorption if we just traversed a medium
