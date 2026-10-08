@@ -15,6 +15,8 @@ using namespace metal;
 constant float gain = 1.0;
 constant float defaultAttenuation = 0.9;
 
+constant float weaponFlareMultiplier = 5.0;
+
 constant uint samplesPerPixel = 2;
 constant uint maxBounces = 4;
 constant uint maxAlphaPassthroughs = 10;

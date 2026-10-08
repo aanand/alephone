@@ -225,7 +225,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 				couldHitSun = dot(normal, towardSun) > 0;
 			}
 
-			float weaponFlare = uniforms.weaponFlare;
+			float weaponFlare = uniforms.weaponFlare * weaponFlareMultiplier;
 			bool hasWeaponFlare = weaponFlare > 0;
 			
 			bool sampleSun = false;
