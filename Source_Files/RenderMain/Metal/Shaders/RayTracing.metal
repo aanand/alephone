@@ -155,7 +155,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 	ray.min_distance = rayEpsilon;
 	ray.max_distance = INFINITY;
 
-	float3 tcol = float3(0.0);
+	float3 tcol = float3(ambientLightIntensity);
 	float3 fcol = float3(1.0);
 	uint b;
 	bool isInMedium = uniforms.isInMedium;
