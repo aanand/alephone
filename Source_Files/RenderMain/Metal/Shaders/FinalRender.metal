@@ -43,16 +43,15 @@ finalRenderVertexShader(unsigned short vid [[vertex_id]])
 	return out;
 }
 
-// Pulled from Apple's code examples. Might need this later
-//static float3 ToneMapACES(float3 x)
-//{
-//	float a = 2.51f;
-//	float b = 0.03f;
-//	float c = 2.43f;
-//	float d = 0.59f;
-//	float e = 0.14f;
-//	return saturate((x*(a*x+b))/(x*(c*x+d)+e));
-//}
+static float3 ToneMapACES(float3 x)
+{
+	float a = 2.51f;
+	float b = 0.03f;
+	float c = 2.43f;
+	float d = 0.59f;
+	float e = 0.14f;
+	return saturate((x*(a*x+b))/(x*(c*x+d)+e));
+}
 
 fragment float4
 finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
@@ -62,9 +61,17 @@ finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
 {
 	constexpr sampler sam(min_filter::nearest, mag_filter::nearest, mip_filter::none);
 	
+	float4 color;
+
 	if (uniforms.fullPathTracing) {
-		return rayTracingTex.sample(sam, in.uv);
+		color = rayTracingTex.sample(sam, in.uv);
 	} else {
-		return albedoTex.sample(sam, in.uv) * rayTracingTex.sample(sam, in.uv);
+		color = albedoTex.sample(sam, in.uv) * rayTracingTex.sample(sam, in.uv);
 	}
+	
+	if (toneMap) {
+		color = float4(ToneMapACES(color.rgb), 1.0);
+	}
+	
+	return color;
 }
