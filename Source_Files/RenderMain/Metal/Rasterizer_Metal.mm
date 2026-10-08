@@ -212,17 +212,17 @@ std::unordered_map<std::string, Material> materials = {
 	{ "[ShapeDesc=4358/Collection=17/CTable=0/Frame=6/Bitmap=6]", { .emission = simd_make_float3(2.0, 2.0, 2.0) } },
 	
 	// Terminals and pattern buffers (M1)
-	{ "[ShapeDesc=2048/Collection=8/CTable=0/Frame=0/Bitmap=0]", { .emission = simd_make_float3(0.0, 1.0, 0.0) } },
+	{ "[ShapeDesc=2048/Collection=8/CTable=0/Frame=0/Bitmap=0]", { .emission = simd_make_float3(2.0, 10.0, 2.0) } },
 	
 	// Health recharge panels
-	{ "[ShapeDesc=2052/Collection=8/CTable=0/Frame=4/Bitmap=4]", { .emission = simd_make_float3(0.0, 0.0, 1.0) } },
+	{ "[ShapeDesc=2052/Collection=8/CTable=0/Frame=4/Bitmap=4]", { .emission = simd_make_float3(0.0, 0.0, 6.0) } },
 	
 	// Switches (M1)
 	{ "[ShapeDesc=2049/Collection=8/CTable=0/Frame=1/Bitmap=1]", { .emission = simd_make_float3(1.0, 1.0, 1.0) } },
 	{ "[ShapeDesc=2050/Collection=8/CTable=0/Frame=2/Bitmap=2]", { .emission = simd_make_float3(1.0, 1.0, 1.0) } },
 	
 	// Panels on columns in that one side room in Arrival (M1)
-	{ "[ShapeDesc=4617/Collection=18/CTable=0/Frame=9/Bitmap=9]", { .emission = simd_make_float3(0.2, 0.2, 0.2) } },
+	{ "[ShapeDesc=4617/Collection=18/CTable=0/Frame=9/Bitmap=9]", { .emission = simd_make_float3(2.0, 2.0, 2.0) } },
 	
 	// Lava (M1)
 	{ "[ShapeDesc=4893/Collection=19/CTable=0/Frame=29/Bitmap=29]", { .emission = simd_make_float3(10.0, 5.0, 0.0) } },
@@ -253,8 +253,8 @@ std::unordered_map<std::string, Material> materials = {
 
 std::unordered_map<std::string, Sky> skies = {
 	{ "Marathon 1.2", (Sky){
-		.bottomEmission = { 5.0, 5.0, 5.0 },
-		.topEmission = { 10.0, 10.0, 10.0 },
+		.bottomEmission = { 0.0, 0.0, 0.0 },
+		.topEmission = { 0.0, 0.0, 0.0 },
 		.hasSun = true,
 		.sunEmission = { 50.0, 50.0, 50.0 },
 		.sunPosition = { 1.0, -1.0, 0.0 },
