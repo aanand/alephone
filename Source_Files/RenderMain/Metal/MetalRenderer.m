@@ -62,7 +62,7 @@ typedef enum {
 	TemporalDenoisedUpscale,
 } PostProcessingType;
 
-const bool FULL_PATH_TRACING = false;
+const bool FULL_PATH_TRACING = true;
 const PostProcessingType POST_PROCESSING_TYPE = NoPostProcessing;
 
 NSArray<NSNumber*> *waveletDenoisePasses = @[@8, @4, @2, @1];
