@@ -37,6 +37,8 @@ int16 lastLoadedLevelNumber = -1;
 bool isFlashlightOn = false;
 uint framesSinceFlashlightToggled = 0;
 
+const float flashlightIntensity = 5.0;
+
 bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
     logWarning("Metal_InitializeForWindow(window, %d, %d)", width, height);
 
@@ -86,7 +88,7 @@ void Rasterizer_Metal_Class::SetView(view_data &View) {
 	}
 	
 	float weaponFlare = PIN(view->maximum_depth_intensity - NATURAL_LIGHT_INTENSITY, 0, FIXED_ONE)/float(FIXED_ONE);
-	float flashlight = isFlashlightOn ? 10.0 : 0.0;
+	float flashlight = isFlashlightOn ? flashlightIntensity : 0.0;
 	
 	if (@available(macOS 26.0, *)) {
 		if (renderer) {
