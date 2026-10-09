@@ -228,8 +228,8 @@ std::unordered_map<std::string, Material> materials = {
 	{ "[ShapeDesc=4893/Collection=19/CTable=0/Frame=29/Bitmap=29]", { .emission = simd_make_float3(10.0, 5.0, 0.0) } },
 	
 	// Light panels (M2)
-	{ "[ShapeDesc=4377/Collection=17/CTable=0/Frame=25/Bitmap=25]", { .emission = simd_make_float3(20.0, 20.0, 20.0) } },
-	{ "[ShapeDesc=4886/Collection=19/CTable=0/Frame=22/Bitmap=22]", { .emission = simd_make_float3(20.0, 20.0, 20.0) } },
+	{ "[ShapeDesc=4377/Collection=17/CTable=0/Frame=25/Bitmap=25]", { .emission = simd_make_float3(10.0, 10.0, 10.0) } },
+	{ "[ShapeDesc=4886/Collection=19/CTable=0/Frame=22/Bitmap=22]", { .emission = simd_make_float3(10.0, 10.0, 10.0) } },
 	
 	// Green wall panels (M2)
 	{ "[ShapeDesc=4361/Collection=17/CTable=0/Frame=9/Bitmap=9]", { .emission = simd_make_float3(0.0, 10.0, 0.0) } },
@@ -265,8 +265,8 @@ std::unordered_map<std::string, Sky> skies = {
 };
 
 Sky defaultSky = {
-	.bottomEmission = { 0.2, 0.2, 0.2 },
-	.topEmission = { 2.0, 2.0, 2.0 },
+	.bottomEmission = { 1.0, 1.0, 1.0 },
+	.topEmission = { 5.0, 5.0, 5.0 },
 	.hasSun = true,
 	.sunEmission = { 10.0, 10.0, 10.0 },
 	.sunPosition = { 0.0, 0.0, 1.0 },
