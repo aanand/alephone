@@ -16,6 +16,7 @@ struct RasterizerData {
 	float2 dXY;
 	float depth;
 	float3 normal;
+	uint32_t textureIndex;
 	float2 textureCoordinate;
 };
 
@@ -54,6 +55,7 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 	out.dXY = (position.xy - previousPosition.xy) * float2(uniforms.resolution);
 	out.depth = 1.0 / (1.0 - position.z/position.w);
 	out.normal = v.normal;
+	out.textureIndex = v.textureIndex;
 	out.textureCoordinate = v.textureCoordinate;
 	
 	return out;
@@ -68,12 +70,17 @@ struct GBuffer {
 	float2 motion [[ color(InitialRenderAttachmentMotion) ]];
 };
 
+struct TextureArgs {
+	array<texture2d<float>, MAX_TEXTURES> textures [[id(0)]];
+};
+
 fragment GBuffer
 initialRenderFragmentShader(RasterizerData in [[stage_in]],
-			   texture2d<half> colorTexture [[ texture(InitialRenderFragmentShaderColorTextureIndex) ]])
+							constant TextureArgs &textures [[ buffer(InitialRenderFragmentShaderTexturesIndex) ]])
 {
 	constexpr sampler textureSampler (mag_filter::nearest, min_filter::nearest, address::repeat);
-	const half4 colorSample = colorTexture.sample(textureSampler, in.textureCoordinate);
+	texture2d<float> colorTexture = textures.textures[in.textureIndex];
+	const float4 colorSample = colorTexture.sample(textureSampler, in.textureCoordinate);
 	if (colorSample.a == 0) {
 		discard_fragment();
 	}

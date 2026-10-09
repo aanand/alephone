@@ -267,8 +267,8 @@ API_AVAILABLE(macos(26.0))
 	}
 	
 	MTL4ArgumentTableDescriptor *fragmentArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
-	fragmentArgumentTableDescriptor.maxTextureBindCount = MAX(InitialRenderFragmentShader_NumTextures, FinalRenderFragmentShader_NumTextures);
-	fragmentArgumentTableDescriptor.maxBufferBindCount = FinalRenderFragmentShader_NumBuffers;
+	fragmentArgumentTableDescriptor.maxTextureBindCount = FinalRenderFragmentShader_NumTextures;
+	fragmentArgumentTableDescriptor.maxBufferBindCount = MAX(InitialRenderFragmentShader_NumBuffers, FinalRenderFragmentShader_NumBuffers);
 	fragmentArgumentTableDescriptor.label = @"Fragment argument table";
 	fragmentArgumentTable = [pipeline.device newArgumentTableWithDescriptor:fragmentArgumentTableDescriptor error:&error];
 	if (error) {
@@ -643,6 +643,7 @@ API_AVAILABLE(macos(26.0))
 	textureArgumentBuffer.label = @"textureArgumentBuffer";
 	
 	[textureArgumentEncoder setArgumentBuffer:textureArgumentBuffer offset:0];
+	[initialRenderResidencySet addAllocation:textureArgumentBuffer];
 	[rayTracingResidencySet addAllocation:textureArgumentBuffer];
 	
 	id<MTLComputePipelineState> state = [pipeline.device newComputePipelineStateWithFunction:function
@@ -1044,11 +1045,12 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 - (void) addTextureWithID:(NSString*)textureID image:(MetalImage *)image {
+	NSAssert(textureIDs.count < MAX_TEXTURES, @"Exceeded texture limit");
+
 	id<MTLTexture> texture = [self makeTextureFromImage:image];
 	texture.label = textureID;
 	[textureIDs addObject:textureID];
 	[textures setObject:texture forKey:textureID];
-	[initialRenderResidencySet addAllocation:texture];
 }
 
 - (void) addPlaceholderTextureWithID:(NSString *)textureID {
@@ -1115,7 +1117,9 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	id<MTL4CommandBuffer> commandBuffer = pipeline.commandBuffer;
 	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
 	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu (initial + raytracing)", frameNumber];
-		
+
+	[self populateTextureArgumentBuffer];
+	
 	[self encodeInitialRenderUpdatingFence:initialPassFence];
 
 	[self encodeRayTracingPassToOutputTexture:rayTracingOutputTexture updatingFence:computePassFence];
@@ -1159,6 +1163,20 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[pipeline.commandQueue signalEvent:pipeline.sharedEvent value:renderSignalValue];
 	[pipeline.sharedEvent waitUntilSignaledValue:renderSignalValue timeoutMS:5000];
 	[pipeline.commandAllocator reset];
+}
+
+- (void) populateTextureArgumentBuffer {
+	[textureArgumentEncoder setArgumentBuffer:textureArgumentBuffer offset:0];
+
+	for (NSUInteger i = 0; i < textureIDs.count; i++) {
+		id<MTLTexture> texture = textures[textureIDs[i]];
+		[textureArgumentEncoder setTexture:texture atIndex:i];
+		[initialRenderResidencySet addAllocation:texture];
+		[rayTracingResidencySet addAllocation:texture];
+	}
+
+	[initialRenderResidencySet commit];
+	[rayTracingResidencySet commit];
 }
 
 - (void) encodeInitialRenderUpdatingFence:(id<MTLFence>)fence
@@ -1230,31 +1248,34 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	
 	[vertexArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:InitialRenderVertexShaderUniformsIndex];
 	[vertexArgumentTable setAddress:triangleBuffer.gpuAddress atIndex:InitialRenderVertexShaderVertexDataIndex];
+	[fragmentArgumentTable setAddress:textureArgumentBuffer.gpuAddress atIndex:InitialRenderFragmentShaderTexturesIndex];
 
 	WorldVertex *target = (WorldVertex*)triangleBuffer.contents;
-	NSUInteger __block offset = 0;
+	NSUInteger __block numVertices = 0;
 
 	void (^drawTriangle)(Triangle*) = ^(Triangle *triangle){
-		target[offset] = triangle.v0;
-		target[offset+1] = triangle.v1;
-		target[offset+2] = triangle.v2;
+		NSAssert(numVertices/3 < MAX_TRIANGLES, @"Exceeded triangle buffer size");
+
+		NSUInteger textureIndex = [self->textureIDs indexOfObject:triangle.surface.textureID];
+		NSAssert(textureIndex != NSNotFound, @"Missing triangle texture ID");
+
+		target[numVertices] = triangle.v0;
+		target[numVertices].textureIndex = (uint32_t)textureIndex;
+		target[numVertices+1] = triangle.v1;
+		target[numVertices+1].textureIndex = (uint32_t)textureIndex;
+		target[numVertices+2] = triangle.v2;
+		target[numVertices+2].textureIndex = (uint32_t)textureIndex;
 		
-		MTLGPUAddress address = self->triangleBuffer.gpuAddress + (offset * sizeof(WorldVertex));
-		[self->vertexArgumentTable setAddress:address atIndex:InitialRenderVertexShaderVertexDataIndex];
-		[renderPassEncoder setArgumentTable:self->vertexArgumentTable atStages:MTLRenderStageVertex];
-		
-		id<MTLTexture> texture = [self->textures objectForKey:triangle.surface.textureID];
-		[self->fragmentArgumentTable setTexture:texture.gpuResourceID atIndex:InitialRenderFragmentShaderColorTextureIndex];
-		[renderPassEncoder setArgumentTable:self->fragmentArgumentTable atStages:MTLRenderStageFragment];
-		
-		[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
-		
-		offset += 3;
+		numVertices += 3;
 	};
 	
 	for (Triangle *triangle in staticTriangles) drawTriangle(triangle);
 	for (Triangle *triangle in dynamicTriangles) drawTriangle(triangle);
-	
+
+	[renderPassEncoder setArgumentTable:vertexArgumentTable atStages:MTLRenderStageVertex];
+	[renderPassEncoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
+	[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:numVertices];
+
 	[renderPassEncoder updateFence:fence afterEncoderStages:MTLStageFragment];
 	[renderPassEncoder endEncoding];
 }
@@ -1270,14 +1291,6 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	encoder.label = @"Ray tracing";
 	
 	[encoder setComputePipelineState:rayTracingPipeline];
-
-	[textureArgumentEncoder setArgumentBuffer:textureArgumentBuffer offset:0];
-	
-	for (NSUInteger i = 0; i < textureIDs.count; i++) {
-		id<MTLTexture> texture = textures[textureIDs[i]];
-		[textureArgumentEncoder setTexture:texture atIndex:i];
-		[rayTracingResidencySet addAllocation:texture];
-	}
 	
 	[computeArgumentTable setResource:topLevelIAS.gpuResourceID atBufferIndex:RayTracingKernelAccelerationStructureIndex];
 	[computeArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:RayTracingKernelUniformsIndex];

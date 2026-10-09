@@ -44,12 +44,6 @@ float2 getQuadUV(intersector<triangle_data, instancing>::result_type intersectio
 	return getTriangleUV(intersection, uv0, uv1, uv2);
 }
 
-#define MAX_SPRITE_TEXTURES 1024
-
-struct TextureArgs {
-	array<texture2d<float>, MAX_SPRITE_TEXTURES> textures [[id(0)]];
-};
-
 struct Hit {
 	bool didHit;
 	float3 hitPoint;
@@ -60,6 +54,10 @@ struct Hit {
 };
 
 typedef intersector<triangle_data, instancing>::result_type RayTracingResult;
+
+struct TextureArgs {
+	array<texture2d<float>, MAX_TEXTURES> textures [[id(0)]];
+};
 
 struct RayTracer {
 	intersector<triangle_data, instancing> intersector;

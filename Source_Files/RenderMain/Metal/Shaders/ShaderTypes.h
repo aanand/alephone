@@ -10,6 +10,8 @@
 
 #include <simd/simd.h>
 
+#define MAX_TEXTURES 1024
+
 enum {
 	InitialRenderVertexShaderVertexDataIndex,
 	InitialRenderVertexShaderUniformsIndex,
@@ -17,8 +19,8 @@ enum {
 };
 
 enum {
-	InitialRenderFragmentShaderColorTextureIndex,
-	InitialRenderFragmentShader_NumTextures,
+	InitialRenderFragmentShaderTexturesIndex,
+	InitialRenderFragmentShader_NumBuffers,
 };
 
 enum {
