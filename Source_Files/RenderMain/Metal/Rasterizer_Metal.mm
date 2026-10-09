@@ -222,7 +222,7 @@ std::unordered_map<std::string, Material> materials = {
 	{ "[ShapeDesc=2050/Collection=8/CTable=0/Frame=2/Bitmap=2]", { .emission = simd_make_float3(1.0, 1.0, 1.0) } },
 	
 	// Panels on columns in that one side room in Arrival (M1)
-	{ "[ShapeDesc=4617/Collection=18/CTable=0/Frame=9/Bitmap=9]", { .emission = simd_make_float3(2.0, 2.0, 2.0) } },
+	{ "[ShapeDesc=4617/Collection=18/CTable=0/Frame=9/Bitmap=9]", { .emission = simd_make_float3(6.0, 6.0, 6.0) } },
 	
 	// Lava (M1)
 	{ "[ShapeDesc=4893/Collection=19/CTable=0/Frame=29/Bitmap=29]", { .emission = simd_make_float3(10.0, 5.0, 0.0) } },
