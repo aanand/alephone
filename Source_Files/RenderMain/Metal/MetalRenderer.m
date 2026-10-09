@@ -450,6 +450,7 @@ API_AVAILABLE(macos(26.0))
 	[postProcessingResidencySet addAllocation:postProcessingScratchTexture];
 	[postProcessingResidencySet addAllocation:postProcessingOutputTexture];
 
+	[finalRenderResidencySet addAllocation:initialRenderGBufferDiffuseAlbedo];
 	[finalRenderResidencySet addAllocation:rayTracingOutputTexture];
 	[finalRenderResidencySet addAllocation:postProcessingScratchTexture];
 	[finalRenderResidencySet addAllocation:postProcessingOutputTexture];
