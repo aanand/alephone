@@ -9,6 +9,7 @@
 #include <SDL2/SDL_syswm.h>
 
 #include <vector>
+#include <stack>
 
 #include <Foundation/Foundation.h>
 
@@ -39,6 +40,8 @@ uint framesSinceFlashlightToggled = 0;
 
 const float flashlightIntensity = 5.0;
 
+short lastVisitedPolygon = NONE;
+
 bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
     logWarning("Metal_InitializeForWindow(window, %d, %d)", width, height);
 
@@ -59,6 +62,8 @@ bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
 		
 		isFlashlightOn = false;
 		framesSinceFlashlightToggled = 0;
+		
+		lastVisitedPolygon = NONE;
 
 		logWarning("Initialized MetalRenderer");
 		return true;
@@ -73,8 +78,78 @@ const float FixedAngleToDegrees = 360.0/(float(FIXED_ONE)*float(FULL_CIRCLE));
 
 void UpdateWorld();
 
+// Returns true if polygonA and polygonB overlap, using the separating axis theorem
+bool polygonsOverlap(polygon_data *polygonA, polygon_data *polygonB) {
+	auto aVertices = std::vector<long_vector2d>(polygonA->vertex_count);
+	auto bVertices = std::vector<long_vector2d>(polygonB->vertex_count);
+	auto axes = std::vector<long_vector2d>(polygonA->vertex_count + polygonB->vertex_count);
+
+	for (short i = 0; i < polygonA->vertex_count; i++) {
+		endpoint_data *ep = get_endpoint_data(polygonA->endpoint_indexes[i]);
+		aVertices[i] = { ep->vertex.x, ep->vertex.y };
+	}
+	
+	for (short i = 0; i < polygonB->vertex_count; i++) {
+		endpoint_data *ep = get_endpoint_data(polygonB->endpoint_indexes[i]);
+		bVertices[i] = { ep->vertex.x, ep->vertex.y };
+	}
+	
+	for (short i = 0; i < aVertices.size(); i++) {
+		long_vector2d line = aVertices[(i+1) % aVertices.size()] - aVertices[i];
+		axes[i] = { -line.j, line.i };
+	}
+	
+	for (short i = 0; i < bVertices.size(); i++) {
+		long_vector2d line = bVertices[(i+1) % bVertices.size()] - bVertices[i];
+		axes[aVertices.size() + i] = { -line.j, line.i };
+	}
+	
+	for (auto &axis : axes) {
+		int32 aMin = 0, aMax = 0, bMin = 0, bMax = 0;
+		
+		for (short i = 0; i < aVertices.size(); i++) {
+			long_vector2d aVertex = aVertices[i];
+			int32 dot = aVertex.i * axis.i + aVertex.j * axis.j;
+			if (i == 0 || dot > aMax) aMax = dot;
+			if (i == 0 || dot < aMin) aMin = dot;
+		}
+		
+		for (short i = 0; i < bVertices.size(); i++) {
+			long_vector2d bVertex = bVertices[i];
+			int32 dot = bVertex.i * axis.i + bVertex.j * axis.j;
+			if (i == 0 || dot > bMax) bMax = dot;
+			if (i == 0 || dot < bMin) bMin = dot;
+		}
+		
+		if ((aMin < bMax && aMin > bMin) || (bMin < aMax && bMin > aMin)) {
+			continue;
+		} else {
+			return false;
+		}
+	}
+	
+	return true;
+}
+
+void checkIntersections(short originPolygonIndex) {
+	logWarning("In polygon %d", originPolygonIndex);
+	polygon_data *originPolygon = get_polygon_data(originPolygonIndex);
+	
+	for (short polyIdx = 0; polyIdx < dynamic_world->polygon_count; polyIdx++) {
+		polygon_data *candidate = get_polygon_data(polyIdx);
+		if (polygonsOverlap(originPolygon, candidate)) {
+			logWarning(" -> Polygon %d overlaps", polyIdx);
+		}
+	}
+}
+
 void Rasterizer_Metal_Class::SetView(view_data &View) {
 	view = &View;
+
+	if (view->origin_polygon_index != lastVisitedPolygon) {
+		checkIntersections(view->origin_polygon_index);
+		lastVisitedPolygon = view->origin_polygon_index;
+	}
 	
 	if (current_player_index != NONE) {
 		player_data *player = get_player_data(current_player_index);
