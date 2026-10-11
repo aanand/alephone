@@ -464,6 +464,15 @@ void AddWalls(polygon_data *polygon, bool isDynamicPass) {
 
 				break;
 		}
+		
+		if (side->transparent_texture.texture != UNONE) {
+			wall.h0 = line->highest_adjacent_floor;
+			wall.h1 = line->lowest_adjacent_ceiling;
+			wall.texture_definition = &side->transparent_texture;
+			wall.transfer_mode = side->transparent_transfer_mode;
+			wall.lightsource_index = side->transparent_lightsource_index;
+			AddWall(polygon, line, vertexIdx, &wall, isDynamicPass);
+		}
 	}
 }
 
