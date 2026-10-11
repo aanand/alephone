@@ -275,7 +275,11 @@ Sky defaultSky = {
 	.sunRadius = 10.0 * M_PI / 180.0,
 };
 
-Material materialForTextureID(NSString *textureID) {
+Material getMaterial(NSString *textureID, bool isLandscape) {
+	if (isLandscape) {
+		return { .isLandscape = true };
+	}
+
 	std::string key = textureID.UTF8String;
 	auto iterator = materials.find(key);
 	if (iterator != materials.end()) {
@@ -290,11 +294,6 @@ void AddWall(polygon_data *polygon,
 			 vertical_surface_data *surface,
 			 bool isDynamic)
 {
-	if (surface->transfer_mode == _xfer_landscape) {
-		// Skip adding landscapes for now so the sun can get in
-		return;
-	}
-
 	endpoint_data *ep0 = get_endpoint_data(polygon->endpoint_indexes[vertexIdx]);
 	endpoint_data *ep1 = get_endpoint_data(polygon->endpoint_indexes[(vertexIdx+1) % polygon->vertex_count]);
 	
@@ -321,7 +320,7 @@ void AddWall(polygon_data *polygon,
 		(simd_float2){ (tOffset - surface->h0) / (float) div, (x0 + line->length) / (float) div },
 	};
 	
-	Material material = materialForTextureID(textureID);
+	Material material = getMaterial(textureID, surface->transfer_mode == _xfer_landscape);
 	
 	MetalSurface *mSurface = [[MetalSurface alloc] initWithTextureID:textureID
 															material:material
@@ -343,11 +342,6 @@ void AddHorizontalSurface(short polygonIdx, polygon_data *polygon, horizontal_su
 		return;
 	}
 	
-	if (surface->transfer_mode == _xfer_landscape) {
-		// Skip adding landscapes for now so the sun can get in
-		return;
-	}
-	
 	auto TMgr = std::make_unique<TextureManager>();
 	bool didSetup = SetupPolygonTexture(TMgr.get(), surface->texture);
 	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), didSetup);
@@ -364,7 +358,7 @@ void AddHorizontalSurface(short polygonIdx, polygon_data *polygon, horizontal_su
 		uv[i] = { (position.x + surface->origin.x) / scale, (position.y + surface->origin.y) / scale };
 	}
 	
-	Material material = materialForTextureID(textureID);
+	Material material = getMaterial(textureID, surface->transfer_mode == _xfer_landscape);
 
 	MetalSurface *mSurface = [[MetalSurface alloc] initWithTextureID:textureID
 														   material:material
@@ -517,7 +511,7 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 		(simd_float2){ texB, texR },
 	};
 	
-	Material material = materialForTextureID(textureID);
+	Material material = getMaterial(textureID, false);
 	
 	// Normal is ignored here and set based on the sprite's rotation
 	MetalSurface *surface = [[MetalSurface alloc] initWithTextureID:textureID

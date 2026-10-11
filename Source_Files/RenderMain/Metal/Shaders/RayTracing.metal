@@ -161,7 +161,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 	for (b = 0; b < maxBounces; b++) {
 		Hit hit = castRay(rayTracer, ray);
 
-		if (!hit.didHit) {
+		if (!hit.didHit || hit.material.isLandscape) {
 			tcol += fcol * sampleSky(uniforms.sky, ray.direction);
 			break;
 		} else {
