@@ -12,6 +12,9 @@
 
 #define MAX_TEXTURES 1024
 
+#define MASK_ALL  0xFF
+#define MASK_NONE 0x00
+
 enum {
 	InitialRenderVertexShaderVertexDataIndex,
 	InitialRenderVertexShaderUniformsIndex,

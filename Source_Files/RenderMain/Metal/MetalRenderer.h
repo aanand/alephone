@@ -50,8 +50,10 @@ API_AVAILABLE(macos(26.0))
 - (void) startUpdatingDynamicGeometry;
 - (void) finishUpdatingDynamicGeometry;
 
-- (void) addPolygon:(MetalPolygon*)polygon withID:(int)ID dynamic:(BOOL)isDynamic;
-- (void) addWall:(MetalWall*)wall dynamic:(BOOL)isDynamic;
+- (void) addStaticPolygon:(MetalPolygon*)polygon;
+- (void) addDynamicPolygon:(MetalPolygon*)polygon withID:(int)ID enabled:(BOOL)isEnabled;
+- (void) addStaticWall:(MetalWall*)wall;
+- (void) addDynamicWall:(MetalWall*)wall enabled:(BOOL)isEnabled;
 - (void) updateSprite:(MetalSprite*)sprite;
 - (void) updateLightSourceIntensities:(NSArray<NSNumber*>*)intensities;
 

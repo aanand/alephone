@@ -716,22 +716,6 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	return simd_make_int3(transformed.x, transformed.y, transformed.z);
 }
 
-- (void)addPolygon:(MetalPolygon *)polygon withID:(int)ID dynamic:(BOOL)isDynamic {
-	if (isDynamic) {
-		[self addDynamicPolygon:polygon withID:ID];
-	} else {
-		[self addStaticPolygon:polygon];
-	}
-}
-
-- (void)addWall:(MetalWall *)wall dynamic:(BOOL)isDynamic {
-	if (isDynamic) {
-		[self addDynamicWall:wall];
-	} else {
-		[self addStaticWall:wall];
-	}
-}
-
 - (void)addStaticPolygon:(MetalPolygon *)polygon {
 	[polygon eachTriangle:^(Triangle *triangle) {
 		[self->staticTriangles addObject:triangle];
@@ -754,7 +738,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	return instanceID;
 }
 
-- (void)addDynamicPolygon:(MetalPolygon *)polygon withID:(int)ID {
+-(void)addDynamicPolygon:(MetalPolygon *)polygon withID:(int)ID enabled:(BOOL)isEnabled {
 	[polygon eachTriangle:^(Triangle *triangle) {
 		[self->dynamicTriangles addObject:triangle];
 	}];
@@ -776,10 +760,11 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 	[dynamicIASManager addInstanceOfPrimitive:primitive
 								withTransform:polygon.instanceTransform
-								   instanceID:instanceID];
+								   instanceID:instanceID
+										 mask:(isEnabled ? MASK_ALL : MASK_NONE)];
 }
 
-- (void)addDynamicWall:(MetalWall *)wall {
+-(void)addDynamicWall:(MetalWall *)wall enabled:(BOOL)isEnabled {
 	[wall eachTriangle:^(Triangle *triangle) {
 		[self->dynamicTriangles addObject:triangle];
 	}];
@@ -796,7 +781,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
 								withTransform:wall.instanceTransform
-								   instanceID:instanceID];
+								   instanceID:instanceID
+										 mask:(isEnabled ? MASK_ALL : MASK_NONE)];
 }
 
 - (void) updateSprite:(MetalSprite *)sprite {
@@ -818,7 +804,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
 								withTransform:[sprite instanceTransformForRotation:theta]
-								   instanceID:instanceID];
+								   instanceID:instanceID
+										 mask:MASK_ALL];
 }
 
 - (void) updateLightSourceIntensities:(NSArray<NSNumber *> *)intensities {
@@ -842,7 +829,10 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 				{ 0.0, 0.0, 0.0 },
 			}
 		};
-		[staticIASManager addInstanceOfPrimitive:batch withTransform:transform instanceID:0];
+		[staticIASManager addInstanceOfPrimitive:batch
+								   withTransform:transform
+									  instanceID:0
+											mask:MASK_ALL];
 	}
 }
 

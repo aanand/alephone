@@ -10,6 +10,8 @@
 
 #include <vector>
 #include <stack>
+#include <unordered_set>
+#include <unordered_map>
 
 #include <Foundation/Foundation.h>
 
@@ -41,6 +43,7 @@ uint framesSinceFlashlightToggled = 0;
 const float flashlightIntensity = 5.0;
 
 short lastVisitedPolygon = NONE;
+std::unordered_map<short, std::unordered_set<short>> overlaps;
 
 bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
     logWarning("Metal_InitializeForWindow(window, %d, %d)", width, height);
@@ -131,23 +134,59 @@ bool polygonsOverlap(polygon_data *polygonA, polygon_data *polygonB) {
 	return true;
 }
 
-void checkIntersections(short originPolygonIndex) {
-	logWarning("In polygon %d", originPolygonIndex);
-	polygon_data *originPolygon = get_polygon_data(originPolygonIndex);
-	
-	for (short polyIdx = 0; polyIdx < dynamic_world->polygon_count; polyIdx++) {
-		polygon_data *candidate = get_polygon_data(polyIdx);
-		if (polygonsOverlap(originPolygon, candidate)) {
-			logWarning(" -> Polygon %d overlaps", polyIdx);
+void findOverlaps() {
+	overlaps = std::unordered_map<short, std::unordered_set<short>>();
+
+	for (short i = 0; i < dynamic_world->polygon_count; i++) {
+		for (short j = i+1; j < dynamic_world->polygon_count; j++) {
+			if (polygonsOverlap(get_polygon_data(i), get_polygon_data(j))) {
+				auto iterator = overlaps.find(i);
+				if (iterator == overlaps.end()) {
+					std::unordered_set<short> newSet = { j };
+					overlaps.insert_or_assign(i, newSet);
+				} else {
+					iterator->second.insert(j);
+				}
+				
+				iterator = overlaps.find(j);
+				if (iterator == overlaps.end()) {
+					std::unordered_set<short> newSet = { i };
+					overlaps.insert_or_assign(j, newSet);
+				} else {
+					iterator->second.insert(i);
+				}
+			}
 		}
 	}
+}
+
+bool isPolygonDynamic(short polygonIdx, polygon_data *polygon) {
+	bool isPlatform = polygon->type == _polygon_is_platform;
+	bool isOverlapping = overlaps.find(polygonIdx) != overlaps.end();
+	return (isPlatform || isOverlapping);
+}
+
+bool overlapsWithVisiblePolygon(short polyIdx) {
+	auto iterator = overlaps.find(polyIdx);
+	if (iterator == overlaps.end()) return false;
+	
+	for (auto &otherIdx : iterator->second) {
+		if (TEST_RENDER_FLAG(otherIdx, _polygon_is_visible)) {
+			return true;
+		}
+	}
+	
+	return false;
+}
+
+bool shouldMarkVisible(short polyIdx) {
+	return TEST_RENDER_FLAG(polyIdx, _polygon_is_visible) || !overlapsWithVisiblePolygon(polyIdx);
 }
 
 void Rasterizer_Metal_Class::SetView(view_data &View) {
 	view = &View;
 
 	if (view->origin_polygon_index != lastVisitedPolygon) {
-		checkIntersections(view->origin_polygon_index);
 		lastVisitedPolygon = view->origin_polygon_index;
 	}
 	
@@ -375,7 +414,8 @@ Material getMaterial(NSString *textureID, bool isLandscape) {
 	return {};
 }
 
-void AddWall(polygon_data *polygon,
+void AddWall(short polygonIdx,
+			 polygon_data *polygon,
 			 line_data *line,
 			 short vertexIdx,
 			 vertical_surface_data *surface,
@@ -421,10 +461,14 @@ void AddWall(polygon_data *polygon,
 												 uv:uv
 											surface:mSurface];
 	
-	[renderer addWall:wall dynamic:isDynamic];
+	if (isDynamic) {
+		[renderer addDynamicWall:wall enabled:shouldMarkVisible(polygonIdx)];
+	} else {
+		[renderer addStaticWall:wall];
+	}
 }
 
-void AddHorizontalSurface(short polygonIdx, polygon_data *polygon, horizontal_surface_data *surface, bool isCeiling, bool isDynamicPass) {
+void AddHorizontalSurface(short polygonIdx, polygon_data *polygon, horizontal_surface_data *surface, bool isCeiling, bool isDynamic) {
 	if (surface->texture == UNONE) {
 		return;
 	}
@@ -458,15 +502,19 @@ void AddHorizontalSurface(short polygonIdx, polygon_data *polygon, horizontal_su
 																height:surface->height
 															   surface:mSurface];
 	
-	[renderer addPolygon:mPolygon withID:polygonIdx dynamic:isDynamicPass];
+	if (isDynamic) {
+		[renderer addDynamicPolygon:mPolygon withID:polygonIdx enabled:shouldMarkVisible(polygonIdx)];
+	} else {
+		[renderer addStaticPolygon:mPolygon];
+	}
 }
 
 void AddHorizontalSurfaces(short polygonIdx, polygon_data *polygon, bool isDynamicPass) {
-	bool isPlatform = polygon->type == _polygon_is_platform;
+	bool isDynamicPolygon = isPolygonDynamic(polygonIdx, polygon);
 
 	// If it's a platform, we add the floor/ceiling to the dynamic geometry.
 	// If it's not a platform, we add them to the static geometry.
-	if (isPlatform == isDynamicPass) {
+	if (isDynamicPolygon == isDynamicPass) {
 		horizontal_surface_data floor, ceiling;
 		
 		floor.texture = polygon->floor_texture;
@@ -497,14 +545,14 @@ void AddHorizontalSurfaces(short polygonIdx, polygon_data *polygon, bool isDynam
 	}
 }
 
-// A wall is dynamic if it belongs to a platform polygon OR it's adjacent to a platform polygon.
-void AddWalls(polygon_data *polygon, bool isDynamicPass) {
-	bool isPlatform = polygon->type == _polygon_is_platform;
+// A wall is dynamic if it belongs to a dynamic polygon OR it's adjacent to a platform polygon (because then its height will change).
+void AddWalls(short polygonIdx, polygon_data *polygon, bool isDynamicPass) {
+	bool isDynamicPolygon = isPolygonDynamic(polygonIdx, polygon);
 
 	for (short vertexIdx=0; vertexIdx < polygon->vertex_count; vertexIdx++) {
 		short adjacentPolgyonIdx = polygon->adjacent_polygon_indexes[vertexIdx];
 		bool isNextToPlatform = (adjacentPolgyonIdx != NONE && get_polygon_data(adjacentPolgyonIdx)->type == _polygon_is_platform);
-		bool wallIsDynamic = isPlatform || isNextToPlatform;
+		bool wallIsDynamic = isDynamicPolygon || isNextToPlatform;
 		if (wallIsDynamic != isDynamicPass) continue;
 		
 		short sideIdx = polygon->side_indexes[vertexIdx];
@@ -522,32 +570,32 @@ void AddWalls(polygon_data *polygon, bool isDynamicPass) {
 			case _full_side:
 				wall.h0 = polygon->floor_height;
 				wall.h1 = polygon->ceiling_height;
-				AddWall(polygon, line, vertexIdx, &wall, isDynamicPass);
+				AddWall(polygonIdx, polygon, line, vertexIdx, &wall, isDynamicPass);
 				break;
 
 			case _low_side:
 				wall.h0 = polygon->floor_height;
 				wall.h1 = line->highest_adjacent_floor;
-				AddWall(polygon, line, vertexIdx, &wall, isDynamicPass);
+				AddWall(polygonIdx, polygon, line, vertexIdx, &wall, isDynamicPass);
 				break;
 
 			case _high_side:
 				wall.h0 = line->lowest_adjacent_ceiling;
 				wall.h1 = polygon->ceiling_height;
-				AddWall(polygon, line, vertexIdx, &wall, isDynamicPass);
+				AddWall(polygonIdx, polygon, line, vertexIdx, &wall, isDynamicPass);
 				break;
 
 			case _split_side:
 				wall.h0 = line->lowest_adjacent_ceiling;
 				wall.h1 = polygon->ceiling_height;
-				AddWall(polygon, line, vertexIdx, &wall, isDynamicPass);
+				AddWall(polygonIdx, polygon, line, vertexIdx, &wall, isDynamicPass);
 
 				wall.h0 = polygon->floor_height;
 				wall.h1 = line->highest_adjacent_floor;
 				wall.texture_definition = &side->secondary_texture;
 				wall.transfer_mode = side->secondary_transfer_mode;
 				wall.lightsource_index = side->secondary_lightsource_index;
-				AddWall(polygon, line, vertexIdx, &wall, isDynamicPass);
+				AddWall(polygonIdx, polygon, line, vertexIdx, &wall, isDynamicPass);
 
 				break;
 		}
@@ -558,7 +606,7 @@ void AddWalls(polygon_data *polygon, bool isDynamicPass) {
 			wall.texture_definition = &side->transparent_texture;
 			wall.transfer_mode = side->transparent_transfer_mode;
 			wall.lightsource_index = side->transparent_lightsource_index;
-			AddWall(polygon, line, vertexIdx, &wall, isDynamicPass);
+			AddWall(polygonIdx, polygon, line, vertexIdx, &wall, isDynamicPass);
 		}
 	}
 }
@@ -636,7 +684,7 @@ void LoadStaticGeometry() {
 		polygon_data *polygon = get_polygon_data(polyIdx);
 		
 		AddHorizontalSurfaces(polyIdx, polygon, false);
-		AddWalls(polygon, false);
+		AddWalls(polyIdx, polygon, false);
 	}
 }
 
@@ -652,7 +700,7 @@ void UpdateDynamicGeometry() {
 		}
 		
 		AddHorizontalSurfaces(polyIdx, polygon, true);
-		AddWalls(polygon, true);
+		AddWalls(polyIdx, polygon, true);
 	}
 	
 	NSMutableArray<NSNumber*> *intensities = [NSMutableArray array];
@@ -679,6 +727,8 @@ void UpdateWorld() {
 		// which is heavily coupled to OpenGL but too complex to recreate from scratch
 		if (lastLoadedLevelNumber >= 0) { OGL_StopTextures(); }
 		OGL_StartTextures();
+
+		findOverlaps();
 
 		[renderer startUpdatingAllGeometry];
 		LoadStaticGeometry();

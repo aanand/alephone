@@ -17,6 +17,7 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 @property (nonatomic, assign) NSUInteger primitiveIdx;
 @property (nonatomic, assign) MTLPackedFloat4x3 transform;
 @property (nonatomic, assign) uint32_t instanceID;
+@property (nonatomic, assign) uint mask;
 @end
 @implementation Instance
 @end
@@ -67,6 +68,7 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 - (void) addInstanceOfPrimitive:(id<ASTrianglePrimitive>)primitive
 				  withTransform:(simd_float4x3)transform
 					 instanceID:(uint32_t)instanceID
+						   mask:(uint)mask
 {
 	NSUInteger primitiveIdx = [primitives indexOfObject:primitive];
 	assert(primitiveIdx != NSNotFound);
@@ -82,6 +84,7 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 		}
 	};
 	instance.instanceID = instanceID;
+	instance.mask = mask;
 	
 	[instances addObject:instance];
 }
@@ -155,7 +158,7 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 		MTLIndirectAccelerationStructureInstanceDescriptor desc = {};
 		desc.accelerationStructureID = [PASes objectAtIndex:instance.primitiveIdx].gpuResourceID;
 		desc.intersectionFunctionTableOffset = 0;
-		desc.mask = 0xFF;
+		desc.mask = instance.mask;
 		desc.transformationMatrix = instance.transform;
 		desc.userID = instance.instanceID;
 		instanceDescriptors[i] = desc;

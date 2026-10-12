@@ -44,7 +44,8 @@
  */
 - (void) addInstanceOfPrimitive:(id<ASTrianglePrimitive>)primitive
 				  withTransform:(simd_float4x3)transform
-					 instanceID:(uint32_t)instanceID;
+					 instanceID:(uint32_t)instanceID
+						   mask:(uint)mask;
 
 - (MTLResourceID) IASResourceID;
 - (NSArray<MTL4AccelerationStructureDescriptor*>*) allASDescriptors;
