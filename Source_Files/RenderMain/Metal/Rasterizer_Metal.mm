@@ -335,6 +335,9 @@ std::unordered_map<std::string, Material> materials = {
 		.transparency = 0.95,
 		.refractiveIndex = 1.33,
 	} },
+	
+	// Lava (M2)
+	{ "[ShapeDesc=4620/Collection=18/CTable=0/Frame=12/Bitmap=12]", { .emission = simd_make_float3(10.0, 5.0, 0.0) } },
 };
 
 std::unordered_map<std::string, Sky> skies = {
