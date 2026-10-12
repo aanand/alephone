@@ -304,6 +304,12 @@ std::unordered_map<std::string, Material> materials = {
 	// Green tiles (M1)
 	{ "[ShapeDesc=4635/Collection=18/CTable=0/Frame=27/Bitmap=27]", { .emission = simd_make_float3(5.0, 5.0, 5.0) } },
 	
+	// Door with red biohazard symbol (M1)
+	{ "[ShapeDesc=4879/Collection=19/CTable=0/Frame=15/Bitmap=15]", { .emission = simd_make_float3(1.0, 1.0, 1.0) } },
+	
+	// Wall with a big orange stripe in "Defend THIS!" (M1)
+	{ "[ShapeDesc=4868/Collection=19/CTable=0/Frame=4/Bitmap=4]", { .emission = simd_make_float3(1.0, 1.0, 1.0) } },
+	
 	// Lava (M1)
 	{ "[ShapeDesc=4893/Collection=19/CTable=0/Frame=29/Bitmap=29]", { .emission = simd_make_float3(10.0, 5.0, 0.0) } },
 	
