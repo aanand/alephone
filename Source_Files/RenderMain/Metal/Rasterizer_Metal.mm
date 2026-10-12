@@ -301,6 +301,9 @@ std::unordered_map<std::string, Material> materials = {
 	// Panels on columns in that one side room in Arrival (M1)
 	{ "[ShapeDesc=4617/Collection=18/CTable=0/Frame=9/Bitmap=9]", { .emission = simd_make_float3(6.0, 6.0, 6.0) } },
 	
+	// Green tiles (M1)
+	{ "[ShapeDesc=4635/Collection=18/CTable=0/Frame=27/Bitmap=27]", { .emission = simd_make_float3(5.0, 5.0, 5.0) } },
+	
 	// Lava (M1)
 	{ "[ShapeDesc=4893/Collection=19/CTable=0/Frame=29/Bitmap=29]", { .emission = simd_make_float3(10.0, 5.0, 0.0) } },
 	
