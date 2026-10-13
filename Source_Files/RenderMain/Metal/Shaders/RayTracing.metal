@@ -49,6 +49,7 @@ struct Hit {
 	float3 hitPoint;
 	float3 normal;
 	float3 diffuse;
+	float4 emission;
 	Material material;
 	int32_t lightSourceIndex;
 };
@@ -64,6 +65,8 @@ struct RayTracer {
 	instance_acceleration_structure accelerationStructure;
 	constant InstanceRayTracingData *perInstanceData;
 	constant TextureArgs *textures;
+	constant TextureArgs *normalMaps;
+	constant TextureArgs *emissionMaps;
 	constant LightSource *lightSources;
 	float3 forward; // Unit vector representing the player's look direction in world-space
 };
@@ -93,7 +96,8 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 		float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
 
 		// Texture-derived values
-		float4 texel = float4(defaultAttenuation, defaultAttenuation, defaultAttenuation, 1.0);
+		float4 albedo = float4(defaultAttenuation, defaultAttenuation, defaultAttenuation, 1.0);
+		float4 emission = float4(0.0);
 		bool instanceHasTexture = false;
 		constexpr sampler sam(mag_filter::nearest, min_filter::nearest, address::repeat);
 
@@ -113,17 +117,21 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 				instanceHasTexture = true;
 				float2 uv = getQuadUV(intersection, instanceData.uv);
 				texture2d<float> texture = rayTracer.textures->textures[instanceData.textureIndex];
-				texel = texture.sample(sam, uv);
+				texture2d<float> emissionMap = rayTracer.emissionMaps->textures[instanceData.textureIndex];
+				albedo = texture.sample(sam, uv);
+				emission = emissionMap.sample(sam, uv);
 			}
 		}
 		
 		if (!instanceHasTexture && primitiveData->textureIndex > 0) {
 			float2 uv = getTriangleUV(intersection, primitiveData->uv.columns[0], primitiveData->uv.columns[1], primitiveData->uv.columns[2]);
 			texture2d<float> texture = rayTracer.textures->textures[primitiveData->textureIndex];
-			texel = texture.sample(sam, uv);
+			texture2d<float> emissionMap = rayTracer.emissionMaps->textures[primitiveData->textureIndex];
+			albedo = texture.sample(sam, uv);
+			emission = emissionMap.sample(sam, uv);
 		}
 		
-		if (texel.a < 0.5) {
+		if (albedo.a < 0.5) {
 			// We hit something transparent - continue the ray.
 			ray.origin = hitPoint + ray.direction * rayEpsilon;
 			ray.max_distance -= (intersection.distance + rayEpsilon);
@@ -132,7 +140,8 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 				.didHit = true,
 				.hitPoint = hitPoint,
 				.normal = normal,
-				.diffuse = texel.rgb,
+				.diffuse = albedo.rgb,
+				.emission = emission,
 				.material = material,
 				.lightSourceIndex = lightSourceIndex,
 			};
@@ -172,18 +181,24 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 			// because that will be applied in the final pass
 			float3 diffuse = (uniforms.fullPathTracing || b > 0) ? hit.diffuse : float3(1.0);
 
-			if (length(hit.material.emission) > 0) {
-				float emission = max(hit.material.emission.r, max(hit.material.emission.g, hit.material.emission.b));
+//			if (length(hit.material.emission) > 0) {
+//				float emission = max(hit.material.emission.r, max(hit.material.emission.g, hit.material.emission.b));
+//
+//				if (hit.lightSourceIndex >= 0) {
+//					float intensity = rayTracer.lightSources[hit.lightSourceIndex].intensity;
+//					emission *= intensity;
+//				}
+//				
+//				if (emission > 0) {
+//					tcol += fcol * emission * hit.diffuse * hit.diffuse;
+//				}
+//			}
 
-				if (hit.lightSourceIndex >= 0) {
-					float intensity = rayTracer.lightSources[hit.lightSourceIndex].intensity;
-					emission *= intensity;
-				}
-				
-				if (emission > 0) {
-					tcol += fcol * emission * hit.diffuse * hit.diffuse;
-				}
+			float lightSourceMultiplier = 1.0;
+			if (hit.lightSourceIndex >= 0) {
+				lightSourceMultiplier = rayTracer.lightSources[hit.lightSourceIndex].intensity;
 			}
+			tcol += fcol * hit.emission.rgb * hit.emission.a * lightSourceMultiplier * 10.0;
 			
 			// Apply absorption if we just traversed a medium
 			if (isInMedium) {
@@ -296,7 +311,9 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 							 instance_acceleration_structure accelerationStructure [[ buffer(RayTracingKernelAccelerationStructureIndex) ]],
 							 constant Uniforms &uniforms [[ buffer(RayTracingKernelUniformsIndex) ]],
 							 constant InstanceRayTracingData *perInstanceData [[ buffer(RayTracingKernelPerInstanceDataIndex) ]],
-							 constant TextureArgs &textures [[ buffer(RayTracingKernelTexturesIndex) ]],
+							 constant TextureArgs &textures [[ buffer(RayTracingKernelAlbedoTexturesIndex) ]],
+							 constant TextureArgs &normalMaps [[ buffer(RayTracingKernelNormalMapsIndex) ]],
+							 constant TextureArgs &emissionMaps [[ buffer(RayTracingKernelEmissionMapsIndex) ]],
 							 constant LightSource &lightSources [[ buffer(RayTracingKernelLightSourcesIndex) ]],
 							 uint2 tid [[thread_position_in_grid]])
 {
@@ -328,6 +345,8 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 		.accelerationStructure = accelerationStructure,
 		.perInstanceData = perInstanceData,
 		.textures = &textures,
+		.normalMaps = &normalMaps,
+		.emissionMaps = &emissionMaps,
 		.lightSources = &lightSources,
 		.forward = forward.zxy,
 	};

@@ -103,7 +103,6 @@ API_AVAILABLE(macos(26.0))
 	id<MTL4ArgumentTable> vertexArgumentTable;
 	id<MTL4ArgumentTable> fragmentArgumentTable;
 	id<MTL4ArgumentTable> computeArgumentTable;
-	id<MTLArgumentEncoder> textureArgumentEncoder;
 
 	id<MTLFXTemporalScaler> temporalScaler;
 	id<MTLFXTemporalDenoisedScaler> temporalDenoisedScaler;
@@ -140,8 +139,18 @@ API_AVAILABLE(macos(26.0))
 	uint32_t numInstances;
 
 	NSMutableOrderedSet<NSString*> *textureIDs;
-	id<MTLBuffer> textureArgumentBuffer;
-	NSMutableDictionary<NSString *, id<MTLTexture>> *textures;
+
+	id<MTLArgumentEncoder> albedoTextureArgumentEncoder;
+	id<MTLArgumentEncoder> normalMapArgumentEncoder;
+	id<MTLArgumentEncoder> emissionMapArgumentEncoder;
+
+	id<MTLBuffer> albedoTextureArgumentBuffer;
+	id<MTLBuffer> normalMapArgumentBuffer;
+	id<MTLBuffer> emissionMapArgumentBuffer;
+
+	NSMutableDictionary<NSString *, id<MTLTexture>> *albedoTextures;
+	NSMutableDictionary<NSString *, id<MTLTexture>> *normalMaps;
+	NSMutableDictionary<NSString *, id<MTLTexture>> *emissionMaps;
 
 	// Geometry primitives that get reused across levels
 	VerticalQuad *verticalQuadPrimitive;
@@ -635,17 +644,33 @@ API_AVAILABLE(macos(26.0))
 	NSError *error;
 	id<MTLFunction> function = [pipeline.defaultLibrary newFunctionWithName:@"rayTracingKernel"];
 	
-	textureArgumentEncoder = [function newArgumentEncoderWithBufferIndex:RayTracingKernelTexturesIndex];
-	textureArgumentEncoder.label = @"textureArgumentEncoder";
-
-	textureArgumentBuffer = [pipeline.device newBufferWithLength:textureArgumentEncoder.encodedLength
+	albedoTextureArgumentEncoder = [function newArgumentEncoderWithBufferIndex:RayTracingKernelAlbedoTexturesIndex];
+	albedoTextureArgumentEncoder.label = @"albedoTextureArgumentEncoder";
+	albedoTextureArgumentBuffer = [pipeline.device newBufferWithLength:albedoTextureArgumentEncoder.encodedLength
 															   options:MTLResourceStorageModeShared];
-	textureArgumentBuffer.label = @"textureArgumentBuffer";
-	
-	[textureArgumentEncoder setArgumentBuffer:textureArgumentBuffer offset:0];
-	[initialRenderResidencySet addAllocation:textureArgumentBuffer];
-	[rayTracingResidencySet addAllocation:textureArgumentBuffer];
-	
+	albedoTextureArgumentBuffer.label = @"albedoTextureArgumentBuffer";
+	[albedoTextureArgumentEncoder setArgumentBuffer:albedoTextureArgumentBuffer offset:0];
+	[initialRenderResidencySet addAllocation:albedoTextureArgumentBuffer];
+	[rayTracingResidencySet addAllocation:albedoTextureArgumentBuffer];
+
+	normalMapArgumentEncoder = [function newArgumentEncoderWithBufferIndex:RayTracingKernelNormalMapsIndex];
+	normalMapArgumentEncoder.label = @"normalMapArgumentEncoder";
+	normalMapArgumentBuffer = [pipeline.device newBufferWithLength:normalMapArgumentEncoder.encodedLength
+														   options:MTLResourceStorageModeShared];
+	normalMapArgumentBuffer.label = @"normalMapArgumentBuffer";
+	[normalMapArgumentEncoder setArgumentBuffer:normalMapArgumentBuffer offset:0];
+	[initialRenderResidencySet addAllocation:normalMapArgumentBuffer];
+	[rayTracingResidencySet addAllocation:normalMapArgumentBuffer];
+
+	emissionMapArgumentEncoder = [function newArgumentEncoderWithBufferIndex:RayTracingKernelEmissionMapsIndex];
+	emissionMapArgumentEncoder.label = @"emissionMapArgumentEncoder";
+	emissionMapArgumentBuffer = [pipeline.device newBufferWithLength:emissionMapArgumentEncoder.encodedLength
+														   options:MTLResourceStorageModeShared];
+	emissionMapArgumentBuffer.label = @"emissionMapArgumentBuffer";
+	[emissionMapArgumentEncoder setArgumentBuffer:emissionMapArgumentBuffer offset:0];
+	[initialRenderResidencySet addAllocation:emissionMapArgumentBuffer];
+	[rayTracingResidencySet addAllocation:emissionMapArgumentBuffer];
+
 	id<MTLComputePipelineState> state = [pipeline.device newComputePipelineStateWithFunction:function
 																			  error:&error];
 	
@@ -682,7 +707,9 @@ API_AVAILABLE(macos(26.0))
 	pipeline = nil;
 	
 	textureIDs = nil;
-	textures = nil;
+	albedoTextures = nil;
+	normalMaps = nil;
+	emissionMaps = nil;
 	staticTriangles = nil;
 	dynamicTriangles = nil;
 	dynamicPolygonPrimitives = nil;
@@ -909,7 +936,9 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	numInstances = 0;
 
 	textureIDs = [NSMutableOrderedSet orderedSet];
-	textures = [NSMutableDictionary dictionary];
+	albedoTextures = [NSMutableDictionary dictionary];
+	normalMaps = [NSMutableDictionary dictionary];
+	emissionMaps = [NSMutableDictionary dictionary];
 	[self addPlaceholderTextureWithID:PLACEHOLDER_TEXTURE_ID];
 
 	if (!verticalQuadPrimitive) {
@@ -1031,20 +1060,44 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 - (bool) hasTextureWithID:(NSString*)textureID {
-	return [textures objectForKey:textureID] != nil;
+	return [textureIDs containsObject:textureID];
 }
 
-- (void) addTextureWithID:(NSString*)textureID image:(MetalImage *)image {
+-(void)addTextureWithID:(NSString *)textureID albedo:(MetalImage *)albedo normal:(MetalImage *)normal emission:(MetalImage *)emission {
 	NSAssert(textureIDs.count < MAX_TEXTURES, @"Exceeded texture limit");
 
-	id<MTLTexture> texture = [self makeTextureFromImage:image];
-	texture.label = textureID;
+	id<MTLTexture> albedoTexture = [self makeTextureFromImage:(albedo ? albedo : [self defaultAlbedoImage])];
+	albedoTexture.label = textureID;
+	[albedoTextures setObject:albedoTexture forKey:textureID];
+
+	id<MTLTexture> normalMap = [self makeTextureFromImage:(normal ? normal : [self defaultNormalMap])];
+	normalMap.label = [NSString stringWithFormat:@"%@ (normal map)", textureID];
+	[normalMaps setObject:normalMap forKey:textureID];
+
+	id<MTLTexture> emissionMap = [self makeTextureFromImage:(emission ? emission : [self defaultEmissionMap])];
+	emissionMap.label = [NSString stringWithFormat:@"%@ (emission map)", textureID];
+	[emissionMaps setObject:emissionMap forKey:textureID];
+
 	[textureIDs addObject:textureID];
-	[textures setObject:texture forKey:textureID];
 }
 
 - (void) addPlaceholderTextureWithID:(NSString *)textureID {
-	[self addTextureWithID:textureID image:[self makePlaceholderTextureImage]];
+	[self addTextureWithID:textureID albedo:nil normal:nil emission:nil];
+}
+
+- (MetalImage*) defaultAlbedoImage {
+	uint32 albedoPixels[1] = { 255u | (0u << 8) | (255u << 16) | (255u << 24) };
+	return [[MetalImage alloc] initWithWidth:1 height:1 pixels:albedoPixels];
+}
+
+- (MetalImage*) defaultNormalMap {
+	uint32 normalPixels[1] = { 128u | (128u << 8) | (255u << 16) | (255u << 24) };
+	return [[MetalImage alloc] initWithWidth:1 height:1 pixels:normalPixels];
+}
+
+- (MetalImage*) defaultEmissionMap {
+	uint32 emissionPixels[1] = { 0u | (0u << 8) | (0u << 16) | (0u << 24) };
+	return [[MetalImage alloc] initWithWidth:1 height:1 pixels:emissionPixels];
 }
 
 - (id<MTLTexture>) makeTextureFromImage:(MetalImage *)image {
@@ -1065,11 +1118,6 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 			   bytesPerRow:sizeof(uint32) * image.width];
 
 	return texture;
-}
-
-- (MetalImage*) makePlaceholderTextureImage {
-	uint32 pixels[1] = { 255u | (0u << 8) | (255u << 16) | (255u << 24) };
-	return [[MetalImage alloc] initWithWidth:1 height:1 pixels:pixels];
 }
 
 - (void) begin {
@@ -1108,7 +1156,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
 	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu (initial + raytracing)", frameNumber];
 
-	[self populateTextureArgumentBuffer];
+	[self populateTextureArgumentBuffers];
 	
 	[self encodeInitialRenderUpdatingFence:initialPassFence];
 
@@ -1155,14 +1203,27 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[pipeline.commandAllocator reset];
 }
 
-- (void) populateTextureArgumentBuffer {
-	[textureArgumentEncoder setArgumentBuffer:textureArgumentBuffer offset:0];
+- (void) populateTextureArgumentBuffers {
+	[albedoTextureArgumentEncoder setArgumentBuffer:albedoTextureArgumentBuffer offset:0];
+	[normalMapArgumentEncoder setArgumentBuffer:normalMapArgumentBuffer offset:0];
+	[emissionMapArgumentEncoder setArgumentBuffer:emissionMapArgumentBuffer offset:0];
 
 	for (NSUInteger i = 0; i < textureIDs.count; i++) {
-		id<MTLTexture> texture = textures[textureIDs[i]];
-		[textureArgumentEncoder setTexture:texture atIndex:i];
-		[initialRenderResidencySet addAllocation:texture];
-		[rayTracingResidencySet addAllocation:texture];
+		id<MTLTexture> albedoTexture = albedoTextures[textureIDs[i]];
+		id<MTLTexture> normalMap = normalMaps[textureIDs[i]];
+		id<MTLTexture> emissionMap = emissionMaps[textureIDs[i]];
+
+		[albedoTextureArgumentEncoder setTexture:albedoTexture atIndex:i];
+		[normalMapArgumentEncoder setTexture:normalMap atIndex:i];
+		[emissionMapArgumentEncoder setTexture:emissionMap atIndex:i];
+
+		[initialRenderResidencySet addAllocation:albedoTexture];
+		[initialRenderResidencySet addAllocation:normalMap];
+		[initialRenderResidencySet addAllocation:emissionMap];
+
+		[rayTracingResidencySet addAllocation:albedoTexture];
+		[rayTracingResidencySet addAllocation:normalMap];
+		[rayTracingResidencySet addAllocation:emissionMap];
 	}
 
 	[initialRenderResidencySet commit];
@@ -1238,7 +1299,10 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	
 	[vertexArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:InitialRenderVertexShaderUniformsIndex];
 	[vertexArgumentTable setAddress:triangleBuffer.gpuAddress atIndex:InitialRenderVertexShaderVertexDataIndex];
-	[fragmentArgumentTable setAddress:textureArgumentBuffer.gpuAddress atIndex:InitialRenderFragmentShaderTexturesIndex];
+
+	[fragmentArgumentTable setAddress:albedoTextureArgumentBuffer.gpuAddress atIndex:InitialRenderFragmentShaderAlbedoTexturesIndex];
+	[fragmentArgumentTable setAddress:normalMapArgumentBuffer.gpuAddress atIndex:InitialRenderFragmentShaderNormalMapsIndex];
+	[fragmentArgumentTable setAddress:emissionMapArgumentBuffer.gpuAddress atIndex:InitialRenderFragmentShaderEmissionMapsIndex];
 
 	WorldVertex *target = (WorldVertex*)triangleBuffer.contents;
 	NSUInteger __block numVertices = 0;
@@ -1288,7 +1352,9 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[computeArgumentTable setResource:topLevelIAS.gpuResourceID atBufferIndex:RayTracingKernelAccelerationStructureIndex];
 	[computeArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:RayTracingKernelUniformsIndex];
 	[computeArgumentTable setAddress:perInstanceDataBuffer.gpuAddress atIndex:RayTracingKernelPerInstanceDataIndex];
-	[computeArgumentTable setAddress:textureArgumentBuffer.gpuAddress atIndex:RayTracingKernelTexturesIndex];
+	[computeArgumentTable setAddress:albedoTextureArgumentBuffer.gpuAddress atIndex:RayTracingKernelAlbedoTexturesIndex];
+	[computeArgumentTable setAddress:normalMapArgumentBuffer.gpuAddress atIndex:RayTracingKernelNormalMapsIndex];
+	[computeArgumentTable setAddress:emissionMapArgumentBuffer.gpuAddress atIndex:RayTracingKernelEmissionMapsIndex];
 	[computeArgumentTable setAddress:lightSourcesBuffer.gpuAddress atIndex:RayTracingKernelLightSourcesIndex];
 	[computeArgumentTable setTexture:outputTexture.gpuResourceID atIndex:RayTracingKernelOutImageIndex];
 	[encoder setArgumentTable:computeArgumentTable];

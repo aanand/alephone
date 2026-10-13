@@ -294,6 +294,30 @@ int GetTextureScale(TextureManager *TMgr, short transfer_mode, bool didSetup) {
 	}
 }
 
+MetalImage* LoadTextureImage(const ImageDescriptor *image) {
+	if (image == NULL || !image->IsPresent()) {
+		return nil;
+	}
+
+	const uint32 *pixelsIn = image->GetBuffer();
+
+	// Convert RGBA -> BGRA
+	auto pixels = std::vector<uint32>(image->GetNumPixels());
+	for (int i = 0; i < image->GetNumPixels(); i++) {
+		uint32 pixel = pixelsIn[i];
+		uint8 r = (pixel) & 0xFF;
+		uint8 g = (pixel >> 8) & 0xFF;
+		uint8 b = (pixel >> 16) & 0xFF;
+		uint8 a = (pixel >> 24) & 0xFF;
+		
+		pixels[i] = b | (g << 8) | (r << 16) | (a << 24);
+	}
+	
+	return [[MetalImage alloc] initWithWidth:image->GetWidth()
+									  height:image->GetHeight()
+									  pixels:pixels.data()];
+}
+
 NSString* LoadTextureIntoRenderer(TextureManager *TMgr, bool didSetupSucceed) {
 	NSString *textureID = [NSString stringWithFormat:@"[ShapeDesc=%u/Collection=%d/CTable=%d/Frame=%d/Bitmap=%d]", TMgr->ShapeDesc, TMgr->GetCollection(), TMgr->GetCTable(), TMgr->GetFrame(), TMgr->GetBitmap()];
 	
@@ -305,26 +329,13 @@ NSString* LoadTextureIntoRenderer(TextureManager *TMgr, bool didSetupSucceed) {
 				return textureID;
 			}
 			
-			const ImageDescriptor *image = TMgr->GetNormal();
-			const uint32 *pixelsIn = image->GetBuffer();
+			// In Aleph One, the colour texture is referred to as the "normal" texture,
+			// and the normal map is referred to as the "bump" texture.
+			MetalImage *albedo = LoadTextureImage(TMgr->GetNormal());
+			MetalImage *normal = LoadTextureImage(TMgr->GetBump());
+			MetalImage *emission = LoadTextureImage(TMgr->GetGlowing());
 
-			// Convert RGBA -> BGRA
-			auto pixels = std::vector<uint32>(image->GetNumPixels());
-			for (int i = 0; i < image->GetNumPixels(); i++) {
-				uint32 pixel = pixelsIn[i];
-				uint8 r = (pixel) & 0xFF;
-				uint8 g = (pixel >> 8) & 0xFF;
-				uint8 b = (pixel >> 16) & 0xFF;
-				uint8 a = (pixel >> 24) & 0xFF;
-				
-				pixels[i] = b | (g << 8) | (r << 16) | (a << 24);
-			}
-			
-			MetalImage *metalImage = [[MetalImage alloc] initWithWidth:image->GetWidth()
-																height:image->GetHeight()
-																pixels:pixels.data()];
-
-			[renderer addTextureWithID:textureID image:metalImage];
+			[renderer addTextureWithID:textureID albedo:albedo normal:normal emission:emission];
 		}
 	}
 	

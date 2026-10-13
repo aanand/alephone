@@ -78,7 +78,7 @@ struct TextureArgs {
 
 fragment GBuffer
 initialRenderFragmentShader(RasterizerData in [[stage_in]],
-							constant TextureArgs &textures [[ buffer(InitialRenderFragmentShaderTexturesIndex) ]])
+							constant TextureArgs &textures [[ buffer(InitialRenderFragmentShaderAlbedoTexturesIndex) ]])
 {
 	constexpr sampler textureSampler (mag_filter::nearest, min_filter::nearest, address::repeat);
 	texture2d<float> colorTexture = textures.textures[in.textureIndex];
