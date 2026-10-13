@@ -266,6 +266,8 @@ public:
 	const ImageDescriptor* GetGlowing();
 	const ImageDescriptor* GetBump();
 	
+	const bool HasSubstitution();
+	
 	// Always call this one and call it first; safe to allocate texture ID's in it
 	void RenderNormal();
 	// Call this one after RenderNormal()

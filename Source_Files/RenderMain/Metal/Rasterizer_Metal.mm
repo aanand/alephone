@@ -48,6 +48,7 @@ std::unordered_map<short, std::unordered_set<short>> overlaps;
 @interface PolygonTexture : NSObject
 @property (nonatomic) NSString *textureID;
 @property (nonatomic) int scale;
+@property (nonatomic) simd_float2x2 transform;
 @end
 @implementation PolygonTexture
 @end
@@ -346,6 +347,22 @@ PolygonTexture *LoadPolygonTexture(shape_descriptor ShapeDesc, short TransferMod
 	PolygonTexture *result = [[PolygonTexture alloc] init];
 	result.textureID = textureID;
 	result.scale = scale;
+	
+	if (TMgr->HasSubstitution()) {
+		result.transform = (simd_float2x2){
+			.columns = {
+				{ 0.0, 1.0 },
+				{ 1.0, 0.0 },
+			}
+		};
+	} else {
+		result.transform = (simd_float2x2){
+			.columns = {
+				{ 1.0, 0.0 },
+				{ 0.0, 1.0 },
+			}
+		};
+	}
 
 	polygonTextureCache[key] = result;
 	
@@ -466,6 +483,7 @@ void AddWall(short polygonIdx,
 	PolygonTexture *texture = LoadPolygonTexture(surface->texture_definition->texture, surface->transfer_mode);
 	NSString *textureID = texture.textureID;
 	int div = texture.scale;
+
 	world_distance x0 = surface->texture_definition->x0 % div;
 	world_distance y0 = surface->texture_definition->y0 % div;
 	float tOffset = surface->h1 + y0;
@@ -476,6 +494,11 @@ void AddWall(short polygonIdx,
 		(simd_float2){ (tOffset - surface->h1) / (float) div, (x0 + line->length) / (float) div },
 		(simd_float2){ (tOffset - surface->h0) / (float) div, (x0 + line->length) / (float) div },
 	};
+	
+	uv.columns[0] = simd_mul(texture.transform, uv.columns[0]);
+	uv.columns[1] = simd_mul(texture.transform, uv.columns[1]);
+	uv.columns[2] = simd_mul(texture.transform, uv.columns[2]);
+	uv.columns[3] = simd_mul(texture.transform, uv.columns[3]);
 	
 	Material material = getMaterial(textureID, surface->transfer_mode == _xfer_landscape);
 	
@@ -514,7 +537,12 @@ void AddHorizontalSurface(short polygonIdx, polygon_data *polygon, horizontal_su
 	for (int i = 0; i < polygon->vertex_count; i++) {
 		world_point2d position = get_endpoint_data(polygon->endpoint_indexes[isCeiling ? (polygon->vertex_count - 1 - i) : i])->vertex;
 		vertices[i] = { position.x, position.y };
-		uv[i] = { (position.x + surface->origin.x) / scale, (position.y + surface->origin.y) / scale };
+
+		simd_float2 baseUV = {
+			(position.x + surface->origin.x) / scale,
+			(position.y + surface->origin.y) / scale,
+		};
+		uv[i] = simd_mul(texture.transform, baseUV);
 	}
 	
 	Material material = getMaterial(textureID, surface->transfer_mode == _xfer_landscape);
