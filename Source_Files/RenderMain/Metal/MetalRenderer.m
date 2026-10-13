@@ -62,7 +62,7 @@ typedef enum {
 	TemporalDenoisedUpscale,
 } PostProcessingType;
 
-const bool FULL_PATH_TRACING = true;
+const bool FULL_PATH_TRACING = false;
 const PostProcessingType POST_PROCESSING_TYPE = NoPostProcessing;
 
 NSArray<NSNumber*> *waveletDenoisePasses = @[@8, @4, @2, @1];
@@ -1251,11 +1251,14 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 		target[numVertices] = triangle.v0;
 		target[numVertices].textureIndex = (uint32_t)textureIndex;
+		target[numVertices].material = triangle.surface.material;
 		target[numVertices+1] = triangle.v1;
 		target[numVertices+1].textureIndex = (uint32_t)textureIndex;
+		target[numVertices+1].material = triangle.surface.material;
 		target[numVertices+2] = triangle.v2;
 		target[numVertices+2].textureIndex = (uint32_t)textureIndex;
-		
+		target[numVertices+1].material = triangle.surface.material;
+
 		numVertices += 3;
 	};
 	

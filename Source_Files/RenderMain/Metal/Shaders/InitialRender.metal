@@ -18,6 +18,7 @@ struct RasterizerData {
 	float3 normal;
 	uint32_t textureIndex;
 	float2 textureCoordinate;
+	bool isLandscape [[flat]];
 };
 
 // Reorient a world-space position to view-space.
@@ -57,6 +58,7 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 	out.normal = v.normal;
 	out.textureIndex = v.textureIndex;
 	out.textureCoordinate = v.textureCoordinate;
+	out.isLandscape = v.material.isLandscape;
 	
 	return out;
 }
@@ -80,9 +82,13 @@ initialRenderFragmentShader(RasterizerData in [[stage_in]],
 {
 	constexpr sampler textureSampler (mag_filter::nearest, min_filter::nearest, address::repeat);
 	texture2d<float> colorTexture = textures.textures[in.textureIndex];
-	const float4 colorSample = colorTexture.sample(textureSampler, in.textureCoordinate);
+	float4 colorSample = colorTexture.sample(textureSampler, in.textureCoordinate);
 	if (colorSample.a == 0) {
 		discard_fragment();
+	}
+	if (in.isLandscape) {
+		// Landscape textures aren't loaded in right now, so colorSample comes out as magenta - override it to white
+		colorSample = float4(1.0);
 	}
 	return {
 		.diffuseAlbedo = float4(colorSample),

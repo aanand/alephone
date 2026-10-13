@@ -138,18 +138,6 @@ typedef struct {
 	uint step;
 } DenoiseConfig;
 
-// A vertex in Marathon world-space: X = east, Y = north, Z = up
-typedef struct {
-	vector_int3 position;
-	uint32_t textureIndex;
-	vector_float2 textureCoordinate;
-	vector_float3 normal;
-} WorldVertex;
-
-typedef struct {
-	float intensity;
-} LightSource;
-
 typedef struct {
 	bool isLandscape;
 	simd_float3 emission;
@@ -157,6 +145,19 @@ typedef struct {
 	float transparency;
 	float refractiveIndex;
 } Material;
+
+// A vertex in Marathon world-space: X = east, Y = north, Z = up
+typedef struct {
+	vector_int3 position;
+	uint32_t textureIndex;
+	vector_float2 textureCoordinate;
+	vector_float3 normal;
+	Material material;
+} WorldVertex;
+
+typedef struct {
+	float intensity;
+} LightSource;
 
 typedef struct {
 	vector_float3 surfaceNormal;
