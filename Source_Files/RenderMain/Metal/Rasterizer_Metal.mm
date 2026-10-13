@@ -381,6 +381,7 @@ PolygonTexture *LoadPolygonTexture(shape_descriptor ShapeDesc, short TransferMod
 }
 
 std::unordered_map<std::string, Material> materials = {
+	/*
 	// Light panels (M1)
 	{ "[ShapeDesc=4622/Collection=18/CTable=0/Frame=14/Bitmap=14]", { .emission = simd_make_float3(2.0, 2.0, 2.0) } },
 	{ "[ShapeDesc=4357/Collection=17/CTable=0/Frame=5/Bitmap=5]", { .emission = simd_make_float3(2.0, 2.0, 2.0) } },
@@ -410,32 +411,14 @@ std::unordered_map<std::string, Material> materials = {
 	
 	// Lava (M1)
 	{ "[ShapeDesc=4893/Collection=19/CTable=0/Frame=29/Bitmap=29]", { .emission = simd_make_float3(10.0, 5.0, 0.0) } },
+	 */
 	
-	// Light panels (M2)
-	{ "[ShapeDesc=4377/Collection=17/CTable=0/Frame=25/Bitmap=25]", { .emission = simd_make_float3(10.0, 10.0, 10.0) } },
-	{ "[ShapeDesc=4886/Collection=19/CTable=0/Frame=22/Bitmap=22]", { .emission = simd_make_float3(10.0, 10.0, 10.0) } },
-	
-	// Green wall panels (M2)
-	{ "[ShapeDesc=4361/Collection=17/CTable=0/Frame=9/Bitmap=9]", { .emission = simd_make_float3(0.0, 10.0, 0.0) } },
-	
-	// Terminals and pattern buffers (M2)
-	{ "[ShapeDesc=4356/Collection=17/CTable=0/Frame=4/Bitmap=4]", { .emission = simd_make_float3(1.0, 1.0, 1.0) } },
-	
-	// Health/air recharge panels (M2)
-	{ "[ShapeDesc=4355/Collection=17/CTable=0/Frame=3/Bitmap=3]", { .emission = simd_make_float3(1.0, 1.0, 1.0) } },
-	
-	// Switches (M2)
-	{ "[ShapeDesc=4353/Collection=17/CTable=0/Frame=1/Bitmap=1]", { .emission = simd_make_float3(10.0, 10.0, 10.0) } },
-
 	// Water (M2)
 	{ "[ShapeDesc=4371/Collection=17/CTable=0/Frame=19/Bitmap=19]", {
 		.reflectivity = 0.75,
 		.transparency = 0.95,
 		.refractiveIndex = 1.33,
 	} },
-	
-	// Lava (M2)
-	{ "[ShapeDesc=4620/Collection=18/CTable=0/Frame=12/Bitmap=12]", { .emission = simd_make_float3(10.0, 5.0, 0.0) } },
 };
 
 std::unordered_map<std::string, Sky> skies = {

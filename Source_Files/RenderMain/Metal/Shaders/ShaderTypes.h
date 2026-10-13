@@ -144,7 +144,6 @@ typedef struct {
 
 typedef struct {
 	bool isLandscape;
-	simd_float3 emission;
 	float reflectivity;
 	float transparency;
 	float refractiveIndex;

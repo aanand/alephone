@@ -181,19 +181,6 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 			// because that will be applied in the final pass
 			float3 diffuse = (uniforms.fullPathTracing || b > 0) ? hit.diffuse : float3(1.0);
 
-//			if (length(hit.material.emission) > 0) {
-//				float emission = max(hit.material.emission.r, max(hit.material.emission.g, hit.material.emission.b));
-//
-//				if (hit.lightSourceIndex >= 0) {
-//					float intensity = rayTracer.lightSources[hit.lightSourceIndex].intensity;
-//					emission *= intensity;
-//				}
-//				
-//				if (emission > 0) {
-//					tcol += fcol * emission * hit.diffuse * hit.diffuse;
-//				}
-//			}
-
 			float lightSourceMultiplier = 1.0;
 			if (hit.lightSourceIndex >= 0) {
 				lightSourceMultiplier = rayTracer.lightSources[hit.lightSourceIndex].intensity;
