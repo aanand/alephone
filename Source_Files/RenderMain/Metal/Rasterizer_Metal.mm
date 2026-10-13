@@ -45,6 +45,15 @@ const float flashlightIntensity = 5.0;
 short lastVisitedPolygon = NONE;
 std::unordered_map<short, std::unordered_set<short>> overlaps;
 
+@interface PolygonTexture : NSObject
+@property (nonatomic) NSString *textureID;
+@property (nonatomic) int scale;
+@end
+@implementation PolygonTexture
+@end
+
+NSMutableDictionary<NSString*, PolygonTexture*> *polygonTextureCache;
+
 bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
     logWarning("Metal_InitializeForWindow(window, %d, %d)", width, height);
 
@@ -321,6 +330,28 @@ NSString* LoadTextureIntoRenderer(TextureManager *TMgr, bool didSetupSucceed) {
 	return textureID;
 }
 
+PolygonTexture *LoadPolygonTexture(shape_descriptor ShapeDesc, short TransferMode) {
+	NSString *key = [NSString stringWithFormat:@"%u/%d", ShapeDesc, TransferMode];
+
+	PolygonTexture *cachedResult = [polygonTextureCache objectForKey:key];
+	if (cachedResult) {
+		return cachedResult;
+	}
+	
+	auto TMgr = std::make_unique<TextureManager>();
+	bool didSetup = SetupPolygonTexture(TMgr.get(), ShapeDesc);
+	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), didSetup);
+	int scale = GetTextureScale(TMgr.get(), TransferMode, didSetup);
+
+	PolygonTexture *result = [[PolygonTexture alloc] init];
+	result.textureID = textureID;
+	result.scale = scale;
+
+	polygonTextureCache[key] = result;
+	
+	return result;
+}
+
 std::unordered_map<std::string, Material> materials = {
 	// Light panels (M1)
 	{ "[ShapeDesc=4622/Collection=18/CTable=0/Frame=14/Bitmap=14]", { .emission = simd_make_float3(2.0, 2.0, 2.0) } },
@@ -432,10 +463,9 @@ void AddWall(short polygonIdx,
 
 	if (surface->h1 <= surface->h0 || surface->texture_definition->texture == UNONE) return;
 	
-	auto TMgr = std::make_unique<TextureManager>();
-	bool didSetup = SetupPolygonTexture(TMgr.get(), surface->texture_definition->texture);
-	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), didSetup);
-	int div = GetTextureScale(TMgr.get(), surface->transfer_mode, didSetup);
+	PolygonTexture *texture = LoadPolygonTexture(surface->texture_definition->texture, surface->transfer_mode);
+	NSString *textureID = texture.textureID;
+	int div = texture.scale;
 	world_distance x0 = surface->texture_definition->x0 % div;
 	world_distance y0 = surface->texture_definition->y0 % div;
 	float tOffset = surface->h1 + y0;
@@ -473,11 +503,9 @@ void AddHorizontalSurface(short polygonIdx, polygon_data *polygon, horizontal_su
 		return;
 	}
 	
-	auto TMgr = std::make_unique<TextureManager>();
-	bool didSetup = SetupPolygonTexture(TMgr.get(), surface->texture);
-	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), didSetup);
-	
-	float scale = (float) GetTextureScale(TMgr.get(), surface->transfer_mode, didSetup);
+	PolygonTexture *texture = LoadPolygonTexture(surface->texture, surface->transfer_mode);
+	NSString *textureID = texture.textureID;
+	float scale = (float) texture.scale;
 	
 	auto vertices = std::vector<simd_int2>(polygon->vertex_count);
 	auto uv = std::vector<simd_float2>(polygon->vertex_count);
@@ -727,6 +755,14 @@ void UpdateWorld() {
 		// which is heavily coupled to OpenGL but too complex to recreate from scratch
 		if (lastLoadedLevelNumber >= 0) { OGL_StopTextures(); }
 		OGL_StartTextures();
+		
+		for (short collection = 0; collection < MAXIMUM_COLLECTIONS; collection++) {
+			if (is_collection_present(collection)) {
+				OGL_LoadTextures(collection);
+			}
+		}
+		
+		polygonTextureCache = [NSMutableDictionary dictionary];
 
 		findOverlaps();
 
