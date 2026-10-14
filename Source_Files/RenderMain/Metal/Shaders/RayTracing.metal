@@ -95,38 +95,37 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 		
 		float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
 
-		// Texture-derived values
-		float4 albedo = float4(defaultAttenuation, defaultAttenuation, defaultAttenuation, 1.0);
-		float4 emission = float4(0.0);
-		bool instanceHasTexture = false;
-		constexpr sampler sam(mag_filter::nearest, min_filter::nearest, address::repeat);
+		uint32_t textureIndex = 0;
+		float2 uv = float2(0.0, 0.0);
 
-		const device PrimitiveRayTracingData *primitiveData;
-		primitiveData = (const device PrimitiveRayTracingData*) intersection.primitive_data;
-		float3 normal = primitiveData->surfaceNormal;
+		const device PrimitiveRayTracingData *primitiveData = (const device PrimitiveRayTracingData*) intersection.primitive_data;
+		float3 surfaceNormal = primitiveData->surfaceNormal;
 		Material material = primitiveData->material;
 		int32_t lightSourceIndex = primitiveData->lightSourceIndex;
 
 		uint32_t instanceId = intersection.user_instance_id;
 		if (instanceId > 0) {
 			InstanceRayTracingData instanceData = rayTracer.perInstanceData[instanceId];
-			normal = instanceData.surfaceNormal;
+			surfaceNormal = instanceData.surfaceNormal;
 			material = instanceData.material;
 			
 			if (instanceData.textureIndex > 0) {
-				instanceHasTexture = true;
-				float2 uv = getQuadUV(intersection, instanceData.uv);
-				texture2d<float> texture = rayTracer.textures->textures[instanceData.textureIndex];
-				texture2d<float> emissionMap = rayTracer.emissionMaps->textures[instanceData.textureIndex];
-				albedo = texture.sample(sam, uv);
-				emission = emissionMap.sample(sam, uv);
+				textureIndex = instanceData.textureIndex;
+				uv = getQuadUV(intersection, instanceData.uv);
 			}
 		}
 		
-		if (!instanceHasTexture && primitiveData->textureIndex > 0) {
-			float2 uv = getTriangleUV(intersection, primitiveData->uv.columns[0], primitiveData->uv.columns[1], primitiveData->uv.columns[2]);
-			texture2d<float> texture = rayTracer.textures->textures[primitiveData->textureIndex];
-			texture2d<float> emissionMap = rayTracer.emissionMaps->textures[primitiveData->textureIndex];
+		if (textureIndex == 0 && primitiveData->textureIndex > 0) {
+			textureIndex = primitiveData->textureIndex;
+			uv = getTriangleUV(intersection, primitiveData->uv.columns[0], primitiveData->uv.columns[1], primitiveData->uv.columns[2]);
+		}
+		
+		float4 albedo = float4(defaultAttenuation, defaultAttenuation, defaultAttenuation, 1.0);
+		float4 emission = float4(0.0);
+		if (textureIndex > 0) {
+			constexpr sampler sam(mag_filter::nearest, min_filter::nearest, address::repeat);
+			texture2d<float> texture = rayTracer.textures->textures[textureIndex];
+			texture2d<float> emissionMap = rayTracer.emissionMaps->textures[textureIndex];
 			albedo = texture.sample(sam, uv);
 			emission = emissionMap.sample(sam, uv);
 		}
@@ -139,7 +138,7 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 			return {
 				.didHit = true,
 				.hitPoint = hitPoint,
-				.normal = normal,
+				.normal = surfaceNormal,
 				.diffuse = albedo.rgb,
 				.emission = emission,
 				.material = material,
