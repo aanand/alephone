@@ -144,7 +144,7 @@ typedef struct {
 
 typedef struct {
 	bool isLandscape;
-	float reflectivity;
+	float f0;
 	float transparency;
 	float refractiveIndex;
 } Material;

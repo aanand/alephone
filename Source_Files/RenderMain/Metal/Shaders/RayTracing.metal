@@ -217,12 +217,23 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 				fcol *= exp(-float3(0.5, 0.3, 0.1) * dist * 0.001);
 			}
 
+			float f0 = hit.material.f0;
+			float LdotH = clamp(dot(ray.direction, -normal), 0.0, 1.0);
+			float schlick = f0 + (1.0 - f0) * pow(1.0 - LdotH, 5.0);
+			
 			// If the material we just hit is a medium, decide whether to enter it
 			if (hit.material.transparency > hash1(seed)) {
+				bool isEntering = dot(ray.direction, hit.surfaceNormal) < 0.0;
+
+				if (isEntering && schlick > hash1(seed)) {
+					ray.origin = hitPoint;
+					ray.direction = reflect(ray.direction, normal);
+					continue;
+				}
+				
 				// This will produce the wrong result if transitioning from medium to medium, e.g. water to lava, but I don't know if that's possible
 				isInMedium = !isInMedium;
 
-				bool isEntering = dot(ray.direction, normal) < 0.0;
 				float3 refracted = refract(ray.direction,
 										   isEntering ? normal : -normal,
 										   isEntering ? 1.0/hit.material.refractiveIndex : hit.material.refractiveIndex);
@@ -234,9 +245,10 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 				continue;
 			}
 			
-			if (hit.material.reflectivity > hash1(seed)) {
+			if (schlick > hash1(seed)) {
 				ray.origin = hitPoint;
 				ray.direction = reflect(ray.direction, normal);
+				fcol *= clamp(dot(ray.direction, hit.surfaceNormal), 0.0, 1.0);
 				continue;
 			}
 			
