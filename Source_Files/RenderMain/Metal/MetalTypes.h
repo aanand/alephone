@@ -56,6 +56,12 @@
 					   v2:(WorldVertex)v2
 				  surface:(MetalSurface*)surface;
 
+/**
+ World-space tangent vector, for use when applying a normal map.
+ The tangent components are in XYZ and the handedness for calculating the bitangent (+1 or -1) is in W.
+ */
+- (simd_float4) tangent;
+
 @end
 
 #pragma mark - Raytracing primitives

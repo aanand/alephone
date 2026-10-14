@@ -62,7 +62,7 @@ typedef enum {
 	TemporalDenoisedUpscale,
 } PostProcessingType;
 
-const bool FULL_PATH_TRACING = false;
+const bool FULL_PATH_TRACING = true;
 const PostProcessingType POST_PROCESSING_TYPE = NoPostProcessing;
 
 NSArray<NSNumber*> *waveletDenoisePasses = @[@8, @4, @2, @1];
@@ -766,7 +766,9 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 -(void)addDynamicPolygon:(MetalPolygon *)polygon withID:(int)ID enabled:(BOOL)isEnabled {
+	Triangle __block *firstTriangle = nil;
 	[polygon eachTriangle:^(Triangle *triangle) {
+		if (firstTriangle == nil) firstTriangle = triangle;
 		[self->dynamicTriangles addObject:triangle];
 	}];
 	assert(dynamicTriangles.count < MAX_TRIANGLES);
@@ -780,6 +782,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	
 	uint32_t instanceID = [self addInstanceData:(InstanceRayTracingData){
 		.surfaceNormal = polygon.surface.normal,
+		.surfaceTangent = firstTriangle.tangent,
 		.material = polygon.surface.material,
 		// TODO: figure out how to pass in UV data for polygons
 		.textureIndex = 0,
@@ -792,7 +795,9 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 -(void)addDynamicWall:(MetalWall *)wall enabled:(BOOL)isEnabled {
+	Triangle __block *firstTriangle = nil;
 	[wall eachTriangle:^(Triangle *triangle) {
+		if (firstTriangle == nil) firstTriangle = triangle;
 		[self->dynamicTriangles addObject:triangle];
 	}];
 	assert(dynamicTriangles.count < MAX_TRIANGLES);
@@ -801,6 +806,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	NSAssert(textureIndex != NSNotFound, @"Missing dynamic wall texture ID");
 	uint32_t instanceID = [self addInstanceData:(InstanceRayTracingData){
 		.surfaceNormal = wall.surface.normal,
+		.surfaceTangent = firstTriangle.tangent,
 		.material = wall.surface.material,
 		.uv = wall.uv,
 		.textureIndex = (uint32_t)textureIndex,

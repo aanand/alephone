@@ -30,6 +30,49 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 	return self;
 }
 
+- (simd_float3) p0 {
+	return simd_make_float3(_v0.position.x, _v0.position.y, _v0.position.z);
+}
+
+- (simd_float3) p1 {
+	return simd_make_float3(_v1.position.x, _v1.position.y, _v1.position.z);
+}
+
+- (simd_float3) p2 {
+	return simd_make_float3(_v2.position.x, _v2.position.y, _v2.position.z);
+}
+
+- (simd_float2) uv0 {
+	return _v0.textureCoordinate;
+}
+
+- (simd_float2) uv1 {
+	return _v1.textureCoordinate;
+}
+
+- (simd_float2) uv2 {
+	return _v2.textureCoordinate;
+}
+
+- (simd_float4) tangent {
+	simd_float3 dp1 = self.p1 - self.p0;
+	simd_float3 dp2 = self.p2 - self.p0;
+	simd_float2 duv1 = self.uv1 - self.uv0;
+	simd_float2 duv2 = self.uv2 - self.uv0;
+	
+	float det = (duv1.x * duv2.y - duv2.x * duv1.y);
+	float r = (fabs(det) > 1e-6f) ? (1.0f / det) : 0.0f;
+	
+	simd_float3 T = (dp1 * duv2.y - dp2 * duv1.y) * r;
+	simd_float3 B = (dp2 * duv1.x - dp1 * duv2.x) * r;
+	simd_float3 N = _surface.normal;
+	
+	T = simd_normalize(T - N * simd_dot(N, T));
+	float H = (simd_dot(simd_cross(N, T), B) < 0.0f) ? -1.0f : 1.0f;
+
+	return simd_make_float4(T, H);
+}
+
 @end
 
 @implementation MetalImage
@@ -312,20 +355,21 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 		for (int i = 0; i < _triangles.count; i++) {
 			Triangle *triangle = [_triangles objectAtIndex:i];
 
-			vertices[i*3+0] = simd_make_float3(triangle.v0.position.x, triangle.v0.position.y, triangle.v0.position.z);
-			vertices[i*3+1] = simd_make_float3(triangle.v1.position.x, triangle.v1.position.y, triangle.v1.position.z);
-			vertices[i*3+2] = simd_make_float3(triangle.v2.position.x, triangle.v2.position.y, triangle.v2.position.z);
+			vertices[i*3+0] = triangle.p0;
+			vertices[i*3+1] = triangle.p1;
+			vertices[i*3+2] = triangle.p2;
 
 			primitiveData[i].surfaceNormal = triangle.surface.normal;
+			primitiveData[i].surfaceTangent = triangle.tangent;
 			primitiveData[i].material = triangle.surface.material;
 
 			NSUInteger textureIndex = [textureIDs indexOfObject:triangle.surface.textureID];
 			NSAssert(textureIndex != NSNotFound, @"Missing static triangle texture ID");
 			primitiveData[i].textureIndex = (uint32_t)textureIndex;
 
-			primitiveData[i].uv.columns[0] = triangle.v0.textureCoordinate;
-			primitiveData[i].uv.columns[1] = triangle.v1.textureCoordinate;
-			primitiveData[i].uv.columns[2] = triangle.v2.textureCoordinate;
+			primitiveData[i].uv.columns[0] = triangle.uv0;
+			primitiveData[i].uv.columns[1] = triangle.uv1;
+			primitiveData[i].uv.columns[2] = triangle.uv2;
 
 			primitiveData[i].lightSourceIndex = triangle.surface.lightSourceIndex;
 		}

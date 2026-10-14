@@ -47,6 +47,7 @@ float2 getQuadUV(intersector<triangle_data, instancing>::result_type intersectio
 struct Hit {
 	bool didHit;
 	float3 hitPoint;
+	float3 surfaceNormal;
 	float3 normal;
 	float3 diffuse;
 	float4 emission;
@@ -100,6 +101,7 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 
 		const device PrimitiveRayTracingData *primitiveData = (const device PrimitiveRayTracingData*) intersection.primitive_data;
 		float3 surfaceNormal = primitiveData->surfaceNormal;
+		float4 surfaceTangent = primitiveData->surfaceTangent;
 		Material material = primitiveData->material;
 		int32_t lightSourceIndex = primitiveData->lightSourceIndex;
 
@@ -107,6 +109,7 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 		if (instanceId > 0) {
 			InstanceRayTracingData instanceData = rayTracer.perInstanceData[instanceId];
 			surfaceNormal = instanceData.surfaceNormal;
+			surfaceTangent = instanceData.surfaceTangent;
 			material = instanceData.material;
 			
 			if (instanceData.textureIndex > 0) {
@@ -122,12 +125,33 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 		
 		float4 albedo = float4(defaultAttenuation, defaultAttenuation, defaultAttenuation, 1.0);
 		float4 emission = float4(0.0);
+		float3 normal = surfaceNormal;
+
 		if (textureIndex > 0) {
 			constexpr sampler sam(mag_filter::nearest, min_filter::nearest, address::repeat);
 			texture2d<float> texture = rayTracer.textures->textures[textureIndex];
+			texture2d<float> normalMap = rayTracer.normalMaps->textures[textureIndex];
 			texture2d<float> emissionMap = rayTracer.emissionMaps->textures[textureIndex];
+
 			albedo = texture.sample(sam, uv);
 			emission = emissionMap.sample(sam, uv);
+			
+			if (length(surfaceTangent) > 0.0) {
+				float3 T = normalize(surfaceTangent.xyz);
+				float3 N = normalize(surfaceNormal);
+				float3 B = cross(T, N) * surfaceTangent.w;
+				float3x3 TBN = float3x3(T, B, N);
+
+				float3 texelNormal = normalMap.sample(sam, uv).xyz * 2.0 - 1.0;
+				normal = normalize(TBN * texelNormal);
+				
+				// Attempt to remove the baked-in lighting from the albedo texture.
+				// This isn't perfect, but it helps get back some of the brightness.
+				float3 L = normalize(float3(0.5, 1.0, 0.5));
+				float3 lightIntensity = clamp(dot(L, texelNormal), 0.2, 1.0);
+				float3 delit = mix(albedo.rgb, albedo.rgb/lightIntensity, 0.5);
+				albedo = float4(delit, albedo.a);
+			}
 		}
 		
 		if (albedo.a < 0.5) {
@@ -138,7 +162,8 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 			return {
 				.didHit = true,
 				.hitPoint = hitPoint,
-				.normal = surfaceNormal,
+				.surfaceNormal = surfaceNormal,
+				.normal = normal,
 				.diffuse = albedo.rgb,
 				.emission = emission,
 				.material = material,
@@ -285,6 +310,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 			{
 				ray.origin = hitPoint;
 				ray.direction = sampleUnitHemisphereCosineWeighted(hash2(seed), normal);
+				fcol *= clamp(dot(ray.direction, hit.surfaceNormal), 0.0, 1.0);
 				fcol *= diffuse;
 			}
 		}

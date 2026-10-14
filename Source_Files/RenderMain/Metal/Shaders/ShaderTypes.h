@@ -162,8 +162,13 @@ typedef struct {
 	float intensity;
 } LightSource;
 
+// The fourth component of a tangent vector is the handedness (+1 or -1),
+// which lets us calculate the bitangent from the normal and tangent.
+
 typedef struct {
 	vector_float3 surfaceNormal;
+	vector_float4 surfaceTangent;
+
 	Material material;
 
 	matrix_float3x2 uv;
@@ -174,6 +179,8 @@ typedef struct {
 
 typedef struct {
 	vector_float3 surfaceNormal;
+	vector_float4 surfaceTangent;
+
 	Material material;
 
 	matrix_float4x2 uv;
