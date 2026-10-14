@@ -1097,7 +1097,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 - (MetalImage*) defaultNormalMap {
-	uint32 normalPixels[1] = { 128u | (128u << 8) | (255u << 16) | (255u << 24) };
+	uint32 normalPixels[1] = { 255u | (128u << 8) | (128u << 16) | (255u << 24) };
 	return [[MetalImage alloc] initWithWidth:1 height:1 pixels:normalPixels];
 }
 
