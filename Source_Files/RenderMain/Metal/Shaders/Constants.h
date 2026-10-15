@@ -13,7 +13,7 @@ using namespace metal;
 
 
 constant float defaultAttenuation = 0.9;
-constant bool toneMap = false;
+constant bool toneMap = true;
 
 constant float weaponFlareMultiplier = 5.0;
 

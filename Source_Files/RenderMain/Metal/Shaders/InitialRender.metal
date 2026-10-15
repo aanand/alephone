@@ -51,9 +51,12 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 
 	float4 position = transform(v.position, uniforms.camera);
 	float4 previousPosition = transform(v.position, uniforms.previousCamera);
+	
+	float2 currentXY = position.xy / position.w;
+	float2 previousXY = previousPosition.xy / previousPosition.w;
 
 	out.position = position;
-	out.dXY = (position.xy - previousPosition.xy) * float2(uniforms.resolution);
+	out.dXY = (currentXY - previousXY) * float2(uniforms.resolution) * 0.5;
 	out.depth = 1.0 / (1.0 - position.z/position.w);
 	out.normal = v.normal;
 	out.textureIndex = v.textureIndex;

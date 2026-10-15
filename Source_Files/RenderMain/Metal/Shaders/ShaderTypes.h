@@ -68,6 +68,19 @@ enum {
 };
 
 enum {
+	TAAKernelUniformsIndex,
+	TAAKernel_NumBuffers,
+};
+
+enum {
+	TAAKernelInputTextureIndex,
+	TAAKernelMotionTextureIndex,
+	TAAKernelPreviousOutputTextureIndex,
+	TAAKernelOutputTextureIndex,
+	TAAKernel_NumTextures,
+};
+
+enum {
 	FinalRenderVertexShader_NumBuffers,
 };
 

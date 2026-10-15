@@ -376,6 +376,7 @@ kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture
 	};
 
 	for (uint s = 0; s < samplesPerPixel; s++) {
+		// FIXME: apply the same jitter to every pixel in the current frame
 		float2 xyPerturbed = xy + deltaXY * hash2(seed);
 
 		// Screen position in [-1, 1], with positive Y = up

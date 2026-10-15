@@ -58,6 +58,7 @@ const MTLPixelFormat RayTracingPixelFormat = MTLPixelFormatRGBA16Float;
 typedef enum {
 	NoPostProcessing,
 	WaveletDenoise,
+	TAA,
 	TemporalUpscale,
 	TemporalDenoisedUpscale,
 } PostProcessingType;
@@ -97,6 +98,7 @@ API_AVAILABLE(macos(26.0))
 	id<MTLRenderPipelineState> initialRenderPipeline;
 	id<MTLComputePipelineState> rayTracingPipeline;
 	id<MTLComputePipelineState> denoisePipeline;
+	id<MTLComputePipelineState> taaPipeline;
 	id<MTLRenderPipelineState> finalRenderPipeline;
 	id<MTLDepthStencilState> depthState;
 
@@ -210,8 +212,13 @@ API_AVAILABLE(macos(26.0))
 		return nil;
 	}
 	
-	denoisePipeline = [self compileDenoisePipeline];
+	denoisePipeline = [self compileComputePipelineWithFunctionName:@"denoiseKernel"];
 	if (!denoisePipeline) {
+		return nil;
+	}
+	
+	taaPipeline = [self compileComputePipelineWithFunctionName:@"TAA"];
+	if (!taaPipeline) {
 		return nil;
 	}
 	
@@ -426,6 +433,13 @@ API_AVAILABLE(macos(26.0))
 				initialRenderGBufferDiffuseAlbedo,
 				initialRenderGBufferDepth,
 				initialRenderGBufferNormal,
+			]];
+			break;
+			
+		case TAA:
+			intermediateTextures = [NSSet setWithArray:@[
+				initialRenderGBufferDiffuseAlbedo,
+				initialRenderGBufferMotion,
 			]];
 			break;
 
@@ -681,9 +695,9 @@ API_AVAILABLE(macos(26.0))
 	return state;
 }
 
-- (id<MTLComputePipelineState>) compileDenoisePipeline {
+- (id<MTLComputePipelineState>) compileComputePipelineWithFunctionName:(NSString*)functionName {
 	NSError *error;
-	id<MTLFunction> function = [pipeline.defaultLibrary newFunctionWithName:@"denoiseKernel"];
+	id<MTLFunction> function = [pipeline.defaultLibrary newFunctionWithName:functionName];
 	
 	id<MTLComputePipelineState> state = [pipeline.device newComputePipelineStateWithFunction:function
 																					   error:&error];
@@ -1194,6 +1208,10 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	if (POST_PROCESSING_TYPE == WaveletDenoise) {
 		[self encodeWaveletDenoiseUpdatingFence:postProcessingPassFence];
 	}
+	
+	if (POST_PROCESSING_TYPE == TAA) {
+		[self encodeTAAUpdatingFence:postProcessingPassFence];
+	}
 
 	[self encodeFinalRenderToOutputTexture:currentDrawable.texture
 							   afterFences:@[postProcessingPassFence]];
@@ -1376,17 +1394,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 -(void) encodeWaveletDenoiseUpdatingFence:(id<MTLFence>)fence {
-	id<MTL4ComputeCommandEncoder> encoder = [pipeline.commandBuffer computeCommandEncoder];
-	if (!encoder) {
-		NSLog(@"Failed to create encoder for denoise pipeline");
-		return;
-	}
-	encoder.label = @"Denoise";
-	[encoder setComputePipelineState:denoisePipeline];
+	id<MTL4ComputeCommandEncoder> encoder = [self createComputeCommandEncoderForPipeline:denoisePipeline label:@"Denoise"];
 
-	NSUInteger w = rayTracingPipeline.threadExecutionWidth;
-	NSUInteger h = rayTracingPipeline.maxTotalThreadsPerThreadgroup / w;
-	MTLSize threadsPerThreadgroup = MTLSizeMake( w, h, 1 );
 	MTLSize threadsPerGrid = MTLSizeMake(rayTracingOutputTexture.width, rayTracingOutputTexture.height, 1);
 	
 	DenoiseConfig *configs = (DenoiseConfig*)denoiseConfigBuffer.contents;
@@ -1408,7 +1417,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 		[computeArgumentTable setTexture:currentOutput.gpuResourceID atIndex:DenoisePassOutputTextureIndex];
 		[encoder setArgumentTable:computeArgumentTable];
 		
-		[encoder dispatchThreads:threadsPerGrid threadsPerThreadgroup:threadsPerThreadgroup];
+		[encoder dispatchThreads:threadsPerGrid
+		   threadsPerThreadgroup:[self getThreadsPerThreadgroupForPipeline:denoisePipeline]];
 		
 		if (i < waveletDenoisePasses.count - 1) {
 			[encoder barrierAfterEncoderStages:MTLStageDispatch
@@ -1422,6 +1432,47 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 	[encoder updateFence:fence afterEncoderStages:MTLStageDispatch];
 	[encoder endEncoding];
+}
+
+-(void) encodeTAAUpdatingFence:(id<MTLFence>)fence {
+	id<MTL4ComputeCommandEncoder> encoder = [self createComputeCommandEncoderForPipeline:taaPipeline label:@"TAA"];
+	
+	MTLSize threadsPerGrid = MTLSizeMake(rayTracingOutputTexture.width, rayTracingOutputTexture.height, 1);
+
+	id<MTLTexture> previousOutput = (frameNumber % 2 == 0) ? postProcessingScratchTexture : postProcessingOutputTexture;
+	id<MTLTexture> currentOutput  = (frameNumber % 2 == 0) ? postProcessingOutputTexture : postProcessingScratchTexture;
+	
+	[computeArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:TAAKernelUniformsIndex];
+	[computeArgumentTable setTexture:rayTracingOutputTexture.gpuResourceID atIndex:TAAKernelInputTextureIndex];
+	[computeArgumentTable setTexture:initialRenderGBufferMotion.gpuResourceID atIndex:TAAKernelMotionTextureIndex];
+	[computeArgumentTable setTexture:previousOutput.gpuResourceID atIndex:TAAKernelPreviousOutputTextureIndex];
+	[computeArgumentTable setTexture:currentOutput.gpuResourceID atIndex:TAAKernelOutputTextureIndex];
+	[encoder setArgumentTable:computeArgumentTable];
+	
+	[encoder dispatchThreads:threadsPerGrid
+	   threadsPerThreadgroup:[self getThreadsPerThreadgroupForPipeline:taaPipeline]];
+	
+	[encoder updateFence:fence afterEncoderStages:MTLStageDispatch];
+	[encoder endEncoding];
+}
+
+-(id<MTL4ComputeCommandEncoder>) createComputeCommandEncoderForPipeline:(id<MTLComputePipelineState>)pipelineState
+																  label:(NSString*)label
+{
+	id<MTL4ComputeCommandEncoder> encoder = [pipeline.commandBuffer computeCommandEncoder];
+	if (!encoder) {
+		NSLog(@"Failed to create encoder for '%@'", label);
+		return nil;
+	}
+	encoder.label = label;
+	[encoder setComputePipelineState:pipelineState];
+	return encoder;
+}
+
+-(MTLSize) getThreadsPerThreadgroupForPipeline:(id<MTLComputePipelineState>)pipelineState {
+	NSUInteger w = pipelineState.threadExecutionWidth;
+	NSUInteger h = pipelineState.maxTotalThreadsPerThreadgroup / w;
+	return MTLSizeMake( w, h, 1 );
 }
 
 -(void) encodeTemporalUpscaleUpdatingFence:(id<MTLFence>)fence {
