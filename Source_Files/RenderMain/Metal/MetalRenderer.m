@@ -30,10 +30,9 @@ simd_float4x4 rotationMatrix(float angle, simd_float3 axis) {
 	return simd_matrix4x4(quat);
 }
 
-// Assumes fov is the horizontal FOV, not the traditional vertical one
-simd_float4x4 perspectiveProjection(float fov, float aspectRatio) {
-	float xs = 1.0 / tanf(radians(fov) * 0.5);
-	float ys = xs * aspectRatio;
+simd_float4x4 perspectiveProjection(float horizontalFOV, float width, float height) {
+	float xs = 1.0 / tanf(radians(horizontalFOV) * 0.5);
+	float ys = xs * width / height;
 	float nz = 0.01;
 	
 	return simd_matrix((simd_float4){  xs, 0.0, 0.0, 0.0 },
@@ -1156,7 +1155,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	camera.pitchMat = rotationMatrix(pitch, simd_make_float3(1.0, 0.0, 0.0));
 	camera.yawMat = rotationMatrix(-yaw, simd_make_float3(0.0, 1.0, 0.0));
 	camera.rotateDirectionMat = simd_mul(rotationMatrix(yaw, simd_make_float3(0.0, 1.0, 0.0)), rotationMatrix(-pitch, simd_make_float3(1.0, 0.0, 0.0)));
-	camera.perspectiveMat = perspectiveProjection(fov, (float)viewportSize.x/(float)viewportSize.y);
+	camera.perspectiveMat = perspectiveProjection(fov, viewportSize.x, viewportSize.y);
 	
 	Uniforms uniforms;
 	uniforms.fullPathTracing = FULL_PATH_TRACING;
