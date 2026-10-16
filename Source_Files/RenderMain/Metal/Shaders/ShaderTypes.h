@@ -22,6 +22,7 @@ enum {
 };
 
 enum {
+	InitialRenderFragmentShaderUniformsIndex,
 	InitialRenderFragmentShaderAlbedoTexturesIndex,
 	InitialRenderFragmentShaderNormalMapsIndex,
 	InitialRenderFragmentShaderEmissionMapsIndex,

@@ -1323,6 +1323,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[vertexArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:InitialRenderVertexShaderUniformsIndex];
 	[vertexArgumentTable setAddress:triangleBuffer.gpuAddress atIndex:InitialRenderVertexShaderVertexDataIndex];
 
+	[fragmentArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:InitialRenderFragmentShaderUniformsIndex];
 	[fragmentArgumentTable setAddress:albedoTextureArgumentBuffer.gpuAddress atIndex:InitialRenderFragmentShaderAlbedoTexturesIndex];
 	[fragmentArgumentTable setAddress:normalMapArgumentBuffer.gpuAddress atIndex:InitialRenderFragmentShaderNormalMapsIndex];
 	[fragmentArgumentTable setAddress:emissionMapArgumentBuffer.gpuAddress atIndex:InitialRenderFragmentShaderEmissionMapsIndex];
@@ -1482,8 +1483,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	temporalScaler.colorTexture = rayTracingOutputTexture;
 	temporalScaler.depthTexture = initialRenderGBufferDepth;
 	temporalScaler.motionTexture = initialRenderGBufferMotion;
-	temporalScaler.motionVectorScaleX = initialRenderGBufferMotion.width;
-	temporalScaler.motionVectorScaleY = initialRenderGBufferMotion.height;
+	temporalScaler.motionVectorScaleX = 1.0;
+	temporalScaler.motionVectorScaleY = 1.0;
 	temporalScaler.outputTexture = postProcessingOutputTexture;
 	temporalScaler.fence = fence;
 	[temporalScaler encodeToCommandBuffer:mtl3buffer];
@@ -1503,8 +1504,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	temporalDenoisedScaler.depthTexture = initialRenderGBufferDepth;
 	temporalDenoisedScaler.normalTexture = initialRenderGBufferNormal;
 	temporalDenoisedScaler.motionTexture = initialRenderGBufferMotion;
-	temporalDenoisedScaler.motionVectorScaleX = initialRenderGBufferMotion.width;
-	temporalDenoisedScaler.motionVectorScaleY = initialRenderGBufferMotion.height;
+	temporalDenoisedScaler.motionVectorScaleX = 1.0;
+	temporalDenoisedScaler.motionVectorScaleY = 1.0;
 	temporalDenoisedScaler.outputTexture = postProcessingOutputTexture;
 	temporalDenoisedScaler.fence = fence;
 	[temporalDenoisedScaler encodeToCommandBuffer:mtl3buffer];

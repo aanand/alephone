@@ -13,8 +13,7 @@ using namespace metal;
 
 struct RasterizerData {
 	float4 position [[position]];
-	float2 dXY;
-	float depth;
+	float4 previousPosition;
 	float3 normal;
 	uint32_t textureIndex;
 	float2 textureCoordinate;
@@ -52,12 +51,8 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 	float4 position = transform(v.position, uniforms.camera);
 	float4 previousPosition = transform(v.position, uniforms.previousCamera);
 	
-	float2 currentXY = position.xy / position.w;
-	float2 previousXY = previousPosition.xy / previousPosition.w;
-
 	out.position = position;
-	out.dXY = (currentXY - previousXY) * float2(uniforms.resolution) * 0.5;
-	out.depth = 1.0 / (1.0 - position.z/position.w);
+	out.previousPosition = previousPosition;
 	out.normal = v.normal;
 	out.textureIndex = v.textureIndex;
 	out.textureCoordinate = v.textureCoordinate;
@@ -81,6 +76,7 @@ struct TextureArgs {
 
 fragment GBuffer
 initialRenderFragmentShader(RasterizerData in [[stage_in]],
+							constant Uniforms &uniforms [[ buffer(InitialRenderFragmentShaderUniformsIndex) ]],
 							constant TextureArgs &textures [[ buffer(InitialRenderFragmentShaderAlbedoTexturesIndex) ]])
 {
 	constexpr sampler textureSampler (mag_filter::nearest, min_filter::nearest, address::repeat);
@@ -93,12 +89,19 @@ initialRenderFragmentShader(RasterizerData in [[stage_in]],
 		// Landscape textures aren't loaded in right now, so colorSample comes out as magenta - override it to white
 		colorSample = float4(1.0);
 	}
+
+	float2 currentXY = in.position.xy / float2(uniforms.resolution) * 2.0 - 1.0;
+	float2 previousXY = in.previousPosition.xy / in.previousPosition.w;
+	previousXY.y = -previousXY.y;
+	
+	float2 motion = (previousXY - currentXY) * float2(uniforms.resolution) * 0.5;
+
 	return {
 		.diffuseAlbedo = float4(colorSample),
 		.specularAlbedo = float4(0.0),
 		.roughness = 1.0,
-		.depth = in.depth,
+		.depth = in.position.z,
 		.normal = float4(in.normal, 1.0),
-		.motion = in.dXY,
+		.motion = motion,
 	};
 }
