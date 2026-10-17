@@ -172,9 +172,15 @@ void findOverlaps() {
 }
 
 bool isPolygonDynamic(short polygonIdx, polygon_data *polygon) {
-	bool isPlatform = polygon->type == _polygon_is_platform;
-	bool isOverlapping = overlaps.find(polygonIdx) != overlaps.end();
-	return (isPlatform || isOverlapping);
+	if (polygon->type == _polygon_is_platform) {
+		return true;
+	}
+
+	if (overlaps.find(polygonIdx) != overlaps.end()) {
+		return true;
+	}
+	
+	return false;
 }
 
 bool overlapsWithVisiblePolygon(short polyIdx) {
