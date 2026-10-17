@@ -288,7 +288,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 
 				Hit directRayHit = castRay(rayTracer, directRay);
 				
-				if (!directRayHit.didHit) {
+				if (!directRayHit.didHit || directRayHit.material.isLandscape) {
 					// Modulate the irradiance by its incident angle on the surface
 					float contribution = clamp(dot(normal, towardSun), 0.0, 1.0);
 					// Weight by the PDF
