@@ -245,7 +245,7 @@ API_AVAILABLE(macos(26.0))
 
 	NSError *error;
 	staticIASManager = [[IASManager alloc] initWithPipeline:pipeline
-								   primitiveDataElementSize:sizeof(PrimitiveRayTracingData)
+								   primitiveDataElementSize:sizeof(RayTracingData)
 													  error:&error];
 	if (!staticIASManager) {
 		NSLog(@"%@", error);
@@ -254,7 +254,7 @@ API_AVAILABLE(macos(26.0))
 	staticIASManager.label = @"staticIASManager";
 
 	dynamicIASManager = [[IASManager alloc] initWithPipeline:pipeline
-									primitiveDataElementSize:sizeof(PrimitiveRayTracingData)
+									primitiveDataElementSize:sizeof(RayTracingData)
 													   error:&error];
 	if (!dynamicIASManager) {
 		NSLog(@"%@", error);
@@ -361,7 +361,7 @@ API_AVAILABLE(macos(26.0))
 	triangleBuffer.label = @"Triangle vertices";
 	[initialRenderResidencySet addAllocation:triangleBuffer];
 	
-	perInstanceDataBuffer = [pipeline.device newBufferWithLength:(sizeof(InstanceRayTracingData) * MAX_INSTANCES) options:MTLResourceStorageModeShared];
+	perInstanceDataBuffer = [pipeline.device newBufferWithLength:(sizeof(RayTracingData) * MAX_INSTANCES) options:MTLResourceStorageModeShared];
 	perInstanceDataBuffer.label = @"Per-instance data";
 	[rayTracingResidencySet addAllocation:perInstanceDataBuffer];
 	
@@ -770,11 +770,11 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	assert(staticTriangles.count < MAX_TRIANGLES);
 }
 
-- (uint32_t)addInstanceData:(InstanceRayTracingData)instanceData {
+- (uint32_t)addInstanceData:(RayTracingData)instanceData {
 	// Purposefully skip index 0, which is shorthand for "use the per-primitive data"
 	uint32_t instanceID = ++numInstances;
 	assert(numInstances < MAX_INSTANCES);
-	*(InstanceRayTracingData*)(perInstanceDataBuffer.contents + sizeof(InstanceRayTracingData)*instanceID) = instanceData;
+	*(RayTracingData*)(perInstanceDataBuffer.contents + sizeof(RayTracingData)*instanceID) = instanceData;
 	return instanceID;
 }
 
@@ -793,7 +793,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 		[dynamicPolygonPrimitives setObject:primitive forKey:[NSNumber numberWithInt:ID]];
 	}
 	
-	uint32_t instanceID = [self addInstanceData:(InstanceRayTracingData){
+	uint32_t instanceID = [self addInstanceData:(RayTracingData){
 		.surfaceNormal = polygon.surface.normal,
 		.surfaceTangent = firstTriangle.tangent,
 		.material = polygon.surface.material,
@@ -817,7 +817,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	
 	NSUInteger textureIndex = [textureIDs indexOfObject:wall.surface.textureID];
 	NSAssert(textureIndex != NSNotFound, @"Missing dynamic wall texture ID");
-	uint32_t instanceID = [self addInstanceData:(InstanceRayTracingData){
+	uint32_t instanceID = [self addInstanceData:(RayTracingData){
 		.surfaceNormal = wall.surface.normal,
 		.surfaceTangent = firstTriangle.tangent,
 		.material = wall.surface.material,
@@ -841,7 +841,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 	NSUInteger textureIndex = [textureIDs indexOfObject:sprite.surface.textureID];
 	NSAssert(textureIndex != NSNotFound, @"Missing sprite texture ID");
-	uint32_t instanceID = [self addInstanceData:(InstanceRayTracingData){
+	uint32_t instanceID = [self addInstanceData:(RayTracingData){
 		.surfaceNormal = simd_make_float3(-cos(theta), -sin(theta), 0.0),
 		.material = sprite.surface.material,
 		.uv = sprite.uv,

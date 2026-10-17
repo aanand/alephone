@@ -64,7 +64,7 @@ struct TextureArgs {
 struct RayTracer {
 	intersector<triangle_data, instancing> intersector;
 	instance_acceleration_structure accelerationStructure;
-	constant InstanceRayTracingData *perInstanceData;
+	constant RayTracingData *perInstanceData;
 	constant TextureArgs *textures;
 	constant TextureArgs *normalMaps;
 	constant TextureArgs *emissionMaps;
@@ -99,7 +99,7 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 		uint32_t textureIndex = 0;
 		float2 uv = float2(0.0, 0.0);
 
-		const device PrimitiveRayTracingData *primitiveData = (const device PrimitiveRayTracingData*) intersection.primitive_data;
+		const device RayTracingData *primitiveData = (const device RayTracingData*) intersection.primitive_data;
 		float3 surfaceNormal = primitiveData->surfaceNormal;
 		float4 surfaceTangent = primitiveData->surfaceTangent;
 		Material material = primitiveData->material;
@@ -107,7 +107,7 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 
 		uint32_t instanceId = intersection.user_instance_id;
 		if (instanceId > 0) {
-			InstanceRayTracingData instanceData = rayTracer.perInstanceData[instanceId];
+			RayTracingData instanceData = rayTracer.perInstanceData[instanceId];
 			surfaceNormal = instanceData.surfaceNormal;
 			surfaceTangent = instanceData.surfaceTangent;
 			material = instanceData.material;
@@ -336,7 +336,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 kernel void rayTracingKernel(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
 							 instance_acceleration_structure accelerationStructure [[ buffer(RayTracingKernelAccelerationStructureIndex) ]],
 							 constant Uniforms &uniforms [[ buffer(RayTracingKernelUniformsIndex) ]],
-							 constant InstanceRayTracingData *perInstanceData [[ buffer(RayTracingKernelPerInstanceDataIndex) ]],
+							 constant RayTracingData *perInstanceData [[ buffer(RayTracingKernelPerInstanceDataIndex) ]],
 							 constant TextureArgs &textures [[ buffer(RayTracingKernelAlbedoTexturesIndex) ]],
 							 constant TextureArgs &normalMaps [[ buffer(RayTracingKernelNormalMapsIndex) ]],
 							 constant TextureArgs &emissionMaps [[ buffer(RayTracingKernelEmissionMapsIndex) ]],

@@ -186,20 +186,12 @@ typedef struct {
 
 	Material material;
 
-	matrix_float3x2 uv;
+	// Per-primitive data only uses 3 of the 4 floats, because it's always a triangle.
+	// Per-instance data can use 4 when it's representing a quad.
+	matrix_float4x2 uv;
 	uint32_t textureIndex;
 
 	int32_t lightSourceIndex;
-} PrimitiveRayTracingData;
-
-typedef struct {
-	vector_float3 surfaceNormal;
-	vector_float4 surfaceTangent;
-
-	Material material;
-
-	matrix_float4x2 uv;
-	uint32_t textureIndex;
-} InstanceRayTracingData;
+} RayTracingData;
 
 #endif /* VertexTypes_h */
