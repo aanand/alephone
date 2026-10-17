@@ -27,7 +27,7 @@ kernel void TAA(constant Uniforms &uniforms [[ buffer(TAAKernelUniformsIndex) ]]
 	if (-100 < offset.x && offset.x < 100 &&
 		-100 < offset.y && offset.y < 100)
 	{
-		float x = (float)tid.x - offset.x;
+		float x = (float)tid.x + offset.x;
 		float y = (float)tid.y + offset.y;
 
 		if (0 <= x && x < uniforms.resolution.x &&
