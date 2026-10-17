@@ -10,6 +10,8 @@ using namespace metal;
 
 #include "ShaderTypes.h"
 
+constant float weight = 0.9;
+
 kernel void TAA(constant Uniforms &uniforms [[ buffer(TAAKernelUniformsIndex) ]],
 				texture2d<float> inputTexture [[ texture(TAAKernelInputTextureIndex) ]],
 				texture2d<float> motionTexture [[ texture(TAAKernelMotionTextureIndex) ]],
@@ -36,7 +38,7 @@ kernel void TAA(constant Uniforms &uniforms [[ buffer(TAAKernelUniformsIndex) ]]
 			constexpr sampler sam(mag_filter::linear, min_filter::linear);
 			float2 uv = (float2(x, y) + 0.5) / float2(uniforms.resolution);
 			float3 previous = previousOutputTexture.sample(sam, uv).rgb;
-			float3 merged = previous * 0.9 + current * 0.1;
+			float3 merged = mix(current, previous, weight);
 			outputTexture.write(float4(merged, 1.0), tid);
 			return;
 		}
