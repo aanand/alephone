@@ -221,11 +221,13 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 			float LdotH = clamp(dot(ray.direction, -normal), 0.0, 1.0);
 			float schlick = f0 + (1.0 - f0) * pow(1.0 - LdotH, 5.0);
 			
+			float specularProbability = schlick * (1.0 - hit.material.roughness);
+			
 			// If the material we just hit is a medium, decide whether to enter it
 			if (hit.material.transparency > hash1(seed)) {
 				bool isEntering = dot(ray.direction, hit.surfaceNormal) < 0.0;
 
-				if (isEntering && schlick > hash1(seed)) {
+				if (isEntering && specularProbability > hash1(seed)) {
 					ray.origin = hitPoint;
 					ray.direction = reflect(ray.direction, normal);
 					continue;
@@ -245,7 +247,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 				continue;
 			}
 			
-			if (schlick > hash1(seed)) {
+			if (specularProbability > hash1(seed)) {
 				ray.origin = hitPoint;
 				ray.direction = reflect(ray.direction, normal);
 				fcol *= clamp(dot(ray.direction, hit.surfaceNormal), 0.0, 1.0);

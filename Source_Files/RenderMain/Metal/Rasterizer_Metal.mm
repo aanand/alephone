@@ -49,6 +49,7 @@ std::unordered_map<short, std::unordered_set<short>> overlaps;
 @property (nonatomic) NSString *textureID;
 @property (nonatomic) int scale;
 @property (nonatomic) simd_float2x2 transform;
+@property (nonatomic) bool hasNormalMap;
 @end
 @implementation PolygonTexture
 @end
@@ -358,6 +359,7 @@ PolygonTexture *LoadPolygonTexture(shape_descriptor ShapeDesc, short TransferMod
 	PolygonTexture *result = [[PolygonTexture alloc] init];
 	result.textureID = textureID;
 	result.scale = scale;
+	result.hasNormalMap = (TMgr->GetBump() && TMgr->GetBump()->IsPresent());
 	
 	if (TMgr->HasSubstitution()) {
 		result.transform = (simd_float2x2){
@@ -443,17 +445,19 @@ Sky defaultSky = {
 	.sunRadius = 10.0 * M_PI / 180.0,
 };
 
-Material getMaterial(NSString *textureID, bool isLandscape) {
-	if (isLandscape) {
-		return { .isLandscape = true };
-	}
+Material getMaterial(NSString *textureID, bool isLandscape, bool hasNormalMap) {
+	Material material = {};
 
 	std::string key = textureID.UTF8String;
 	auto iterator = materials.find(key);
 	if (iterator != materials.end()) {
-		return iterator->second;
+		material = iterator->second;
 	}
-	return {};
+
+	material.isLandscape = isLandscape;
+	material.roughness = hasNormalMap ? 0.0 : 0.75;
+	
+	return material;
 }
 
 void AddWall(short polygonIdx,
@@ -494,7 +498,7 @@ void AddWall(short polygonIdx,
 	uv.columns[2] = simd_mul(texture.transform, uv.columns[2]);
 	uv.columns[3] = simd_mul(texture.transform, uv.columns[3]);
 	
-	Material material = getMaterial(textureID, surface->transfer_mode == _xfer_landscape);
+	Material material = getMaterial(textureID, surface->transfer_mode == _xfer_landscape, texture.hasNormalMap);
 	
 	MetalSurface *mSurface = [[MetalSurface alloc] initWithTextureID:textureID
 															material:material
@@ -539,7 +543,7 @@ void AddHorizontalSurface(short polygonIdx, polygon_data *polygon, horizontal_su
 		uv[i] = simd_mul(texture.transform, baseUV);
 	}
 	
-	Material material = getMaterial(textureID, surface->transfer_mode == _xfer_landscape);
+	Material material = getMaterial(textureID, surface->transfer_mode == _xfer_landscape, texture.hasNormalMap);
 
 	MetalSurface *mSurface = [[MetalSurface alloc] initWithTextureID:textureID
 														   material:material
@@ -705,7 +709,7 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 		(simd_float2){ texB, texR },
 	};
 	
-	Material material = getMaterial(textureID, false);
+	Material material = getMaterial(textureID, false, false);
 	
 	// Normal is ignored here and set based on the sprite's rotation
 	MetalSurface *surface = [[MetalSurface alloc] initWithTextureID:textureID
