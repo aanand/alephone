@@ -42,7 +42,6 @@ uint framesSinceFlashlightToggled = 0;
 
 const float flashlightIntensity = 5.0;
 
-short lastVisitedPolygon = NONE;
 std::unordered_map<short, std::unordered_set<short>> overlaps;
 
 @interface PolygonTexture : NSObject
@@ -85,8 +84,6 @@ bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
 		
 		isFlashlightOn = false;
 		framesSinceFlashlightToggled = 0;
-		
-		lastVisitedPolygon = NONE;
 
 		logWarning("Initialized MetalRenderer");
 		return true;
@@ -212,10 +209,6 @@ bool shouldMarkVisible(short polyIdx) {
 void Rasterizer_Metal_Class::SetView(view_data &View) {
 	view = &View;
 
-	if (view->origin_polygon_index != lastVisitedPolygon) {
-		lastVisitedPolygon = view->origin_polygon_index;
-	}
-	
 	if (current_player_index != NONE) {
 		player_data *player = get_player_data(current_player_index);
 		if (player->hotkey == FLASHLIGHT_HOTKEY && framesSinceFlashlightToggled <= 0) {
