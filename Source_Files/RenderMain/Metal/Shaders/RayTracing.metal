@@ -78,6 +78,21 @@ float3 sampleSky(Sky sky, float3 direction) {
 	return mix(sky.bottomEmission, sky.topEmission, cosThetaToTop * 0.5 + 0.5);
 }
 
+float3 getPlayerLightPosition(constant Uniforms &uniforms) {
+	return float3(uniforms.camera.origin + int3(0, 0, -128));
+}
+
+float getPlayerLightIntensity(constant Uniforms &uniforms, thread RayTracer &rayTracer, float3 hitPoint) {
+	float weaponFlare = uniforms.weaponFlare * weaponFlareMultiplier;
+
+	float3 lightToHitPoint = hitPoint - getPlayerLightPosition(uniforms);
+	float angleFromCenter = acos(dot(normalize(lightToHitPoint), rayTracer.forward));
+	float flashlightAngleWeight = 1.0 - clamp(angleFromCenter/(M_PI_F/6.0), 0.0, 1.0);
+	float flashlight = uniforms.flashlight * flashlightAngleWeight;
+
+	return weaponFlare + flashlight;
+}
+
 // Cast a ray, continuing in the case of hitting a transparent surface.
 Hit castRay(thread RayTracer &rayTracer, ray ray)
 {
@@ -163,7 +178,7 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 
 float3 rayTraceSoft(float3 origin, float3 direction,
 					thread RayTracer &rayTracer,
-					Uniforms uniforms,
+					constant Uniforms &uniforms,
 					thread float &seed)
 {
 	ray ray;
@@ -253,18 +268,18 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 				couldHitSun = dot(normal, towardSun) > 0;
 			}
 
-			float weaponFlare = uniforms.weaponFlare * weaponFlareMultiplier;
-			bool hasWeaponFlare = weaponFlare > 0;
+			float playerLight = getPlayerLightIntensity(uniforms, rayTracer, hitPoint);
+			bool hasPlayerLight = playerLight > 0;
 			
 			bool sampleSun = false;
-			bool sampleWeaponFlare = false;
-			if (couldHitSun && !hasWeaponFlare) {
+			bool samplePlayerLight = false;
+			if (couldHitSun && !hasPlayerLight) {
 				sampleSun = true;
-			} else if (!couldHitSun && hasWeaponFlare) {
-				sampleWeaponFlare = true;
-			} else if (couldHitSun && hasWeaponFlare) {
+			} else if (!couldHitSun && hasPlayerLight) {
+				samplePlayerLight = true;
+			} else if (couldHitSun && hasPlayerLight) {
 				sampleSun = hash1(seed) <= 0.5;
-				sampleWeaponFlare = !sampleSun;
+				samplePlayerLight = !sampleSun;
 			}
 
 			if (sampleSun) {
@@ -283,30 +298,22 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 					float weight = 2 * M_PI_F * (1.0f - cos(uniforms.sky.sunRadius));
 					tcol += fcol * diffuse * uniforms.sky.sunEmission * contribution * weight;
 				}
-			} else if (sampleWeaponFlare) {
-				int3 weaponFlarePosition = uniforms.camera.origin + int3(0, 0, -256);
-				float3 surfaceToWeapon = float3(weaponFlarePosition) - hitPoint;
+			} else if (samplePlayerLight) {
+				float3 hitPointToLight = getPlayerLightPosition(uniforms) - hitPoint;
+
 				struct ray directRay;
 				directRay.origin = hitPoint;
-				directRay.direction = normalize(surfaceToWeapon);
+				directRay.direction = normalize(hitPointToLight);
 				directRay.min_distance = rayEpsilon;
-				directRay.max_distance = length(surfaceToWeapon) - rayEpsilon;
+				directRay.max_distance = length(hitPointToLight) - rayEpsilon;
 
 				Hit directRayHit = castRay(rayTracer, directRay);
 				
 				if (!directRayHit.didHit){
 					float angleWeight = clamp(dot(normal, directRay.direction), 0.0, 1.0);
-					float distanceWeight = clamp(pow(length(surfaceToWeapon) * 0.001, -2.0), 0.0, 1.0);
-					tcol += fcol * diffuse * weaponFlare * angleWeight * distanceWeight;
+					float distanceWeight = clamp(pow(length(hitPointToLight) * 0.001, -2.0), 0.0, 1.0);
+					tcol += fcol * diffuse * playerLight * angleWeight * distanceWeight;
 				}
-			}
-
-			if (uniforms.flashlight > 0.0 && b == 0) {
-				float angleWeight = clamp(dot(normal, -ray.direction), 0.0, 1.0);
-				float distanceWeight = clamp(pow(distance(float3(uniforms.camera.origin), hitPoint) * 0.001, -2.0), 0.0, 1.0);
-				float theta = acos(dot(ray.direction, rayTracer.forward));
-				float coneWeight = 1.0 - clamp(theta/(M_PI_F/6.0), 0.0, 1.0);
-				tcol += fcol * diffuse * uniforms.flashlight * angleWeight * distanceWeight * coneWeight;
 			}
 			
 			{
