@@ -175,7 +175,7 @@ bool isPolygonDynamic(short polygonIdx, polygon_data *polygon) {
 	if (polygon->type == _polygon_is_platform) {
 		return true;
 	}
-
+	
 	if (overlaps.find(polygonIdx) != overlaps.end()) {
 		return true;
 	}
@@ -605,26 +605,31 @@ void AddHorizontalSurfaces(short polygonIdx, polygon_data *polygon, bool isDynam
 	}
 }
 
-// A wall is dynamic if it belongs to a dynamic polygon OR it's adjacent to a platform polygon (because then its height will change).
+// A wall is dynamic if any of the following are true:
+//  - it belongs to a dynamic polygon
+//  - it's adjacent to a platform polygon (because then its height will change).
+//  - it's a control panel (because then its UV will change).
 void AddWalls(short polygonIdx, polygon_data *polygon, bool isDynamicPass) {
 	bool isDynamicPolygon = isPolygonDynamic(polygonIdx, polygon);
 
 	for (short vertexIdx=0; vertexIdx < polygon->vertex_count; vertexIdx++) {
 		short adjacentPolgyonIdx = polygon->adjacent_polygon_indexes[vertexIdx];
 		bool isNextToPlatform = (adjacentPolgyonIdx != NONE && get_polygon_data(adjacentPolgyonIdx)->type == _polygon_is_platform);
-		bool wallIsDynamic = isDynamicPolygon || isNextToPlatform;
-		if (wallIsDynamic != isDynamicPass) continue;
-		
+
 		short sideIdx = polygon->side_indexes[vertexIdx];
 		if (sideIdx == NONE) continue;;
 
 		side_data *side = get_side_data(sideIdx);
 		line_data *line = get_line_data(polygon->line_indexes[vertexIdx]);
+
+		bool isControlPanel = SIDE_IS_CONTROL_PANEL(side);
+		bool wallIsDynamic = isDynamicPolygon || isNextToPlatform || isControlPanel;
+		if (wallIsDynamic != isDynamicPass) continue;
 		
 		vertical_surface_data wall;
 		wall.texture_definition = &side->primary_texture;
 		wall.transfer_mode = side->primary_transfer_mode;
-		wall.lightsource_index = side->primary_lightsource_index;
+		wall.lightsource_index = isControlPanel ? NONE : side->primary_lightsource_index;
 
 		switch (side->type) {
 			case _full_side:
@@ -654,7 +659,7 @@ void AddWalls(short polygonIdx, polygon_data *polygon, bool isDynamicPass) {
 				wall.h1 = line->highest_adjacent_floor;
 				wall.texture_definition = &side->secondary_texture;
 				wall.transfer_mode = side->secondary_transfer_mode;
-				wall.lightsource_index = side->secondary_lightsource_index;
+				wall.lightsource_index = isControlPanel ? NONE : side->secondary_lightsource_index;
 				AddWall(polygonIdx, polygon, line, vertexIdx, &wall, isDynamicPass);
 
 				break;
@@ -665,7 +670,7 @@ void AddWalls(short polygonIdx, polygon_data *polygon, bool isDynamicPass) {
 			wall.h1 = line->lowest_adjacent_ceiling;
 			wall.texture_definition = &side->transparent_texture;
 			wall.transfer_mode = side->transparent_transfer_mode;
-			wall.lightsource_index = side->transparent_lightsource_index;
+			wall.lightsource_index = isControlPanel ? NONE : side->transparent_lightsource_index;
 			AddWall(polygonIdx, polygon, line, vertexIdx, &wall, isDynamicPass);
 		}
 	}
