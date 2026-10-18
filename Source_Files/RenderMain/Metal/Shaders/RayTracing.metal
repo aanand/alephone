@@ -180,7 +180,9 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 	for (b = 0; b < maxBounces; b++) {
 		Hit hit = castRay(rayTracer, ray);
 
-		if (!hit.didHit || hit.material.isLandscape) {
+		if (!hit.didHit) {
+			break;
+		} else if (hit.material.isLandscape) {
 			tcol += fcol * sampleSky(uniforms.sky, ray.direction);
 			break;
 		} else {
@@ -274,7 +276,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 
 				Hit directRayHit = castRay(rayTracer, directRay);
 				
-				if (!directRayHit.didHit || directRayHit.material.isLandscape) {
+				if (directRayHit.didHit && directRayHit.material.isLandscape) {
 					// Modulate the irradiance by its incident angle on the surface
 					float contribution = clamp(dot(normal, towardSun), 0.0, 1.0);
 					// Weight by the PDF
