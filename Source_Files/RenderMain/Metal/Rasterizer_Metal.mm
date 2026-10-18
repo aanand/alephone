@@ -54,7 +54,16 @@ std::unordered_map<short, std::unordered_set<short>> overlaps;
 @implementation PolygonTexture
 @end
 
+@interface SpriteTexture : NSObject
+@property (nonatomic) NSString *textureID;
+@property (nonatomic) simd_float2 offset;
+@property (nonatomic) simd_float2 scale;
+@end
+@implementation SpriteTexture
+@end
+
 NSMutableDictionary<NSString*, PolygonTexture*> *polygonTextureCache;
+NSMutableDictionary<NSString*, SpriteTexture*> *spriteTextureCache;
 
 bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
     logWarning("Metal_InitializeForWindow(window, %d, %d)", width, height);
@@ -264,17 +273,14 @@ bool SetupPolygonTexture(TextureManager *TMgr, shape_descriptor ShapeDesc) {
 	return TMgr->Setup();
 }
 
-bool SetupSpriteTexture(TextureManager *TMgr,
-						object_data *object,
-						shape_and_transfer_mode ShapeAndTransferMode,
-						shape_information_data *ShapeInformationData)
+bool SetupSpriteTexture(TextureManager *TMgr, short collection_code, short low_level_shape_index)
 {
 	bitmap_definition *texture;
 	void *shading_tables;
-	extended_get_shape_bitmap_and_shading_table(ShapeAndTransferMode.collection_code, ShapeAndTransferMode.low_level_shape_index, &texture, &shading_tables, view->shading_mode);
+	extended_get_shape_bitmap_and_shading_table(collection_code, low_level_shape_index, &texture, &shading_tables, view->shading_mode);
 
-	TMgr->ShapeDesc = BUILD_DESCRIPTOR(ShapeAndTransferMode.collection_code, 0);
-	TMgr->LowLevelShape = ShapeAndTransferMode.low_level_shape_index;
+	TMgr->ShapeDesc = BUILD_DESCRIPTOR(collection_code, 0);
+	TMgr->LowLevelShape = low_level_shape_index;
 	TMgr->ShadingTables = shading_tables;
 	TMgr->Texture = texture;
 	TMgr->TransferMode = _textured_transfer; // TODO: support other transfer modes
@@ -384,6 +390,28 @@ PolygonTexture *LoadPolygonTexture(shape_descriptor ShapeDesc, short TransferMod
 	}
 
 	polygonTextureCache[key] = result;
+	
+	return result;
+}
+
+SpriteTexture *LoadSpriteTexture(object_data *object, short collection_code, short low_level_shape_index)
+{
+	NSString *key = [NSString stringWithFormat:@"%d/%d", collection_code, low_level_shape_index];
+	
+	SpriteTexture *cachedResult = [spriteTextureCache objectForKey:key];
+	if (cachedResult) {
+		return cachedResult;
+	}
+
+	auto TMgr = std::make_unique<TextureManager>();
+	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupSpriteTexture(TMgr.get(), collection_code, low_level_shape_index));
+
+	SpriteTexture *result = [[SpriteTexture alloc] init];
+	result.textureID = textureID;
+	result.offset = simd_make_float2(TMgr->V_Offset, TMgr->U_Offset);
+	result.scale = simd_make_float2(TMgr->V_Scale, TMgr->U_Scale);
+	
+	spriteTextureCache[key] = result;
 	
 	return result;
 }
@@ -688,9 +716,8 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 	}
 	
 	shape_information_data *shape_information = extended_get_shape_information(data.collection_code, data.low_level_shape_index);
-	
-	auto TMgr = std::make_unique<TextureManager>();
-	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupSpriteTexture(TMgr.get(), object, data, shape_information));
+
+	SpriteTexture *texture = LoadSpriteTexture(object, data.collection_code, data.low_level_shape_index);
 
 	simd_int3 position = { object->location.x, object->location.y, object->location.z };
 
@@ -701,10 +728,10 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 	
 	simd_int2 size = { spriteR - spriteL, spriteT - spriteB };
 	
-	float texL = TMgr->V_Offset;
-	float texR = TMgr->V_Scale+TMgr->V_Offset;
-	float texT = TMgr->U_Offset;
-	float texB = TMgr->U_Scale+TMgr->U_Offset;
+	float texL = texture.offset.x;
+	float texR = texture.scale.x + texture.offset.x;
+	float texT = texture.offset.y;
+	float texB = texture.scale.y + texture.offset.y;
 	
 	if (shape_information->flags & _X_MIRRORED_BIT) {
 		std::swap(texL, texR);
@@ -720,10 +747,10 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 		(simd_float2){ texB, texR },
 	};
 	
-	Material material = getMaterial(textureID, false, false);
+	Material material = getMaterial(texture.textureID, false, false);
 	
 	// Normal is ignored here and set based on the sprite's rotation
-	MetalSurface *surface = [[MetalSurface alloc] initWithTextureID:textureID
+	MetalSurface *surface = [[MetalSurface alloc] initWithTextureID:texture.textureID
 														   material:material
 															 normal:simd_make_float3(1.0, 0.0, 0.0)
 												   lightSourceIndex:NONE];
@@ -800,6 +827,7 @@ void UpdateWorld() {
 		}
 		
 		polygonTextureCache = [NSMutableDictionary dictionary];
+		spriteTextureCache = [NSMutableDictionary dictionary];
 
 		findOverlaps();
 
