@@ -137,9 +137,9 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 			NSUInteger textureIndex = [textureIDs indexOfObject:surface.textureID];
 			NSAssert(textureIndex != NSNotFound, @"Missing dynamic polygon texture ID");
 			primitiveData[i].textureIndex = (uint32_t)textureIndex;
-			primitiveData[i].uv.columns[0] = uv[0];
-			primitiveData[i].uv.columns[1] = uv[i+1];
-			primitiveData[i].uv.columns[2] = uv[i+2];
+			primitiveData[i].uv[0] = uv[0];
+			primitiveData[i].uv[1] = uv[i+1];
+			primitiveData[i].uv[2] = uv[i+2];
 		}
 	}
 	return self;
@@ -367,9 +367,9 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 			NSAssert(textureIndex != NSNotFound, @"Missing static triangle texture ID");
 			primitiveData[i].textureIndex = (uint32_t)textureIndex;
 
-			primitiveData[i].uv.columns[0] = triangle.uv0;
-			primitiveData[i].uv.columns[1] = triangle.uv1;
-			primitiveData[i].uv.columns[2] = triangle.uv2;
+			primitiveData[i].uv[0] = triangle.uv0;
+			primitiveData[i].uv[1] = triangle.uv1;
+			primitiveData[i].uv[2] = triangle.uv2;
 
 			primitiveData[i].lightSourceIndex = triangle.surface.lightSourceIndex;
 		}

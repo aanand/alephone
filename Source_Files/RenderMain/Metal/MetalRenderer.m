@@ -793,13 +793,22 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 		[dynamicPolygonPrimitives setObject:primitive forKey:[NSNumber numberWithInt:ID]];
 	}
 	
-	uint32_t instanceID = [self addInstanceData:(RayTracingData){
+	NSUInteger textureIndex = [textureIDs indexOfObject:polygon.surface.textureID];
+	NSAssert(textureIndex != NSNotFound, @"Missing dynamic polygon texture ID");
+
+	RayTracingData instanceData = {
 		.surfaceNormal = polygon.surface.normal,
 		.surfaceTangent = firstTriangle.tangent,
 		.material = polygon.surface.material,
-		// TODO: figure out how to pass in UV data for polygons
-		.textureIndex = 0,
-	}];
+		.numVertices = polygon.vertexCount,
+		.textureIndex = (uint32_t)textureIndex,
+		.lightSourceIndex = polygon.surface.lightSourceIndex,
+	};
+	for (int i = 0; i < polygon.vertexCount; i++) {
+		instanceData.uv[i] = polygon.uv[i];
+	}
+	
+	uint32_t instanceID = [self addInstanceData:instanceData];
 
 	[dynamicIASManager addInstanceOfPrimitive:primitive
 								withTransform:polygon.instanceTransform
@@ -817,13 +826,21 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	
 	NSUInteger textureIndex = [textureIDs indexOfObject:wall.surface.textureID];
 	NSAssert(textureIndex != NSNotFound, @"Missing dynamic wall texture ID");
-	uint32_t instanceID = [self addInstanceData:(RayTracingData){
+
+	RayTracingData instanceData = {
 		.surfaceNormal = wall.surface.normal,
 		.surfaceTangent = firstTriangle.tangent,
 		.material = wall.surface.material,
-		.uv = wall.uv,
+		.numVertices = 4,
 		.textureIndex = (uint32_t)textureIndex,
-	}];
+		.lightSourceIndex = wall.surface.lightSourceIndex,
+	};
+	instanceData.uv[0] = wall.uv.columns[0];
+	instanceData.uv[1] = wall.uv.columns[1];
+	instanceData.uv[2] = wall.uv.columns[2];
+	instanceData.uv[3] = wall.uv.columns[3];
+
+	uint32_t instanceID = [self addInstanceData:instanceData];
 
 	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
 								withTransform:wall.instanceTransform
@@ -841,12 +858,21 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 	NSUInteger textureIndex = [textureIDs indexOfObject:sprite.surface.textureID];
 	NSAssert(textureIndex != NSNotFound, @"Missing sprite texture ID");
-	uint32_t instanceID = [self addInstanceData:(RayTracingData){
+
+	RayTracingData instanceData = {
 		.surfaceNormal = simd_make_float3(-cos(theta), -sin(theta), 0.0),
+		// TODO: set surfaceTangent (need to take firstTriangle.tangent and rotate it)
 		.material = sprite.surface.material,
-		.uv = sprite.uv,
+		.numVertices = 4,
 		.textureIndex = (uint32_t)textureIndex,
-	}];
+		.lightSourceIndex = -1,
+	};
+	instanceData.uv[0] = sprite.uv.columns[0];
+	instanceData.uv[1] = sprite.uv.columns[1];
+	instanceData.uv[2] = sprite.uv.columns[2];
+	instanceData.uv[3] = sprite.uv.columns[3];
+
+	uint32_t instanceID = [self addInstanceData:instanceData];
 
 	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
 								withTransform:[sprite instanceTransformForRotation:theta]

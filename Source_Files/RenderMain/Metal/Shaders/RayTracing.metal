@@ -26,20 +26,14 @@ float2 getTriangleUV(intersector<triangle_data, instancing>::result_type interse
 	return uv0 * bary.x + uv1 * bary.y + uv2 * bary.z;
 }
 
-float2 getQuadUV(intersector<triangle_data, instancing>::result_type intersection,
-				 matrix_float4x2 uv)
+float2 getPolygonUV(intersector<triangle_data, instancing>::result_type intersection,
+					simd_float2 uv[MAXIMUM_VERTICES_PER_POLYGON])
 {
 	float2 uv0, uv1, uv2;
 	
-	if (intersection.primitive_id == 0) {
-		uv0 = uv[0];
-		uv1 = uv[1];
-		uv2 = uv[2];
-	} else {
-		uv0 = uv[0];
-		uv1 = uv[2];
-		uv2 = uv[3];
-	}
+	uv0 = uv[0];
+	uv1 = uv[intersection.primitive_id+1];
+	uv2 = uv[intersection.primitive_id+2];
 	
 	return getTriangleUV(intersection, uv0, uv1, uv2);
 }
@@ -96,32 +90,24 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 		
 		float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
 
-		uint32_t textureIndex = 0;
 		float2 uv = float2(0.0, 0.0);
 
-		const device RayTracingData *primitiveData = (const device RayTracingData*) intersection.primitive_data;
-		float3 surfaceNormal = primitiveData->surfaceNormal;
-		float4 surfaceTangent = primitiveData->surfaceTangent;
-		Material material = primitiveData->material;
-		int32_t lightSourceIndex = primitiveData->lightSourceIndex;
+		RayTracingData data = *((const device RayTracingData*) intersection.primitive_data);
 
 		uint32_t instanceId = intersection.user_instance_id;
 		if (instanceId > 0) {
-			RayTracingData instanceData = rayTracer.perInstanceData[instanceId];
-			surfaceNormal = instanceData.surfaceNormal;
-			surfaceTangent = instanceData.surfaceTangent;
-			material = instanceData.material;
+			data = rayTracer.perInstanceData[instanceId];
 			
-			if (instanceData.textureIndex > 0) {
-				textureIndex = instanceData.textureIndex;
-				uv = getQuadUV(intersection, instanceData.uv);
+			if (data.textureIndex > 0) {
+				uv = getPolygonUV(intersection, data.uv);
 			}
+		} else if (data.textureIndex > 0) {
+			uv = getTriangleUV(intersection, data.uv[0], data.uv[1], data.uv[2]);
 		}
 		
-		if (textureIndex == 0 && primitiveData->textureIndex > 0) {
-			textureIndex = primitiveData->textureIndex;
-			uv = getTriangleUV(intersection, primitiveData->uv.columns[0], primitiveData->uv.columns[1], primitiveData->uv.columns[2]);
-		}
+		float3 surfaceNormal = data.surfaceNormal;
+		float4 surfaceTangent = data.surfaceTangent;
+		uint32_t textureIndex = data.textureIndex;
 		
 		float4 albedo = float4(defaultAttenuation, defaultAttenuation, defaultAttenuation, 1.0);
 		float4 emission = float4(0.0);
@@ -166,8 +152,8 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 				.normal = normal,
 				.diffuse = albedo.rgb,
 				.emission = emission,
-				.material = material,
-				.lightSourceIndex = lightSourceIndex,
+				.material = data.material,
+				.lightSourceIndex = data.lightSourceIndex,
 			};
 		}
 	}

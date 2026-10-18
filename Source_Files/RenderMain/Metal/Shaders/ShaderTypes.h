@@ -15,6 +15,9 @@
 #define MASK_ALL  0xFF
 #define MASK_NONE 0x00
 
+// Copied from map.h
+#define MAXIMUM_VERTICES_PER_POLYGON 8
+
 enum {
 	InitialRenderVertexShaderVertexDataIndex,
 	InitialRenderVertexShaderUniformsIndex,
@@ -186,9 +189,10 @@ typedef struct {
 
 	Material material;
 
-	// Per-primitive data only uses 3 of the 4 floats, because it's always a triangle.
-	// Per-instance data can use 4 when it's representing a quad.
-	matrix_float4x2 uv;
+	// Per-primitive data only uses 3 of the floats in this array, because it's always a triangle.
+	// Per-instance data can use more (up to MAXIMUM_VERTICES_PER_POLYGON).
+	uint8_t numVertices;
+	simd_float2 uv[MAXIMUM_VERTICES_PER_POLYGON];
 	uint32_t textureIndex;
 
 	int32_t lightSourceIndex;
