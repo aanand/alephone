@@ -1371,7 +1371,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 		target[numVertices+1].material = triangle.surface.material;
 		target[numVertices+2] = triangle.v2;
 		target[numVertices+2].textureIndex = (uint32_t)textureIndex;
-		target[numVertices+1].material = triangle.surface.material;
+		target[numVertices+2].material = triangle.surface.material;
 
 		numVertices += 3;
 	};
