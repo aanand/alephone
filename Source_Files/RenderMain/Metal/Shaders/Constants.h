@@ -17,8 +17,8 @@ constant bool toneMap = false;
 
 constant float weaponFlareMultiplier = 5.0;
 
-constant uint samplesPerPixel = 2;
-constant uint maxBounces = 4;
+constant uint samplesPerPixel = 1;
+constant uint maxBounces = 2;
 constant uint maxAlphaPassthroughs = 10;
 constant int denoiseRadius = 1;
 
