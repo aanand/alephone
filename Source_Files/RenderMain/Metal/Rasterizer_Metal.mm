@@ -584,7 +584,8 @@ void AddHorizontalSurface(short polygonIdx, polygon_data *polygon, horizontal_su
 															   surface:mSurface];
 	
 	if (isDynamic) {
-		[renderer addDynamicPolygon:mPolygon withID:polygonIdx enabled:shouldMarkVisible(polygonIdx)];
+		int polyId = (polygonIdx * 2) + (isCeiling ? 1 : 0);
+		[renderer addDynamicPolygon:mPolygon withID:polyId enabled:shouldMarkVisible(polygonIdx)];
 	} else {
 		[renderer addStaticPolygon:mPolygon];
 	}
