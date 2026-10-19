@@ -245,11 +245,19 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 		[encoder buildAccelerationStructure:[PASes objectAtIndex:i]
 								 descriptor:[PASDescriptors objectAtIndex:i]
 							  scratchBuffer:scratchBuffer];
+
+		[encoder barrierAfterEncoderStages:MTLStageAccelerationStructure
+					   beforeEncoderStages:MTLStageAccelerationStructure
+						 visibilityOptions:MTL4VisibilityOptionDevice];
 	}
 }
 
 - (void) encodeBuildCommandsForIAS:(id<MTL4ComputeCommandEncoder>)encoder scratchBuffer:(MTL4BufferRange)scratchBuffer {
 	[encoder buildAccelerationStructure:IAS descriptor:IASDescriptor scratchBuffer:scratchBuffer];
+
+	[encoder barrierAfterEncoderStages:MTLStageAccelerationStructure
+				   beforeEncoderStages:MTLStageAccelerationStructure
+					 visibilityOptions:MTL4VisibilityOptionDevice];
 }
 
 @end

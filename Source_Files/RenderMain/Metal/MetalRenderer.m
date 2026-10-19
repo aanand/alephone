@@ -1067,20 +1067,12 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 			[iasm encodeBuildCommandsForPASes:encoder
 								scratchBuffer:MTL4BufferRangeMake(scratchBuffer.gpuAddress, scratchBuffer.length)];
 		}
-		
-		[encoder barrierAfterEncoderStages:MTLStageAccelerationStructure
-					   beforeEncoderStages:MTLStageAccelerationStructure
-						 visibilityOptions:MTL4VisibilityOptionDevice];
 	}
 	
 	for (IASManager *iasm in iasManagers) {
 		[iasm encodeBuildCommandsForIAS:encoder
 						  scratchBuffer:MTL4BufferRangeMake(scratchBuffer.gpuAddress, scratchBuffer.length)];
 	}
-
-	[encoder barrierAfterEncoderStages:MTLStageAccelerationStructure
-				   beforeEncoderStages:MTLStageAccelerationStructure
-					 visibilityOptions:MTL4VisibilityOptionDevice];
 
 	[encoder buildAccelerationStructure:topLevelIAS
 							 descriptor:topLevelIASDescriptor
