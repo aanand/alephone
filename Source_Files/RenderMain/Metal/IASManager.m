@@ -102,7 +102,7 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 	
 	PASPrimitiveDataBuffer = [pipeline.device newBufferWithLength:primitiveDataElementSize * numTriangles
 														  options:MTLResourceStorageModeShared];
-	PASVertexBuffer.label = [NSString stringWithFormat:@"[%@] PASPrimitiveDataBuffer", _label];
+	PASPrimitiveDataBuffer.label = [NSString stringWithFormat:@"[%@] PASPrimitiveDataBuffer", _label];
 
 	NSUInteger triangleIndex = 0;
 	for (id<ASTrianglePrimitive> primitive in primitives) {
