@@ -55,8 +55,7 @@ std::unordered_map<short, std::unordered_set<short>> overlaps;
 
 @interface SpriteTexture : NSObject
 @property (nonatomic) NSString *textureID;
-@property (nonatomic) simd_float2 offset;
-@property (nonatomic) simd_float2 scale;
+@property (nonatomic) simd_float4x2 uv;
 @end
 @implementation SpriteTexture
 @end
@@ -387,7 +386,7 @@ PolygonTexture *LoadPolygonTexture(shape_descriptor ShapeDesc, short TransferMod
 	return result;
 }
 
-SpriteTexture *LoadSpriteTexture(object_data *object, short collection_code, short low_level_shape_index)
+SpriteTexture *LoadSpriteTexture(short collection_code, short low_level_shape_index, shape_information_data *shape_information)
 {
 	NSString *key = [NSString stringWithFormat:@"%d/%d", collection_code, low_level_shape_index];
 	
@@ -401,9 +400,51 @@ SpriteTexture *LoadSpriteTexture(object_data *object, short collection_code, sho
 
 	SpriteTexture *result = [[SpriteTexture alloc] init];
 	result.textureID = textureID;
-	result.offset = simd_make_float2(TMgr->V_Offset, TMgr->U_Offset);
-	result.scale = simd_make_float2(TMgr->V_Scale, TMgr->U_Scale);
 	
+	simd_float2 offset, scale;
+	if (TMgr->HasSubstitution()) {
+		offset = simd_make_float2(TMgr->U_Offset, TMgr->V_Offset);
+		scale = simd_make_float2(TMgr->U_Scale, TMgr->V_Scale);
+	} else {
+		offset = simd_make_float2(TMgr->V_Offset, TMgr->U_Offset);
+		scale = simd_make_float2(TMgr->V_Scale, TMgr->U_Scale);
+	}
+
+	float texL = offset.x;
+	float texR = scale.x + offset.x;
+	float texT = offset.y;
+	float texB = scale.y + offset.y;
+
+	if (TMgr->HasSubstitution()) {
+		if (shape_information->flags & _X_MIRRORED_BIT) {
+			std::swap(texB, texT);
+		}
+		if (shape_information->flags & _Y_MIRRORED_BIT) {
+			std::swap(texL, texR);
+		}
+		
+		result.uv = {
+			(simd_float2){ texT, texR },
+			(simd_float2){ texT, texL },
+			(simd_float2){ texB, texL },
+			(simd_float2){ texB, texR },
+		};
+	} else {
+		if (shape_information->flags & _X_MIRRORED_BIT) {
+			std::swap(texL, texR);
+		}
+		if (shape_information->flags & _Y_MIRRORED_BIT) {
+			std::swap(texB, texT);
+		}
+		
+		result.uv = {
+			(simd_float2){ texB, texL },
+			(simd_float2){ texT, texL },
+			(simd_float2){ texT, texR },
+			(simd_float2){ texB, texR },
+		};
+	}
+		
 	spriteTextureCache[key] = result;
 	
 	return result;
@@ -711,7 +752,7 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 	
 	shape_information_data *shape_information = extended_get_shape_information(data.collection_code, data.low_level_shape_index);
 
-	SpriteTexture *texture = LoadSpriteTexture(object, data.collection_code, data.low_level_shape_index);
+	SpriteTexture *texture = LoadSpriteTexture(data.collection_code, data.low_level_shape_index, shape_information);
 
 	simd_int3 position = { object->location.x, object->location.y, object->location.z };
 
@@ -720,25 +761,6 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 		.left = shape_information->world_left,
 		.bottom = shape_information->world_bottom,
 		.right = shape_information->world_right,
-	};
-	
-	float texL = texture.offset.x;
-	float texR = texture.scale.x + texture.offset.x;
-	float texT = texture.offset.y;
-	float texB = texture.scale.y + texture.offset.y;
-	
-	if (shape_information->flags & _X_MIRRORED_BIT) {
-		std::swap(texL, texR);
-	}
-	if (shape_information->flags & _Y_MIRRORED_BIT) {
-		std::swap(texB, texT);
-	}
-	
-	simd_float4x2 uv = {
-		(simd_float2){ texB, texL },
-		(simd_float2){ texT, texL },
-		(simd_float2){ texT, texR },
-		(simd_float2){ texB, texR },
 	};
 	
 	Material material = getMaterial(texture.textureID, false, false);
@@ -750,7 +772,7 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 												   lightSourceIndex:NONE];
 	
 	return [[MetalSprite alloc] initWithIndex:objectIdx
-										   uv:uv
+										   uv:texture.uv
 										 rect:rect
 									 position:position
 									  surface:surface];
