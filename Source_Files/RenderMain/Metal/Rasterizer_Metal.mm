@@ -757,6 +757,8 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 }
 
 void UpdateObject(short objectIdx, object_data *object) {
+	if (OBJECT_IS_INVISIBLE(object)) return;
+
 	MetalSprite *sprite = GetSprite(objectIdx, object);
 	if (!sprite) return;
 
