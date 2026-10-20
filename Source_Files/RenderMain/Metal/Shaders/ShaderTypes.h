@@ -172,7 +172,8 @@ typedef struct {
 	vector_int3 position;
 	uint32_t textureIndex;
 	vector_float2 textureCoordinate;
-	vector_float3 normal;
+	vector_float3 surfaceNormal;
+	vector_float4 surfaceTangent;
 	Material material;
 } WorldVertex;
 

@@ -14,7 +14,8 @@ using namespace metal;
 struct RasterizerData {
 	float4 position [[position]];
 	float4 previousPosition;
-	float3 normal;
+	float3 surfaceNormal;
+	float4 surfaceTangent;
 	uint32_t textureIndex;
 	float2 textureCoordinate;
 	bool isLandscape [[flat]];
@@ -53,7 +54,8 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 	
 	out.position = position;
 	out.previousPosition = previousPosition;
-	out.normal = v.normal;
+	out.surfaceNormal = v.surfaceNormal;
+	out.surfaceTangent = v.surfaceTangent;
 	out.textureIndex = v.textureIndex;
 	out.textureCoordinate = v.textureCoordinate;
 	out.isLandscape = v.material.isLandscape;
@@ -77,10 +79,13 @@ struct TextureArgs {
 fragment GBuffer
 initialRenderFragmentShader(RasterizerData in [[stage_in]],
 							constant Uniforms &uniforms [[ buffer(InitialRenderFragmentShaderUniformsIndex) ]],
-							constant TextureArgs &textures [[ buffer(InitialRenderFragmentShaderAlbedoTexturesIndex) ]])
+							constant TextureArgs &textures [[ buffer(InitialRenderFragmentShaderAlbedoTexturesIndex) ]],
+							constant TextureArgs &normalMaps [[ buffer(InitialRenderFragmentShaderNormalMapsIndex) ]])
 {
 	constexpr sampler textureSampler (mag_filter::nearest, min_filter::nearest, address::repeat);
 	texture2d<float> colorTexture = textures.textures[in.textureIndex];
+	texture2d<float> normalMap = normalMaps.textures[in.textureIndex];
+
 	float4 colorSample = colorTexture.sample(textureSampler, in.textureCoordinate);
 	if (colorSample.a == 0) {
 		discard_fragment();
@@ -90,6 +95,18 @@ initialRenderFragmentShader(RasterizerData in [[stage_in]],
 		colorSample = float4(1.0);
 	}
 
+	float4 surfaceTangent = in.surfaceTangent;
+	float3 normal = in.surfaceNormal;
+	if (length(surfaceTangent) > 0.0) {
+		float3 T = normalize(surfaceTangent.xyz);
+		float3 N = normalize(in.surfaceNormal);
+		float3 B = cross(T, N) * surfaceTangent.w;
+		float3x3 TBN = float3x3(T, B, N);
+		
+		float3 texelNormal = normalMap.sample(textureSampler, in.textureCoordinate).xyz * 2.0 - 1.0;
+		normal = normalize(TBN * texelNormal);
+	}
+
 	float2 currentXY = in.position.xy / float2(uniforms.resolution) * 2.0 - 1.0;
 	float2 previousXY = in.previousPosition.xy / in.previousPosition.w;
 	previousXY.y = -previousXY.y;
@@ -97,11 +114,11 @@ initialRenderFragmentShader(RasterizerData in [[stage_in]],
 	float2 motion = (previousXY - currentXY) * float2(uniforms.resolution) * 0.5;
 
 	return {
-		.diffuseAlbedo = float4(colorSample),
-		.specularAlbedo = float4(0.0),
+		.diffuseAlbedo = colorSample,
+		.specularAlbedo = colorSample,
 		.roughness = 1.0,
 		.depth = in.position.z,
-		.normal = float4(in.normal, 1.0),
+		.normal = float4(normal, 1.0),
 		.motion = motion,
 	};
 }

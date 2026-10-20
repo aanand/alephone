@@ -17,6 +17,27 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 	{ 0.0,  0.5, 0.0 },
 };
 
+simd_float4 tangent(simd_float3 p0, simd_float3 p1, simd_float3 p2,
+					simd_float2 uv0, simd_float2 uv1, simd_float2 uv2,
+					simd_float3 N)
+{
+	simd_float3 dp1 = p1 - p0;
+	simd_float3 dp2 = p2 - p0;
+	simd_float2 duv1 = uv1 - uv0;
+	simd_float2 duv2 = uv2 - uv0;
+	
+	float det = (duv1.x * duv2.y - duv2.x * duv1.y);
+	float r = (fabs(det) > 1e-6f) ? (1.0f / det) : 0.0f;
+	
+	simd_float3 T = (dp1 * duv2.y - dp2 * duv1.y) * r;
+	simd_float3 B = (dp2 * duv1.x - dp1 * duv2.x) * r;
+	
+	T = simd_normalize(T - N * simd_dot(N, T));
+	float H = (simd_dot(simd_cross(N, T), B) < 0.0f) ? -1.0f : 1.0f;
+
+	return simd_make_float4(T, H);
+}
+
 @implementation Triangle
 
 -(Triangle *)initWithV0:(WorldVertex)v0 v1:(WorldVertex)v1 v2:(WorldVertex)v2 surface:(MetalSurface *)surface
@@ -55,22 +76,9 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 }
 
 - (simd_float4) tangent {
-	simd_float3 dp1 = self.p1 - self.p0;
-	simd_float3 dp2 = self.p2 - self.p0;
-	simd_float2 duv1 = self.uv1 - self.uv0;
-	simd_float2 duv2 = self.uv2 - self.uv0;
-	
-	float det = (duv1.x * duv2.y - duv2.x * duv1.y);
-	float r = (fabs(det) > 1e-6f) ? (1.0f / det) : 0.0f;
-	
-	simd_float3 T = (dp1 * duv2.y - dp2 * duv1.y) * r;
-	simd_float3 B = (dp2 * duv1.x - dp1 * duv2.x) * r;
-	simd_float3 N = _surface.normal;
-	
-	T = simd_normalize(T - N * simd_dot(N, T));
-	float H = (simd_dot(simd_cross(N, T), B) < 0.0f) ? -1.0f : 1.0f;
-
-	return simd_make_float4(T, H);
+	return tangent(self.p0, self.p1, self.p2,
+				   self.uv0, self.uv1, self.uv2,
+				   _surface.normal);
 }
 
 @end
@@ -194,22 +202,29 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 	};
 }
 
-- (WorldVertex) getWorldVertexAtIndex:(NSUInteger)vertexIdx {
+- (WorldVertex) getWorldVertexAtIndex:(NSUInteger)vertexIdx surfaceTangent:(simd_float4)surfaceTangent {
 	simd_int2 pos = _vertices[vertexIdx];
 	return (WorldVertex){
 		.position = simd_make_int3(pos.x, pos.y, _height),
 		.textureCoordinate = _uv[vertexIdx],
-		.normal = _surface.normal,
+		.surfaceNormal = _surface.normal,
+		.surfaceTangent = surfaceTangent,
 	};
 }
 
 - (void) eachTriangle:(void (^)(Triangle *))callback
 {
+	simd_float4 surfaceTangent = tangent(simd_make_float3(_vertices[0].x, _vertices[0].y, _height),
+										 simd_make_float3(_vertices[1].x, _vertices[1].y, _height),
+										 simd_make_float3(_vertices[2].x, _vertices[2].y, _height),
+										 _uv[0], _uv[1], _uv[2],
+										 _surface.normal);
+
 	// Triangle fan: draw 0-1-2, 0-2-3, 0-3-4, etc
 	for (int j = 0; j < _vertexCount - 2; j++) {
-		callback([[Triangle alloc] initWithV0:[self getWorldVertexAtIndex:0]
-										   v1:[self getWorldVertexAtIndex:j+1]
-										   v2:[self getWorldVertexAtIndex:j+2]
+		callback([[Triangle alloc] initWithV0:[self getWorldVertexAtIndex:0 surfaceTangent:surfaceTangent]
+										   v1:[self getWorldVertexAtIndex:j+1 surfaceTangent:surfaceTangent]
+										   v2:[self getWorldVertexAtIndex:j+2 surfaceTangent:surfaceTangent]
 									  surface:_surface]);
 	}
 }
@@ -232,25 +247,35 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 
 - (void) eachTriangle:(void (^)(Triangle *))callback
 {
+	simd_float4 surfaceTangent = tangent(simd_make_float3(_v0.x, _v0.y, _bottom),
+										 simd_make_float3(_v0.x, _v0.y, _top),
+										 simd_make_float3(_v1.x, _v1.y, _top),
+										 _uv.columns[0], _uv.columns[1], _uv.columns[2],
+										 _surface.normal);
+
 	WorldVertex v0 = {
 		.position = { _v0.x, _v0.y, _bottom },
 		.textureCoordinate = _uv.columns[0],
-		.normal = _surface.normal,
+		.surfaceNormal = _surface.normal,
+		.surfaceTangent = surfaceTangent,
 	};
 	WorldVertex v1 = {
 		.position = { _v0.x, _v0.y, _top },
 		.textureCoordinate = _uv.columns[1],
-		.normal = _surface.normal,
+		.surfaceNormal = _surface.normal,
+		.surfaceTangent = surfaceTangent,
 	};
 	WorldVertex v2 = {
 		.position = { _v1.x, _v1.y, _top },
 		.textureCoordinate = _uv.columns[2],
-		.normal = _surface.normal,
+		.surfaceNormal = _surface.normal,
+		.surfaceTangent = surfaceTangent,
 	};
 	WorldVertex v3 = {
 		.position = { _v1.x, _v1.y, _bottom },
 		.textureCoordinate = _uv.columns[3],
-		.normal = _surface.normal,
+		.surfaceNormal = _surface.normal,
+		.surfaceTangent = surfaceTangent,
 	};
 	
 	Triangle *t0 = [[Triangle alloc] initWithV0:v0 v1:v1 v2:v2 surface:_surface];
@@ -309,7 +334,7 @@ simd_float3 VERTICAL_QUAD_VERTICES[4] = {
 		v[i] = (WorldVertex){
 			.position = simd_make_int3(position.x, position.y, position.z),
 			.textureCoordinate = _uv.columns[i],
-			.normal = normal,
+			.surfaceNormal = normal,
 		};
 	}
 	
