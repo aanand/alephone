@@ -312,12 +312,12 @@ simd_float4 tangent(simd_float3 p0, simd_float3 p1, simd_float3 p2,
 
 @implementation MetalSprite
 
-- (MetalSprite *)initWithIndex:(NSInteger)index uv:(simd_float4x2)uv size:(simd_int2)size position:(simd_int3)position surface:(MetalSurface *)surface
+-(MetalSprite *)initWithIndex:(NSInteger)index uv:(simd_float4x2)uv rect:(Rect)rect position:(simd_int3)position surface:(MetalSurface *)surface
 {
 	if (self = [super init]) {
 		_index = index;
 		_uv = uv;
-		_size = size;
+		_rect = rect;
 		_position = position;
 		_surface = surface;
 	}
@@ -347,7 +347,8 @@ simd_float4 tangent(simd_float3 p0, simd_float3 p1, simd_float3 p2,
 
 - (simd_float4x3)instanceTransformForRotation:(float)theta {
 	float x = _position.x, y = _position.y, z = _position.z;
-	float w = _size.x, h = _size.y;
+	float w = _rect.right - _rect.left;
+	float h = _rect.top - _rect.bottom;
 
 	return (simd_float4x3){
 		.columns = {

@@ -165,13 +165,13 @@
 
 @property (nonatomic, readonly) NSInteger index;
 @property (nonatomic, readonly) simd_float4x2 uv;
-@property (nonatomic, readonly) simd_int2 size;
+@property (nonatomic, readonly) Rect rect;
 @property (nonatomic, readonly) simd_int3 position;
 @property (nonatomic, readonly) MetalSurface *surface;
 
 - (MetalSprite*) initWithIndex:(NSInteger)index
 							uv:(simd_float4x2)uv
-						  size:(simd_int2)size
+						  rect:(Rect)rect
 					  position:(simd_int3)position
 					   surface:(MetalSurface*)surface;
 

@@ -715,12 +715,12 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 
 	simd_int3 position = { object->location.x, object->location.y, object->location.z };
 
-	short spriteL = shape_information->world_left;
-	short spriteR = shape_information->world_right;
-	short spriteT = shape_information->world_top;
-	short spriteB = shape_information->world_bottom;
-	
-	simd_int2 size = { spriteR - spriteL, spriteT - spriteB };
+	Rect rect = {
+		.top = shape_information->world_top,
+		.left = shape_information->world_left,
+		.bottom = shape_information->world_bottom,
+		.right = shape_information->world_right,
+	};
 	
 	float texL = texture.offset.x;
 	float texR = texture.scale.x + texture.offset.x;
@@ -751,7 +751,7 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 	
 	return [[MetalSprite alloc] initWithIndex:objectIdx
 										   uv:uv
-										 size:size
+										 rect:rect
 									 position:position
 									  surface:surface];
 }
