@@ -247,6 +247,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 
 				ray.origin = hitPoint;
 				ray.direction = direction;
+				b--; // Spend an extra bounce to get refracted light
 
 				continue;
 			}
