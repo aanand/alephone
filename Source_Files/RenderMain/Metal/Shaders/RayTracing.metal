@@ -155,8 +155,9 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 			}
 		}
 		
-		if (albedo.a < 0.5) {
-			// We hit something transparent - continue the ray.
+		// We hit something transparent, so continue the ray... unless what we hit was a landscape,
+		// which apparently CAN happen, and if not checked for, causes weird zebra stripes in the skies of M2 maps.
+		if (albedo.a < 0.5 && !data.material.isLandscape) {
 			ray.origin = hitPoint + ray.direction * rayEpsilon;
 			ray.max_distance -= (intersection.distance + rayEpsilon);
 		} else {
