@@ -355,7 +355,7 @@ simd_float4 tangent(simd_float3 p0, simd_float3 p1, simd_float3 p2,
 			{  w*cos(theta), w*sin(theta), 0.0 },
 			{ -w*sin(theta), w*cos(theta), 0.0 },
 			{          0.0,           0.0,   h },
-			{            x,             y,   z },
+			{            x,             y,   z + _rect.bottom },
 		}
 	};
 }
