@@ -138,6 +138,9 @@ API_AVAILABLE(macos(26.0))
 	// Normals, UVs etc. for dynamic geometry
 	id<MTLBuffer> perInstanceDataBuffer;
 	uint32_t numInstances;
+	
+	id<MTLBuffer> reservoirBufferA;
+	id<MTLBuffer> reservoirBufferB;
 
 	NSMutableOrderedSet<NSString*> *textureIDs;
 
@@ -368,6 +371,11 @@ API_AVAILABLE(macos(26.0))
 	denoiseConfigBuffer = [pipeline.device newBufferWithLength:sizeof(DenoiseConfig) * waveletDenoisePasses.count options:MTLResourceStorageModeShared];
 	denoiseConfigBuffer.label = @"Denoise config";
 	[postProcessingResidencySet addAllocation:denoiseConfigBuffer];
+	
+	reservoirBufferA = [pipeline.device newBufferWithLength:sizeof(Reservoir) * viewportSize.x * viewportSize.y options:MTLResourceStorageModeShared];
+	reservoirBufferB = [pipeline.device newBufferWithLength:sizeof(Reservoir) * viewportSize.x * viewportSize.y options:MTLResourceStorageModeShared];
+	[rayTracingResidencySet addAllocation:reservoirBufferA];
+	[rayTracingResidencySet addAllocation:reservoirBufferB];
 }
 
 - (void) setupIntermediateTextures {
@@ -655,7 +663,7 @@ API_AVAILABLE(macos(26.0))
 
 - (id<MTLComputePipelineState>) compileRayTracingPipeline {
 	NSError *error;
-	id<MTLFunction> function = [pipeline.defaultLibrary newFunctionWithName:@"rayTracingKernel"];
+	id<MTLFunction> function = [pipeline.defaultLibrary newFunctionWithName:@"reSTIR"];
 	
 	albedoTextureArgumentEncoder = [function newArgumentEncoderWithBufferIndex:RayTracingKernelAlbedoTexturesIndex];
 	albedoTextureArgumentEncoder.label = @"albedoTextureArgumentEncoder";
@@ -1398,6 +1406,15 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[computeArgumentTable setAddress:normalMapArgumentBuffer.gpuAddress atIndex:RayTracingKernelNormalMapsIndex];
 	[computeArgumentTable setAddress:emissionMapArgumentBuffer.gpuAddress atIndex:RayTracingKernelEmissionMapsIndex];
 	[computeArgumentTable setAddress:lightSourcesBuffer.gpuAddress atIndex:RayTracingKernelLightSourcesIndex];
+
+	if (frameNumber % 2 == 0) {
+		[computeArgumentTable setAddress:reservoirBufferA.gpuAddress atIndex:RayTracingKernelPreviousReservoirIndex];
+		[computeArgumentTable setAddress:reservoirBufferB.gpuAddress atIndex:RayTracingKernelCurrentReservoirIndex];
+	} else {
+		[computeArgumentTable setAddress:reservoirBufferB.gpuAddress atIndex:RayTracingKernelPreviousReservoirIndex];
+		[computeArgumentTable setAddress:reservoirBufferA.gpuAddress atIndex:RayTracingKernelCurrentReservoirIndex];
+	}
+
 	[computeArgumentTable setTexture:outputTexture.gpuResourceID atIndex:RayTracingKernelOutImageIndex];
 	[encoder setArgumentTable:computeArgumentTable];
 	

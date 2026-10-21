@@ -49,6 +49,8 @@ enum {
 	RayTracingKernelNormalMapsIndex,
 	RayTracingKernelEmissionMapsIndex,
 	RayTracingKernelLightSourcesIndex,
+	RayTracingKernelPreviousReservoirIndex,
+	RayTracingKernelCurrentReservoirIndex,
 	RayTracingKernel_NumBuffers,
 };
 
@@ -198,5 +200,11 @@ typedef struct {
 
 	int32_t lightSourceIndex;
 } RayTracingData;
+
+typedef struct {
+	vector_float3 direction;
+	float sampleWeight;
+	float sumWeight;
+} Reservoir;
 
 #endif /* VertexTypes_h */

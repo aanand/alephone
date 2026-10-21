@@ -16,28 +16,6 @@ using namespace raytracing;
 #include "Utils.h"
 
 
-float2 getTriangleUV(intersector<triangle_data, instancing>::result_type intersection,
-					 float2 uv0, float2 uv1, float2 uv2)
-{
-	float3 bary = float3(1.0 - intersection.triangle_barycentric_coord.x - intersection.triangle_barycentric_coord.y,
-						 intersection.triangle_barycentric_coord.x,
-						 intersection.triangle_barycentric_coord.y);
-	
-	return uv0 * bary.x + uv1 * bary.y + uv2 * bary.z;
-}
-
-float2 getPolygonUV(intersector<triangle_data, instancing>::result_type intersection,
-					simd_float2 uv[MAXIMUM_VERTICES_PER_POLYGON])
-{
-	float2 uv0, uv1, uv2;
-	
-	uv0 = uv[0];
-	uv1 = uv[intersection.primitive_id+1];
-	uv2 = uv[intersection.primitive_id+2];
-	
-	return getTriangleUV(intersection, uv0, uv1, uv2);
-}
-
 struct Hit {
 	bool didHit;
 	float3 hitPoint;
@@ -65,18 +43,6 @@ struct RayTracer {
 	constant LightSource *lightSources;
 	float3 forward; // Unit vector representing the player's look direction in world-space
 };
-
-float3 sampleSky(Sky sky, float3 direction) {
-	if (sky.hasSun) {
-		float cosThetaToSun = dot(direction, sky.sunPosition);
-		if (acos(cosThetaToSun) < sky.sunRadius) {
-			return sky.sunEmission;
-		}
-	}
-	
-	float cosThetaToTop = dot(direction, float3(0.0, 0.0, 1.0));
-	return mix(sky.bottomEmission, sky.topEmission, cosThetaToTop * 0.5 + 0.5);
-}
 
 float3 getPlayerLightPosition(constant Uniforms &uniforms) {
 	return float3(uniforms.camera.origin + int3(0, 0, -128));

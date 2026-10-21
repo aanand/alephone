@@ -1940,6 +1940,7 @@
 				Shaders/FinalRender.metal,
 				Shaders/InitialRender.metal,
 				Shaders/RayTracing.metal,
+				Shaders/ReSTIR.metal,
 				Shaders/TAA.metal,
 			);
 			target = AEC3C6FE09AD68AC003258E4 /* Aleph One */;
@@ -1951,6 +1952,7 @@
 				Shaders/FinalRender.metal,
 				Shaders/InitialRender.metal,
 				Shaders/RayTracing.metal,
+				Shaders/ReSTIR.metal,
 				Shaders/TAA.metal,
 			);
 			target = AEFD85E813EB84CF00C1E687 /* Marathon 1 */;
@@ -1962,6 +1964,7 @@
 				Shaders/FinalRender.metal,
 				Shaders/InitialRender.metal,
 				Shaders/RayTracing.metal,
+				Shaders/ReSTIR.metal,
 				Shaders/TAA.metal,
 			);
 			target = AE505B3A141D45E600915344 /* Marathon 2 */;
@@ -1973,6 +1976,7 @@
 				Shaders/FinalRender.metal,
 				Shaders/InitialRender.metal,
 				Shaders/RayTracing.metal,
+				Shaders/ReSTIR.metal,
 				Shaders/TAA.metal,
 			);
 			target = AEB4A0DA14296CAE00537AE7 /* Marathon 3 */;
@@ -1984,6 +1988,7 @@
 				Shaders/FinalRender.metal,
 				Shaders/InitialRender.metal,
 				Shaders/RayTracing.metal,
+				Shaders/ReSTIR.metal,
 				Shaders/TAA.metal,
 			);
 			target = AE120B972BC77645001873DD /* Marathon 1 Steam */;
@@ -1995,6 +2000,7 @@
 				Shaders/FinalRender.metal,
 				Shaders/InitialRender.metal,
 				Shaders/RayTracing.metal,
+				Shaders/ReSTIR.metal,
 				Shaders/TAA.metal,
 			);
 			target = AE13202F2C1CB4D2009D34AA /* Marathon 2 Steam */;
@@ -2006,6 +2012,7 @@
 				Shaders/FinalRender.metal,
 				Shaders/InitialRender.metal,
 				Shaders/RayTracing.metal,
+				Shaders/ReSTIR.metal,
 				Shaders/TAA.metal,
 			);
 			target = AEBDC50B2C4DF0780026DFF1 /* Marathon 3 Steam */;
@@ -2017,6 +2024,7 @@
 				Shaders/FinalRender.metal,
 				Shaders/InitialRender.metal,
 				Shaders/RayTracing.metal,
+				Shaders/ReSTIR.metal,
 				Shaders/TAA.metal,
 			);
 			target = AE8729C02BD1FBEA00426095 /* Steam Launcher */;
@@ -2028,6 +2036,7 @@
 				Shaders/FinalRender.metal,
 				Shaders/InitialRender.metal,
 				Shaders/RayTracing.metal,
+				Shaders/ReSTIR.metal,
 				Shaders/TAA.metal,
 			);
 			target = 4F427DF42F3761EB000FB3DA /* Aleph One Tests */;
