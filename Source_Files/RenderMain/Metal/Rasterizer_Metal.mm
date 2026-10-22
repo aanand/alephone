@@ -504,20 +504,20 @@ std::unordered_map<std::string, Sky> skies = {
 	} }
 };
 
-//Sky defaultSky = {
-//	.bottomEmission = { 0.0, 0.0, 0.0 },
-//	.topEmission = { 1.0, 1.0, 1.0 },
-//	.hasSun = false,
-//};
-
 Sky defaultSky = {
-	.bottomEmission = { 1.0, 1.0, 1.0 },
-	.topEmission = { 5.0, 5.0, 5.0 },
-	.hasSun = true,
-	.sunEmission = { 10.0, 10.0, 10.0 },
-	.sunPosition = { 0.0, 0.0, 1.0 },
-	.sunRadius = 10.0 * M_PI / 180.0,
+	.bottomEmission = { 0.0, 0.0, 0.0 },
+	.topEmission = { 1.0, 1.0, 1.0 },
+	.hasSun = false,
 };
+
+//Sky defaultSky = {
+//	.bottomEmission = { 1.0, 1.0, 1.0 },
+//	.topEmission = { 5.0, 5.0, 5.0 },
+//	.hasSun = true,
+//	.sunEmission = { 10.0, 10.0, 10.0 },
+//	.sunPosition = { 0.0, 0.0, 1.0 },
+//	.sunRadius = 10.0 * M_PI / 180.0,
+//};
 
 Material getMaterial(NSString *textureID, bool isLandscape, bool hasNormalMap) {
 	Material material = {};
