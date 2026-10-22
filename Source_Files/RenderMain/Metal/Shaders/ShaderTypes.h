@@ -203,8 +203,9 @@ typedef struct {
 
 typedef struct {
 	vector_float3 direction;
-	float sampleWeight;
-	float sumWeight;
+	float wSum;
+	float M;
+	float W;
 } Reservoir;
 
 #endif /* VertexTypes_h */

@@ -15,6 +15,50 @@ using namespace raytracing;
 #include "Utils.h"
 #include "Sampling.h"
 
+constant float M_CAP = 20.0;
+
+Reservoir newReservoir() {
+	Reservoir r;
+	r.wSum = 0.0;
+	r.M = 0.0;
+	return r;
+}
+
+void updateReservoir(thread Reservoir &r, float3 direction, float weight, thread float &seed) {
+	r.wSum += weight;
+	r.M += 1;
+	if (r.wSum > 0.0 && hash1(seed) * r.wSum < weight) {
+		r.direction = direction;
+	}
+}
+
+float getTargetPDF(Sky sky, float3 direction, float3 normal) {
+	if (dot(direction, normal) <= 0.0f) {
+		return 0.0f;
+	}
+	return length(sampleSky(sky, direction));
+}
+
+Reservoir combineReservoirs(Reservoir r1, Reservoir r2, float3 normal, Sky sky, thread float &seed) {
+	Reservoir s = newReservoir();
+	
+	float w1 = getTargetPDF(sky, r1.direction, normal) * r1.W * r1.M;
+	float w2 = getTargetPDF(sky, r2.direction, normal) * r2.W * r2.M;
+	
+	updateReservoir(s, r1.direction, w1, seed);
+	updateReservoir(s, r2.direction, w2, seed);
+
+	s.M = r1.M + r2.M;
+	
+	float pHatSelected = getTargetPDF(sky, s.direction, normal);
+	if (pHatSelected > 0.0 && s.M > 0.0) {
+		s.W = (s.wSum / s.M) / pHatSelected;
+	} else {
+		s.W = 0.0;
+	}
+	
+	return s;
+}
 
 typedef intersector<triangle_data, instancing>::result_type RayTracingResult;
 
@@ -32,7 +76,7 @@ struct RayTracer {
 	constant LightSource *lightSources;
 	constant Reservoir *previousReservoirs;
 	device Reservoir *currentReservoirs;
-	uint32_t pixelIndex;
+	uint2 tid;
 	float3 forward; // Unit vector representing the player's look direction in world-space
 };
 
@@ -41,11 +85,16 @@ RayTracingData getData(thread RayTracingResult &intersection, thread RayTracer &
 	return *((const device RayTracingData*) intersection.primitive_data);
 }
 
+uint32_t getPixelIndex(uint2 tid, constant Uniforms &uniforms) {
+	return tid.y * uniforms.resolution.x + tid.x;
+}
+
 float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, constant Uniforms &uniforms, thread float &seed) {
 	ray ray;
 	ray.origin = origin;
 	ray.direction = direction;
 	ray.min_distance = rayEpsilon;
+	ray.max_distance = INFINITY;
 	
 	RayTracingResult intersection = rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure);
 	
@@ -60,49 +109,71 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 	if (data.material.isLandscape) {
 		color = sampleSky(uniforms.sky, ray.direction);
 	} else {
-		Reservoir r = rayTracer.previousReservoirs[rayTracer.pixelIndex];
+		float3 surfaceNormal = data.surfaceNormal;
+
+		Reservoir r = newReservoir();
+
+		float3 newDirection = sampleUnitHemisphereCosineWeighted(hash2(seed), surfaceNormal);
+		float pHat = length(sampleSky(uniforms.sky, newDirection));
+		float cosTheta = clamp(dot(newDirection, surfaceNormal), 0.0, 1.0);
+		
+		if (pHat > 0.0 && cosTheta > 0.0) {
+			float q = cosTheta / M_PI_F;
+			float w = pHat/q;
+			
+			r.direction = newDirection;
+			r.wSum = w;
+			r.M = 1.0;
+			r.W = (1.0 / pHat) * (r.wSum / r.M);
+		} else {
+			r.direction = newDirection;
+			r.wSum = 0.0;
+			r.M = 1.0;
+			r.W = 0.0;
+		}
+		
+		uint32_t currentPixelIndex = getPixelIndex(rayTracer.tid, uniforms);
+
+		Reservoir p = rayTracer.previousReservoirs[currentPixelIndex];
+		p.M = min(p.M, M_CAP);
+		r = combineReservoirs(r, p, surfaceNormal, uniforms.sky, seed);
+
+		rayTracer.currentReservoirs[currentPixelIndex] = r;
+
+		for (int i = 0; i < 4; i++) {
+			int xOffset = floor(hash1(seed) * 33) - 16;
+			int yOffset = floor(hash1(seed) * 33) - 16;
+			
+			int x = (int)rayTracer.tid.x + xOffset;
+			if (x < 0 || x >= (int)uniforms.resolution.x) {
+				continue;
+			}
+
+			int y = (int)rayTracer.tid.y + yOffset;
+			if (y < 0 || y >= (int)uniforms.resolution.y) {
+				continue;
+			}
+			
+			uint32_t neighborIndex = getPixelIndex(uint2(x, y), uniforms);
+			Reservoir n = rayTracer.previousReservoirs[neighborIndex];
+			n.M = min(n.M, M_CAP);
+			r = combineReservoirs(r, n, surfaceNormal, uniforms.sky, seed);
+		}
 
 		float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
 
-		float3 newDirection = sampleUnitHemisphereCosineWeighted(hash2(seed), data.surfaceNormal);
-		float3 newDirectionColor = sampleSky(uniforms.sky, newDirection) * clamp(dot(newDirection, data.surfaceNormal), 0.0, 1.0);
-		float newDirectionWeight = length(sampleSky(uniforms.sky, newDirection));
-		
-		float3 previousDirection = r.direction;
-		float3 previousDirectionColor = sampleSky(uniforms.sky, previousDirection) * clamp(dot(previousDirection, data.surfaceNormal), 0.0, 1.0);
-		float previousDirectionWeight = clamp(r.sumWeight, 0.1, newDirectionWeight * 20.0);
-
-		float3 selectedDirection;
-		float3 selectedDirectionColor;
-		float selectedDirectionWeight;
-		float unselectedDirectionWeight;
-
-		if (hash1(seed) < previousDirectionWeight/(previousDirectionWeight + newDirectionWeight)) {
-			selectedDirection = previousDirection;
-			selectedDirectionColor = previousDirectionColor;
-			selectedDirectionWeight = previousDirectionWeight;
-			unselectedDirectionWeight = newDirectionWeight;
-		} else {
-			selectedDirection = newDirection;
-			selectedDirectionColor = newDirectionColor;
-			selectedDirectionWeight = newDirectionWeight;
-			unselectedDirectionWeight = previousDirectionWeight;
-		}
-
 		ray.origin = hitPoint;
-		ray.direction = selectedDirection;
+		ray.direction = r.direction;
 		intersection = rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure);
-		data = getData(intersection, rayTracer);
-
-		float visibility = data.material.isLandscape ? 1.0 : 0.0;
-		float finalSelectedDirectionWeight = selectedDirectionWeight * visibility;
-		r.sumWeight = unselectedDirectionWeight + finalSelectedDirectionWeight;
-		if (hash1(seed) < finalSelectedDirectionWeight/r.sumWeight) {
-			r.direction = selectedDirection;
+		bool isVisible = (intersection.type != intersection_type::none) && getData(intersection, rayTracer).material.isLandscape;
+		
+		if (isVisible) {
+			float3 skyColor = sampleSky(uniforms.sky, r.direction);
+			float cosTheta = clamp(dot(r.direction, surfaceNormal), 0.0, 1.0);
+			float brdf = defaultAttenuation / M_PI_F;
+			
+			color = skyColor * cosTheta * brdf * r.W;
 		}
-		rayTracer.currentReservoirs[rayTracer.pixelIndex] = r;
-
-		color = r.sumWeight * 0.5 * selectedDirectionColor * visibility / selectedDirectionWeight;
 	}
 	
 	return color;
@@ -140,8 +211,6 @@ kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracin
 	up      = uniforms.camera.rotateDirectionMat * up;
 	forward = uniforms.camera.rotateDirectionMat * forward;
 	
-	uint32_t pixelIndex = tid.y * uniforms.resolution.x + tid.x;
-	
 	intersector<triangle_data, instancing> intersector;
 	RayTracer rayTracer{
 		.intersector = intersector,
@@ -153,7 +222,7 @@ kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracin
 		.lightSources = &lightSources,
 		.previousReservoirs = previousReservoirs,
 		.currentReservoirs = currentReservoirs,
-		.pixelIndex = pixelIndex,
+		.tid = tid,
 		.forward = forward.zxy,
 	};
 
