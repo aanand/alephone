@@ -77,6 +77,7 @@ struct RayTracer {
 	constant Reservoir *previousReservoirs;
 	device Reservoir *currentReservoirs;
 	uint2 tid;
+	bool useReSTIR;
 	float3 forward; // Unit vector representing the player's look direction in world-space
 };
 
@@ -132,6 +133,9 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 			r.W = 0.0;
 		}
 		
+		float3 rawDirection = newDirection;
+		float rawW = r.W;
+		
 		uint32_t currentPixelIndex = getPixelIndex(rayTracer.tid, uniforms);
 
 		Reservoir p = rayTracer.previousReservoirs[currentPixelIndex];
@@ -163,16 +167,16 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 		float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
 
 		ray.origin = hitPoint;
-		ray.direction = r.direction;
+		ray.direction = rayTracer.useReSTIR ? r.direction : rawDirection;
 		intersection = rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure);
 		bool isVisible = (intersection.type != intersection_type::none) && getData(intersection, rayTracer).material.isLandscape;
 		
 		if (isVisible) {
-			float3 skyColor = sampleSky(uniforms.sky, r.direction);
-			float cosTheta = clamp(dot(r.direction, surfaceNormal), 0.0, 1.0);
+			float3 skyColor = sampleSky(uniforms.sky, ray.direction);
+			float cosTheta = clamp(dot(ray.direction, surfaceNormal), 0.0, 1.0);
 			float brdf = defaultAttenuation / M_PI_F;
 			
-			color = skyColor * cosTheta * brdf * r.W;
+			color = skyColor * cosTheta * brdf * (rayTracer.useReSTIR ? r.W : rawW);
 		}
 	}
 	
@@ -223,6 +227,7 @@ kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracin
 		.previousReservoirs = previousReservoirs,
 		.currentReservoirs = currentReservoirs,
 		.tid = tid,
+		.useReSTIR = tid.x > uniforms.resolution.x/2,
 		.forward = forward.zxy,
 	};
 
