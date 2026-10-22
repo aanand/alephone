@@ -142,6 +142,7 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 		p.M = min(p.M, M_CAP);
 		r = combineReservoirs(r, p, surfaceNormal, uniforms.sky, seed);
 
+		// uncomment to leave spatial samples out of history
 		rayTracer.currentReservoirs[currentPixelIndex] = r;
 
 		for (int i = 0; i < 4; i++) {
@@ -163,6 +164,9 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 			n.M = min(n.M, M_CAP);
 			r = combineReservoirs(r, n, surfaceNormal, uniforms.sky, seed);
 		}
+
+		// uncomment to include spatial samples in history
+		// rayTracer.currentReservoirs[currentPixelIndex] = r;
 
 		float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
 
