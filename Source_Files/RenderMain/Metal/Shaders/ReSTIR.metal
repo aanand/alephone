@@ -150,6 +150,7 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 	}
 
 	RayTracingData data = getData(intersection, rayTracer);
+	float3 directEmission = getEmission(intersection, direction, rayTracer, uniforms);
 
 	if (data.material.isLandscape) {
 		return sampleSky(uniforms.sky, ray.direction);
@@ -240,7 +241,9 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 		float cosTheta = clamp(dot(finalSample.xS - hitPoint, surfaceNormal), 0.0, 1.0);
 		float brdf = defaultAttenuation / M_PI_F;
 		
-		return finalSample.Lo * cosTheta * brdf * finalW;
+		float3 collectedEmission = finalSample.Lo * cosTheta * brdf * finalW;
+
+		return directEmission + collectedEmission;
 	}
 }
 
