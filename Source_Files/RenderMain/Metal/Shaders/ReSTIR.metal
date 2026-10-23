@@ -21,6 +21,8 @@ constant int SPATIAL_R = 16;
 
 constant float MOTION_LIMIT = 128.0;
 
+constant float EMISSION_MULTIPLIER = 10.0;
+
 Reservoir newReservoir() {
 	Reservoir r;
 	r.wSum = 0.0;
@@ -114,6 +116,8 @@ RayTracingResult castRay(float3 origin, float3 direction, thread RayTracer &rayT
 	return rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure);
 }
 
+constexpr sampler sam(mag_filter::nearest, min_filter::nearest, address::repeat);
+
 float3 getEmission(RayTracingResult intersection, float3 direction, thread RayTracer &rayTracer, constant Uniforms &uniforms) {
 	if (intersection.type == intersection_type::none) {
 		return float3(0.0);
@@ -129,8 +133,29 @@ float3 getEmission(RayTracingResult intersection, float3 direction, thread RayTr
 	if (textureIndex > 0) {
 		float2 uv = getUV(intersection, data);
 		texture2d<float> emissionMap = rayTracer.emissionMaps->textures[textureIndex];
-		constexpr sampler sam(mag_filter::nearest, min_filter::nearest, address::repeat);
-		return emissionMap.sample(sam, uv).rgb;
+		float4 emission = emissionMap.sample(sam, uv);
+		return emission.rgb * emission.a * EMISSION_MULTIPLIER;
+	}
+	
+	return float3(0.0);
+}
+
+float3 getAlbedo(RayTracingResult intersection, thread RayTracer &rayTracer) {
+	if (intersection.type == intersection_type::none) {
+		return float3(0.0);
+	}
+	
+	RayTracingData data = getData(intersection, rayTracer);
+	
+	if (data.material.isLandscape) {
+		return float3(1.0);
+	}
+	
+	uint32_t textureIndex = data.textureIndex;
+	if (textureIndex > 0) {
+		float2 uv = getUV(intersection, data);
+		texture2d<float> texture = rayTracer.textures->textures[textureIndex];
+		return texture.sample(sam, uv).rgb;
 	}
 	
 	return float3(0.0);
@@ -151,6 +176,7 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 
 	RayTracingData data = getData(intersection, rayTracer);
 	float3 directEmission = getEmission(intersection, direction, rayTracer, uniforms);
+	float3 albedo = getAlbedo(intersection, rayTracer);
 
 	if (data.material.isLandscape) {
 		return sampleSky(uniforms.sky, ray.direction);
@@ -239,7 +265,7 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 		float3 finalW = (rayTracer.useReSTIR ? r.W : initialW);
 		
 		float cosTheta = clamp(dot(finalSample.xS - hitPoint, surfaceNormal), 0.0, 1.0);
-		float brdf = defaultAttenuation / M_PI_F;
+		float3 brdf = albedo / M_PI_F;
 		
 		float3 collectedEmission = finalSample.Lo * cosTheta * brdf * finalW;
 
