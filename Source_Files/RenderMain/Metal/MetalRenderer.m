@@ -432,6 +432,7 @@ API_AVAILABLE(macos(26.0))
 		case NoPostProcessing:
 			intermediateTextures = [NSSet setWithArray:@[
 				initialRenderGBufferDiffuseAlbedo,
+				initialRenderGBufferMotion,
 			]];
 			break;
 
@@ -1415,6 +1416,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 		[computeArgumentTable setAddress:reservoirBufferA.gpuAddress atIndex:RayTracingKernelCurrentReservoirIndex];
 	}
 
+	[computeArgumentTable setTexture:initialRenderGBufferMotion.gpuResourceID atIndex:RayTracingKernelMotionTextureIndex];
 	[computeArgumentTable setTexture:outputTexture.gpuResourceID atIndex:RayTracingKernelOutImageIndex];
 	[encoder setArgumentTable:computeArgumentTable];
 	

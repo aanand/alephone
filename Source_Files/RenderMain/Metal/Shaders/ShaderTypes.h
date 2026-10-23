@@ -55,6 +55,7 @@ enum {
 };
 
 enum {
+	RayTracingKernelMotionTextureIndex,
 	RayTracingKernelOutImageIndex,
 	RayTracingKernel_NumTextures,
 };

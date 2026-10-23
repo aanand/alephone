@@ -19,6 +19,8 @@ constant float M_CAP = 20.0;
 constant int SPATIAL_N = 4;
 constant int SPATIAL_R = 16;
 
+constant float MOTION_LIMIT = 128.0;
+
 Reservoir newReservoir() {
 	Reservoir r;
 	r.wSum = 0.0;
@@ -79,6 +81,7 @@ struct RayTracer {
 	constant LightSource *lightSources;
 	constant Reservoir *previousReservoirs;
 	device Reservoir *currentReservoirs;
+	thread texture2d<float> *motionData;
 	uint2 tid;
 	bool useReSTIR;
 	float3 forward; // Unit vector representing the player's look direction in world-space
@@ -158,11 +161,22 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 		float3 rawDirection = newDirection;
 		float rawW = r.W;
 		
-		uint32_t currentPixelIndex = getPixelIndex(rayTracer.tid, uniforms);
+		float2 motion = rayTracer.motionData->read(rayTracer.tid).xy;
+		if (length(motion) < MOTION_LIMIT) {
+			int prevX = (int)rayTracer.tid.x + round(motion.x);
+			int prevY = (int)rayTracer.tid.y + round(motion.y);
 
-		Reservoir p = rayTracer.previousReservoirs[currentPixelIndex];
-		p.M = min(p.M, M_CAP);
-		r = combineReservoirs(r, p, surfaceNormal, uniforms.sky, seed);
+			if (prevX >= 0 && prevX < (int)uniforms.resolution.x &&
+				prevY >= 0 && prevY < (int)uniforms.resolution.y)
+			{
+				uint32_t previousPixelIndex = getPixelIndex(uint2(prevX, prevY), uniforms);
+				Reservoir p = rayTracer.previousReservoirs[previousPixelIndex];
+				p.M = min(p.M, M_CAP);
+				r = combineReservoirs(r, p, surfaceNormal, uniforms.sky, seed);
+			}
+		}
+
+		uint32_t currentPixelIndex = getPixelIndex(rayTracer.tid, uniforms);
 
 		// uncomment to leave spatial samples out of history
 		rayTracer.currentReservoirs[currentPixelIndex] = r;
@@ -208,6 +222,7 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 }
 
 kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
+				   texture2d<float> motionData [[ texture(RayTracingKernelMotionTextureIndex) ]],
 				   instance_acceleration_structure accelerationStructure [[ buffer(RayTracingKernelAccelerationStructureIndex) ]],
 				   constant Uniforms &uniforms [[ buffer(RayTracingKernelUniformsIndex) ]],
 				   constant RayTracingData *perInstanceData [[ buffer(RayTracingKernelPerInstanceDataIndex) ]],
@@ -250,6 +265,7 @@ kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracin
 		.lightSources = &lightSources,
 		.previousReservoirs = previousReservoirs,
 		.currentReservoirs = currentReservoirs,
+		.motionData = &motionData,
 		.tid = tid,
 		.useReSTIR = true,
 		.forward = forward.zxy,
