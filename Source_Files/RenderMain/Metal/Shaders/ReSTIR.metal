@@ -38,13 +38,12 @@ void updateReservoir(thread Reservoir &r, Sample sample, float weight, thread fl
 	}
 }
 
+float getCosineTerm(Sample sample) {
+	return clamp(dot(normalize(sample.xS - sample.xV), sample.nV), 0.0, 1.0);
+}
+
 float getTargetPDF(Sample sample) {
-	float3 direction = normalize(sample.xS - sample.xV);
-	float cosTheta = dot(direction, sample.nV);
-	if (cosTheta <= 0.0f) {
-		return 0.0f;
-	}
-	return length(sample.Lo) * cosTheta;
+	return length(sample.Lo) * getCosineTerm(sample);
 }
 
 Reservoir combineReservoirs(Reservoir r1, Reservoir r2, thread float &seed) {
@@ -215,7 +214,7 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 		float pHat = getTargetPDF(initialSample);
 		
 		if (pHat > 0.0) {
-			float q = clamp(dot(normalize(initialSample.xS - initialSample.xV), initialSample.nV), 0.0, 1.0) / M_PI_F;
+			float q = getCosineTerm(initialSample) / M_PI_F;
 			float w = pHat/q;
 			
 			r.wSum = w;
@@ -275,7 +274,7 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 		Sample finalSample = rayTracer.useReSTIR ? r.sample : initialSample;
 		float3 finalW = (rayTracer.useReSTIR ? r.W : initialW);
 		
-		float cosTheta = clamp(dot(normalize(finalSample.xS - finalSample.xV), finalSample.nV), 0.0, 1.0);
+		float cosTheta = getCosineTerm(finalSample);
 		float3 brdf = albedo / M_PI_F;
 		
 		float3 collectedEmission = finalSample.Lo * cosTheta * brdf * finalW;
