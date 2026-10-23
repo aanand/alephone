@@ -194,93 +194,93 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 
 	RayTracingData initialHitData = getData(initialRayResult, rayTracer);
 	float3 directEmission = getEmission(initialRayResult, direction, rayTracer, uniforms);
-	float3 albedo = getAlbedo(initialRayResult, rayTracer);
 
 	if (initialHitData.material.isLandscape) {
-		return sampleSky(uniforms.sky, direction);
-	} else {
-		Sample initialSample = {
-			.xV = origin + (direction * initialRayResult.distance),
-			.nV = initialHitData.surfaceNormal,
-			.random = float4(hash2(seed), hash2(seed)),
-		};
-		if (!collectSample(initialSample, rayTracer, uniforms)) {
-			return float3(0.0);
-		}
-
-		Reservoir r = newReservoir();
-		r.sample = initialSample;
-
-		float pHat = getTargetPDF(initialSample);
-		
-		if (pHat > 0.0) {
-			float q = getCosineTerm(initialSample) / M_PI_F;
-			float w = pHat/q;
-			
-			r.wSum = w;
-			r.M = 1.0;
-			r.W = (1.0 / pHat) * (r.wSum / r.M);
-		} else {
-			r.wSum = 0.0;
-			r.M = 1.0;
-			r.W = 0.0;
-		}
-		
-		float initialW = r.W;
-		
-		float2 motion = rayTracer.motionData->read(rayTracer.tid).xy;
-		if (length(motion) < MOTION_LIMIT) {
-			int prevX = (int)rayTracer.tid.x + round(motion.x);
-			int prevY = (int)rayTracer.tid.y + round(motion.y);
-
-			if (prevX >= 0 && prevX < (int)uniforms.resolution.x &&
-				prevY >= 0 && prevY < (int)uniforms.resolution.y)
-			{
-				uint32_t previousPixelIndex = getPixelIndex(uint2(prevX, prevY), uniforms);
-				Reservoir p = rayTracer.previousReservoirs[previousPixelIndex];
-				p.M = min(p.M, M_CAP);
-				r = combineReservoirs(r, p, seed);
-			}
-		}
-
-		uint32_t currentPixelIndex = getPixelIndex(rayTracer.tid, uniforms);
-
-		// uncomment to leave spatial samples out of history
-		rayTracer.currentReservoirs[currentPixelIndex] = r;
-
-		for (int i = 0; i < SPATIAL_N; i++) {
-			int xOffset = floor(hash1(seed) * (SPATIAL_R * 2 + 1)) - SPATIAL_R;
-			int yOffset = floor(hash1(seed) * (SPATIAL_R * 2 + 1)) - SPATIAL_R;
-			
-			int x = (int)rayTracer.tid.x + xOffset;
-			if (x < 0 || x >= (int)uniforms.resolution.x) {
-				continue;
-			}
-
-			int y = (int)rayTracer.tid.y + yOffset;
-			if (y < 0 || y >= (int)uniforms.resolution.y) {
-				continue;
-			}
-			
-			uint32_t neighborIndex = getPixelIndex(uint2(x, y), uniforms);
-			Reservoir n = rayTracer.previousReservoirs[neighborIndex];
-			n.M = min(n.M, M_CAP);
-			r = combineReservoirs(r, n, seed);
-		}
-
-		// uncomment to include spatial samples in history
-		// rayTracer.currentReservoirs[currentPixelIndex] = r;
-
-		Sample finalSample = rayTracer.useReSTIR ? r.sample : initialSample;
-		float3 finalW = (rayTracer.useReSTIR ? r.W : initialW);
-		
-		float cosTheta = getCosineTerm(finalSample);
-		float3 brdf = albedo / M_PI_F;
-		
-		float3 collectedEmission = finalSample.Lo * cosTheta * brdf * finalW;
-
-		return directEmission + collectedEmission;
+		return directEmission;
 	}
+
+	Sample initialSample = {
+		.xV = origin + (direction * initialRayResult.distance),
+		.nV = initialHitData.surfaceNormal,
+		.random = float4(hash2(seed), hash2(seed)),
+	};
+	if (!collectSample(initialSample, rayTracer, uniforms)) {
+		return float3(0.0);
+	}
+
+	Reservoir r = newReservoir();
+	r.sample = initialSample;
+
+	float pHat = getTargetPDF(initialSample);
+	
+	if (pHat > 0.0) {
+		float q = getCosineTerm(initialSample) / M_PI_F;
+		float w = pHat/q;
+		
+		r.wSum = w;
+		r.M = 1.0;
+		r.W = (1.0 / pHat) * (r.wSum / r.M);
+	} else {
+		r.wSum = 0.0;
+		r.M = 1.0;
+		r.W = 0.0;
+	}
+	
+	float initialW = r.W;
+	
+	float2 motion = rayTracer.motionData->read(rayTracer.tid).xy;
+	if (length(motion) < MOTION_LIMIT) {
+		int prevX = (int)rayTracer.tid.x + round(motion.x);
+		int prevY = (int)rayTracer.tid.y + round(motion.y);
+
+		if (prevX >= 0 && prevX < (int)uniforms.resolution.x &&
+			prevY >= 0 && prevY < (int)uniforms.resolution.y)
+		{
+			uint32_t previousPixelIndex = getPixelIndex(uint2(prevX, prevY), uniforms);
+			Reservoir p = rayTracer.previousReservoirs[previousPixelIndex];
+			p.M = min(p.M, M_CAP);
+			r = combineReservoirs(r, p, seed);
+		}
+	}
+
+	uint32_t currentPixelIndex = getPixelIndex(rayTracer.tid, uniforms);
+
+	// uncomment to leave spatial samples out of history
+	rayTracer.currentReservoirs[currentPixelIndex] = r;
+
+	for (int i = 0; i < SPATIAL_N; i++) {
+		int xOffset = floor(hash1(seed) * (SPATIAL_R * 2 + 1)) - SPATIAL_R;
+		int yOffset = floor(hash1(seed) * (SPATIAL_R * 2 + 1)) - SPATIAL_R;
+		
+		int x = (int)rayTracer.tid.x + xOffset;
+		if (x < 0 || x >= (int)uniforms.resolution.x) {
+			continue;
+		}
+
+		int y = (int)rayTracer.tid.y + yOffset;
+		if (y < 0 || y >= (int)uniforms.resolution.y) {
+			continue;
+		}
+		
+		uint32_t neighborIndex = getPixelIndex(uint2(x, y), uniforms);
+		Reservoir n = rayTracer.previousReservoirs[neighborIndex];
+		n.M = min(n.M, M_CAP);
+		r = combineReservoirs(r, n, seed);
+	}
+
+	// uncomment to include spatial samples in history
+	// rayTracer.currentReservoirs[currentPixelIndex] = r;
+
+	Sample finalSample = rayTracer.useReSTIR ? r.sample : initialSample;
+	float3 finalW = (rayTracer.useReSTIR ? r.W : initialW);
+	
+	float cosTheta = getCosineTerm(finalSample);
+	float3 albedo = getAlbedo(initialRayResult, rayTracer);
+	float3 brdf = albedo / M_PI_F;
+	
+	float3 collectedEmission = finalSample.Lo * cosTheta * brdf * finalW;
+
+	return directEmission + collectedEmission;
 }
 
 kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
