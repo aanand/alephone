@@ -28,34 +28,35 @@ Reservoir newReservoir() {
 	return r;
 }
 
-void updateReservoir(thread Reservoir &r, float3 direction, float weight, thread float &seed) {
+void updateReservoir(thread Reservoir &r, Sample sample, float weight, thread float &seed) {
 	r.wSum += weight;
 	r.M += 1;
 	if (r.wSum > 0.0 && hash1(seed) * r.wSum < weight) {
-		r.direction = direction;
+		r.sample = sample;
 	}
 }
 
-float getTargetPDF(Sky sky, float3 direction, float3 normal) {
-	float cosTheta = dot(direction, normal);
+float getTargetPDF(Sample sample) {
+	float3 direction = sample.xS - sample.xV;
+	float cosTheta = dot(direction, sample.nV);
 	if (cosTheta <= 0.0f) {
 		return 0.0f;
 	}
-	return length(sampleSky(sky, direction)) * cosTheta;
+	return length(sample.Lo) * cosTheta;
 }
 
-Reservoir combineReservoirs(Reservoir r1, Reservoir r2, float3 normal, Sky sky, thread float &seed) {
+Reservoir combineReservoirs(Reservoir r1, Reservoir r2, thread float &seed) {
 	Reservoir s = newReservoir();
 	
-	float w1 = getTargetPDF(sky, r1.direction, normal) * r1.W * r1.M;
-	float w2 = getTargetPDF(sky, r2.direction, normal) * r2.W * r2.M;
+	float w1 = getTargetPDF(r1.sample) * r1.W * r1.M;
+	float w2 = getTargetPDF(r2.sample) * r2.W * r2.M;
 	
-	updateReservoir(s, r1.direction, w1, seed);
-	updateReservoir(s, r2.direction, w2, seed);
+	updateReservoir(s, r1.sample, w1, seed);
+	updateReservoir(s, r2.sample, w2, seed);
 
 	s.M = r1.M + r2.M;
 	
-	float pHatSelected = getTargetPDF(sky, s.direction, normal);
+	float pHatSelected = getTargetPDF(s.sample);
 	if (pHatSelected > 0.0 && s.M > 0.0) {
 		s.W = (s.wSum / s.M) / pHatSelected;
 	} else {
@@ -92,26 +93,47 @@ RayTracingData getData(thread RayTracingResult &intersection, thread RayTracer &
 	return *((const device RayTracingData*) intersection.primitive_data);
 }
 
+float2 getUV(thread RayTracingResult &intersection, thread RayTracingData &data) {
+	if (intersection.user_instance_id > 0) {
+		return getPolygonUV(intersection, data.uv);
+	}
+	return getTriangleUV(intersection, data.uv[0], data.uv[1], data.uv[2]);
+}
+
 uint32_t getPixelIndex(uint2 tid, constant Uniforms &uniforms) {
 	return tid.y * uniforms.resolution.x + tid.x;
 }
 
-bool isSky(float3 origin, float3 direction, thread RayTracer &rayTracer) {
+RayTracingResult castRay(float3 origin, float3 direction, thread RayTracer &rayTracer) {
 	ray ray;
 	ray.origin = origin;
 	ray.direction = direction;
 	ray.min_distance = rayEpsilon;
 	ray.max_distance = INFINITY;
 
-	RayTracingResult intersection = rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure);
-	
+	return rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure);
+}
+
+float3 getEmission(RayTracingResult intersection, float3 direction, thread RayTracer &rayTracer, constant Uniforms &uniforms) {
 	if (intersection.type == intersection_type::none) {
-		return false;
+		return float3(0.0);
 	}
 	
 	RayTracingData data = getData(intersection, rayTracer);
 	
-	return data.material.isLandscape;
+	if (data.material.isLandscape) {
+		return sampleSky(uniforms.sky, direction);
+	}
+
+	uint32_t textureIndex = data.textureIndex;
+	if (textureIndex > 0) {
+		float2 uv = getUV(intersection, data);
+		texture2d<float> emissionMap = rayTracer.emissionMaps->textures[textureIndex];
+		constexpr sampler sam(mag_filter::nearest, min_filter::nearest, address::repeat);
+		return emissionMap.sample(sam, uv).rgb;
+	}
+	
+	return float3(0.0);
 }
 
 float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, constant Uniforms &uniforms, thread float &seed) {
@@ -129,37 +151,45 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 
 	RayTracingData data = getData(intersection, rayTracer);
 
-	float3 color = float3(0.0);
-
 	if (data.material.isLandscape) {
-		color = sampleSky(uniforms.sky, ray.direction);
+		return sampleSky(uniforms.sky, ray.direction);
 	} else {
 		float3 surfaceNormal = data.surfaceNormal;
 		float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
 
-		Reservoir r = newReservoir();
-
 		float3 newDirection = sampleUnitHemisphereCosineWeighted(hash2(seed), surfaceNormal);
-		bool newDirectionIsSky = isSky(hitPoint, newDirection, rayTracer);
-		float pHat = getTargetPDF(uniforms.sky, newDirection, surfaceNormal) * (newDirectionIsSky ? 1.0 : 0.0);
+		RayTracingResult result = castRay(hitPoint, newDirection, rayTracer);
+		if (result.type == intersection_type::none) {
+			return float3(0.0);
+		}
+
+		Sample initialSample = {
+			.xV = hitPoint,
+			.nV = surfaceNormal,
+			.xS = hitPoint + newDirection * result.distance,
+			.nS = getData(result, rayTracer).surfaceNormal,
+			.Lo = getEmission(result, newDirection, rayTracer, uniforms),
+		};
+
+		Reservoir r = newReservoir();
+		r.sample = initialSample;
+
+		float pHat = getTargetPDF(initialSample);
 		
 		if (pHat > 0.0) {
 			float q = clamp(dot(newDirection, surfaceNormal), 0.0, 1.0) / M_PI_F;
 			float w = pHat/q;
 			
-			r.direction = newDirection;
 			r.wSum = w;
 			r.M = 1.0;
 			r.W = (1.0 / pHat) * (r.wSum / r.M);
 		} else {
-			r.direction = newDirection;
 			r.wSum = 0.0;
 			r.M = 1.0;
 			r.W = 0.0;
 		}
 		
-		float3 rawDirection = newDirection;
-		float rawW = r.W;
+		float initialW = r.W;
 		
 		float2 motion = rayTracer.motionData->read(rayTracer.tid).xy;
 		if (length(motion) < MOTION_LIMIT) {
@@ -172,7 +202,7 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 				uint32_t previousPixelIndex = getPixelIndex(uint2(prevX, prevY), uniforms);
 				Reservoir p = rayTracer.previousReservoirs[previousPixelIndex];
 				p.M = min(p.M, M_CAP);
-				r = combineReservoirs(r, p, surfaceNormal, uniforms.sky, seed);
+				r = combineReservoirs(r, p, seed);
 			}
 		}
 
@@ -198,27 +228,20 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 			uint32_t neighborIndex = getPixelIndex(uint2(x, y), uniforms);
 			Reservoir n = rayTracer.previousReservoirs[neighborIndex];
 			n.M = min(n.M, M_CAP);
-			r = combineReservoirs(r, n, surfaceNormal, uniforms.sky, seed);
+			r = combineReservoirs(r, n, seed);
 		}
 
 		// uncomment to include spatial samples in history
 		// rayTracer.currentReservoirs[currentPixelIndex] = r;
 
-		float3 finalDirection = rayTracer.useReSTIR ? r.direction : rawDirection;
-		float3 finalW = (rayTracer.useReSTIR ? r.W : rawW);
+		Sample finalSample = rayTracer.useReSTIR ? r.sample : initialSample;
+		float3 finalW = (rayTracer.useReSTIR ? r.W : initialW);
 		
-		bool isVisible = isSky(hitPoint, finalDirection, rayTracer);
+		float cosTheta = clamp(dot(finalSample.xS - hitPoint, surfaceNormal), 0.0, 1.0);
+		float brdf = defaultAttenuation / M_PI_F;
 		
-		if (isVisible) {
-			float3 skyColor = sampleSky(uniforms.sky, finalDirection);
-			float cosTheta = clamp(dot(finalDirection, surfaceNormal), 0.0, 1.0);
-			float brdf = defaultAttenuation / M_PI_F;
-			
-			color = skyColor * cosTheta * brdf * finalW;
-		}
+		return finalSample.Lo * cosTheta * brdf * finalW;
 	}
-	
-	return color;
 }
 
 kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],

@@ -203,7 +203,14 @@ typedef struct {
 } RayTracingData;
 
 typedef struct {
-	vector_float3 direction;
+	vector_float3 xV, nV;
+	vector_float3 xS, nS;
+	vector_float3 Lo;
+	vector_float3 random;
+} Sample;
+
+typedef struct {
+	Sample sample;
 	float wSum;
 	float M;
 	float W;
