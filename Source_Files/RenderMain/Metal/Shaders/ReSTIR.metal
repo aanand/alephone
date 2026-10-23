@@ -91,6 +91,24 @@ uint32_t getPixelIndex(uint2 tid, constant Uniforms &uniforms) {
 	return tid.y * uniforms.resolution.x + tid.x;
 }
 
+bool isSky(float3 origin, float3 direction, thread RayTracer &rayTracer) {
+	ray ray;
+	ray.origin = origin;
+	ray.direction = direction;
+	ray.min_distance = rayEpsilon;
+	ray.max_distance = INFINITY;
+
+	RayTracingResult intersection = rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure);
+	
+	if (intersection.type == intersection_type::none) {
+		return false;
+	}
+	
+	RayTracingData data = getData(intersection, rayTracer);
+	
+	return data.material.isLandscape;
+}
+
 float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, constant Uniforms &uniforms, thread float &seed) {
 	ray ray;
 	ray.origin = origin;
@@ -112,11 +130,13 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 		color = sampleSky(uniforms.sky, ray.direction);
 	} else {
 		float3 surfaceNormal = data.surfaceNormal;
+		float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
 
 		Reservoir r = newReservoir();
 
 		float3 newDirection = sampleUnitHemisphereCosineWeighted(hash2(seed), surfaceNormal);
-		float pHat = length(sampleSky(uniforms.sky, newDirection));
+		bool newDirectionIsSky = isSky(hitPoint, newDirection, rayTracer);
+		float pHat = length(sampleSky(uniforms.sky, newDirection)) * (newDirectionIsSky ? 1.0 : 0.0);
 		float cosTheta = clamp(dot(newDirection, surfaceNormal), 0.0, 1.0);
 		
 		if (pHat > 0.0 && cosTheta > 0.0) {
@@ -169,19 +189,17 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 		// uncomment to include spatial samples in history
 		// rayTracer.currentReservoirs[currentPixelIndex] = r;
 
-		float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
-
-		ray.origin = hitPoint;
-		ray.direction = rayTracer.useReSTIR ? r.direction : rawDirection;
-		intersection = rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure);
-		bool isVisible = (intersection.type != intersection_type::none) && getData(intersection, rayTracer).material.isLandscape;
+		float3 finalDirection = rayTracer.useReSTIR ? r.direction : rawDirection;
+		float3 finalW = (rayTracer.useReSTIR ? r.W : rawW);
+		
+		bool isVisible = isSky(hitPoint, finalDirection, rayTracer);
 		
 		if (isVisible) {
-			float3 skyColor = sampleSky(uniforms.sky, ray.direction);
-			float cosTheta = clamp(dot(ray.direction, surfaceNormal), 0.0, 1.0);
+			float3 skyColor = sampleSky(uniforms.sky, finalDirection);
+			float cosTheta = clamp(dot(finalDirection, surfaceNormal), 0.0, 1.0);
 			float brdf = defaultAttenuation / M_PI_F;
 			
-			color = skyColor * cosTheta * brdf * (rayTracer.useReSTIR ? r.W : rawW);
+			color = skyColor * cosTheta * brdf * finalW;
 		}
 	}
 	

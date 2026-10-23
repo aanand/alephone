@@ -506,7 +506,7 @@ std::unordered_map<std::string, Sky> skies = {
 
 Sky defaultSky = {
 	.bottomEmission = { 0.0, 0.0, 0.0 },
-	.topEmission = { 1.0, 1.0, 1.0 },
+	.topEmission = { 5.0, 5.0, 5.0 },
 	.hasSun = false,
 };
 
