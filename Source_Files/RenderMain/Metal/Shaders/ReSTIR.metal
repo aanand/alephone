@@ -250,7 +250,7 @@ kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracin
 		.previousReservoirs = previousReservoirs,
 		.currentReservoirs = currentReservoirs,
 		.tid = tid,
-		.useReSTIR = tid.x > uniforms.resolution.x/2,
+		.useReSTIR = true,
 		.forward = forward.zxy,
 	};
 
