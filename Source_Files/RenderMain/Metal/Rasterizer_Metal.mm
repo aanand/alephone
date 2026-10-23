@@ -181,9 +181,9 @@ bool isPolygonDynamic(short polygonIdx, polygon_data *polygon) {
 		return true;
 	}
 	
-	if (overlaps.find(polygonIdx) != overlaps.end()) {
-		return true;
-	}
+//	if (overlaps.find(polygonIdx) != overlaps.end()) {
+//		return true;
+//	}
 	
 	return false;
 }
@@ -192,11 +192,11 @@ bool overlapsWithVisiblePolygon(short polyIdx) {
 	auto iterator = overlaps.find(polyIdx);
 	if (iterator == overlaps.end()) return false;
 	
-	for (auto &otherIdx : iterator->second) {
-		if (TEST_RENDER_FLAG(otherIdx, _polygon_is_visible)) {
-			return true;
-		}
-	}
+//	for (auto &otherIdx : iterator->second) {
+//		if (TEST_RENDER_FLAG(otherIdx, _polygon_is_visible)) {
+//			return true;
+//		}
+//	}
 	
 	return false;
 }

@@ -39,7 +39,7 @@ void updateReservoir(thread Reservoir &r, Sample sample, float weight, thread fl
 }
 
 float getTargetPDF(Sample sample) {
-	float3 direction = sample.xS - sample.xV;
+	float3 direction = normalize(sample.xS - sample.xV);
 	float cosTheta = dot(direction, sample.nV);
 	if (cosTheta <= 0.0f) {
 		return 0.0f;
@@ -161,42 +161,53 @@ float3 getAlbedo(RayTracingResult intersection, thread RayTracer &rayTracer) {
 	return float3(0.0);
 }
 
+// Expects xV, nV and random to be set.
+// Sets xS, nS and Lo.
+bool collectSample(thread Sample &sample, thread RayTracer &rayTracer, constant Uniforms &uniforms)
+{
+	float3 newDirection = sampleUnitHemisphereCosineWeighted(sample.random.xy, sample.nV);
+	RayTracingResult firstBounceResult = castRay(sample.xV, newDirection, rayTracer);
+	if (firstBounceResult.type == intersection_type::none) {
+		return false;
+	}
+
+	sample.xS = sample.xV + newDirection * firstBounceResult.distance;
+	sample.nS = getData(firstBounceResult, rayTracer).surfaceNormal;
+
+	float3 Lo = getEmission(firstBounceResult, newDirection, rayTracer, uniforms);
+	
+	float3 albedo = getAlbedo(firstBounceResult, rayTracer);
+	float3 bounceDirection = sampleUnitHemisphereCosineWeighted(sample.random.zw, sample.nS);
+	RayTracingResult bounce = castRay(sample.xS, bounceDirection, rayTracer);
+	Lo += albedo * getEmission(bounce, bounceDirection, rayTracer, uniforms);
+	
+	sample.Lo = Lo;
+	
+	return true;
+}
+	
 float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, constant Uniforms &uniforms, thread float &seed) {
-	ray ray;
-	ray.origin = origin;
-	ray.direction = direction;
-	ray.min_distance = rayEpsilon;
-	ray.max_distance = INFINITY;
+	RayTracingResult initialRayResult = castRay(origin, direction, rayTracer);
 	
-	RayTracingResult intersection = rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure);
-	
-	if (intersection.type == intersection_type::none) {
+	if (initialRayResult.type == intersection_type::none) {
 		return float3(0.0);
 	}
 
-	RayTracingData data = getData(intersection, rayTracer);
-	float3 directEmission = getEmission(intersection, direction, rayTracer, uniforms);
-	float3 albedo = getAlbedo(intersection, rayTracer);
+	RayTracingData initialHitData = getData(initialRayResult, rayTracer);
+	float3 directEmission = getEmission(initialRayResult, direction, rayTracer, uniforms);
+	float3 albedo = getAlbedo(initialRayResult, rayTracer);
 
-	if (data.material.isLandscape) {
-		return sampleSky(uniforms.sky, ray.direction);
+	if (initialHitData.material.isLandscape) {
+		return sampleSky(uniforms.sky, direction);
 	} else {
-		float3 surfaceNormal = data.surfaceNormal;
-		float3 hitPoint = ray.origin + (ray.direction * intersection.distance);
-
-		float3 newDirection = sampleUnitHemisphereCosineWeighted(hash2(seed), surfaceNormal);
-		RayTracingResult result = castRay(hitPoint, newDirection, rayTracer);
-		if (result.type == intersection_type::none) {
+		Sample initialSample = {
+			.xV = origin + (direction * initialRayResult.distance),
+			.nV = initialHitData.surfaceNormal,
+			.random = float4(hash2(seed), hash2(seed)),
+		};
+		if (!collectSample(initialSample, rayTracer, uniforms)) {
 			return float3(0.0);
 		}
-
-		Sample initialSample = {
-			.xV = hitPoint,
-			.nV = surfaceNormal,
-			.xS = hitPoint + newDirection * result.distance,
-			.nS = getData(result, rayTracer).surfaceNormal,
-			.Lo = getEmission(result, newDirection, rayTracer, uniforms),
-		};
 
 		Reservoir r = newReservoir();
 		r.sample = initialSample;
@@ -204,7 +215,7 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 		float pHat = getTargetPDF(initialSample);
 		
 		if (pHat > 0.0) {
-			float q = clamp(dot(newDirection, surfaceNormal), 0.0, 1.0) / M_PI_F;
+			float q = clamp(dot(normalize(initialSample.xS - initialSample.xV), initialSample.nV), 0.0, 1.0) / M_PI_F;
 			float w = pHat/q;
 			
 			r.wSum = w;
@@ -264,7 +275,7 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 		Sample finalSample = rayTracer.useReSTIR ? r.sample : initialSample;
 		float3 finalW = (rayTracer.useReSTIR ? r.W : initialW);
 		
-		float cosTheta = clamp(dot(finalSample.xS - hitPoint, surfaceNormal), 0.0, 1.0);
+		float cosTheta = clamp(dot(normalize(finalSample.xS - finalSample.xV), finalSample.nV), 0.0, 1.0);
 		float3 brdf = albedo / M_PI_F;
 		
 		float3 collectedEmission = finalSample.Lo * cosTheta * brdf * finalW;

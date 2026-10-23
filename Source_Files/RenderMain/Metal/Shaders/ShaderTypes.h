@@ -206,7 +206,7 @@ typedef struct {
 	vector_float3 xV, nV;
 	vector_float3 xS, nS;
 	vector_float3 Lo;
-	vector_float3 random;
+	vector_float4 random;
 } Sample;
 
 typedef struct {
