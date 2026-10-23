@@ -16,6 +16,7 @@ using namespace raytracing;
 #include "Sampling.h"
 
 constant float M_CAP = 20.0;
+constant int SPATIAL_N = 4;
 constant int SPATIAL_R = 16;
 
 Reservoir newReservoir() {
@@ -166,7 +167,7 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 		// uncomment to leave spatial samples out of history
 		rayTracer.currentReservoirs[currentPixelIndex] = r;
 
-		for (int i = 0; i < 4; i++) {
+		for (int i = 0; i < SPATIAL_N; i++) {
 			int xOffset = floor(hash1(seed) * (SPATIAL_R * 2 + 1)) - SPATIAL_R;
 			int yOffset = floor(hash1(seed) * (SPATIAL_R * 2 + 1)) - SPATIAL_R;
 			
