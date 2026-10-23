@@ -34,10 +34,11 @@ void updateReservoir(thread Reservoir &r, float3 direction, float weight, thread
 }
 
 float getTargetPDF(Sky sky, float3 direction, float3 normal) {
-	if (dot(direction, normal) <= 0.0f) {
+	float cosTheta = dot(direction, normal);
+	if (cosTheta <= 0.0f) {
 		return 0.0f;
 	}
-	return length(sampleSky(sky, direction));
+	return length(sampleSky(sky, direction)) * cosTheta;
 }
 
 Reservoir combineReservoirs(Reservoir r1, Reservoir r2, float3 normal, Sky sky, thread float &seed) {
@@ -136,11 +137,10 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 
 		float3 newDirection = sampleUnitHemisphereCosineWeighted(hash2(seed), surfaceNormal);
 		bool newDirectionIsSky = isSky(hitPoint, newDirection, rayTracer);
-		float pHat = length(sampleSky(uniforms.sky, newDirection)) * (newDirectionIsSky ? 1.0 : 0.0);
-		float cosTheta = clamp(dot(newDirection, surfaceNormal), 0.0, 1.0);
+		float pHat = getTargetPDF(uniforms.sky, newDirection, surfaceNormal) * (newDirectionIsSky ? 1.0 : 0.0);
 		
-		if (pHat > 0.0 && cosTheta > 0.0) {
-			float q = cosTheta / M_PI_F;
+		if (pHat > 0.0) {
+			float q = clamp(dot(newDirection, surfaceNormal), 0.0, 1.0) / M_PI_F;
 			float w = pHat/q;
 			
 			r.direction = newDirection;
