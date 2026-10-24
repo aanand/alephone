@@ -15,7 +15,9 @@ using namespace raytracing;
 #include "Utils.h"
 #include "Sampling.h"
 
-constant float M_CAP = 20.0;
+constant float M_CAP_TEMPORAL = 30.0;
+constant float M_CAP_SPATIAL = 500.0;
+
 constant int SPATIAL_N = 4;
 constant int SPATIAL_R = 16;
 
@@ -238,16 +240,16 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 		{
 			uint32_t previousPixelIndex = getPixelIndex(uint2(prevX, prevY), uniforms);
 			Reservoir p = rayTracer.previousReservoirs[previousPixelIndex];
-			p.M = min(p.M, M_CAP);
+			p.M = min(p.M, M_CAP_TEMPORAL);
 			r = combineReservoirs(r, p, seed);
+			r.M = min(r.M, M_CAP_TEMPORAL);
 		}
 	}
 
 	uint32_t currentPixelIndex = getPixelIndex(rayTracer.tid, uniforms);
-
-	// uncomment to leave spatial samples out of history
 	rayTracer.currentReservoirs[currentPixelIndex] = r;
 
+	Reservoir spatialReservoir = r;
 	for (int i = 0; i < SPATIAL_N; i++) {
 		int xOffset = floor(hash1(seed) * (SPATIAL_R * 2 + 1)) - SPATIAL_R;
 		int yOffset = floor(hash1(seed) * (SPATIAL_R * 2 + 1)) - SPATIAL_R;
@@ -264,12 +266,19 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 		
 		uint32_t neighborIndex = getPixelIndex(uint2(x, y), uniforms);
 		Reservoir n = rayTracer.previousReservoirs[neighborIndex];
-		n.M = min(n.M, M_CAP);
-		r = combineReservoirs(r, n, seed);
+		if (getTargetPDF(n.sample) > 0.0) {
+			spatialReservoir = combineReservoirs(spatialReservoir, n, seed);
+		}
 	}
-
-	// uncomment to include spatial samples in history
-	// rayTracer.currentReservoirs[currentPixelIndex] = r;
+	
+	spatialReservoir.M = min(spatialReservoir.M, M_CAP_SPATIAL);
+	float pHatSpatial = getTargetPDF(spatialReservoir.sample);
+	if (pHatSpatial > 0.0 && spatialReservoir.M > 0.0) {
+		spatialReservoir.W = (spatialReservoir.wSum / spatialReservoir.M) / pHatSpatial;
+	} else {
+		spatialReservoir.W = 0.0;
+	}
+	r = combineReservoirs(r, spatialReservoir, seed);
 
 	Sample finalSample = rayTracer.useReSTIR ? r.sample : initialSample;
 	float3 finalW = (rayTracer.useReSTIR ? r.W : initialW);
