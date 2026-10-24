@@ -27,8 +27,6 @@ enum {
 enum {
 	InitialRenderFragmentShaderUniformsIndex,
 	InitialRenderFragmentShaderAlbedoTexturesIndex,
-	InitialRenderFragmentShaderNormalMapsIndex,
-	InitialRenderFragmentShaderEmissionMapsIndex,
 	InitialRenderFragmentShader_NumBuffers,
 };
 
@@ -55,6 +53,8 @@ enum {
 };
 
 enum {
+	RayTracingKernelDepthTextureIndex,
+	RayTracingKernelNormalTextureIndex,
 	RayTracingKernelMotionTextureIndex,
 	RayTracingKernelOutImageIndex,
 	RayTracingKernel_NumTextures,

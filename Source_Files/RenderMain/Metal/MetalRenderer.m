@@ -432,6 +432,8 @@ API_AVAILABLE(macos(26.0))
 		case NoPostProcessing:
 			intermediateTextures = [NSSet setWithArray:@[
 				initialRenderGBufferDiffuseAlbedo,
+				initialRenderGBufferDepth,
+				initialRenderGBufferNormal,
 				initialRenderGBufferMotion,
 			]];
 			break;
@@ -1352,8 +1354,6 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 	[fragmentArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:InitialRenderFragmentShaderUniformsIndex];
 	[fragmentArgumentTable setAddress:albedoTextureArgumentBuffer.gpuAddress atIndex:InitialRenderFragmentShaderAlbedoTexturesIndex];
-	[fragmentArgumentTable setAddress:normalMapArgumentBuffer.gpuAddress atIndex:InitialRenderFragmentShaderNormalMapsIndex];
-	[fragmentArgumentTable setAddress:emissionMapArgumentBuffer.gpuAddress atIndex:InitialRenderFragmentShaderEmissionMapsIndex];
 
 	WorldVertex *target = (WorldVertex*)triangleBuffer.contents;
 	NSUInteger __block numVertices = 0;
@@ -1416,6 +1416,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 		[computeArgumentTable setAddress:reservoirBufferA.gpuAddress atIndex:RayTracingKernelCurrentReservoirIndex];
 	}
 
+	[computeArgumentTable setTexture:initialRenderGBufferDepth.gpuResourceID atIndex:RayTracingKernelDepthTextureIndex];
+	[computeArgumentTable setTexture:initialRenderGBufferNormal.gpuResourceID atIndex:RayTracingKernelNormalTextureIndex];
 	[computeArgumentTable setTexture:initialRenderGBufferMotion.gpuResourceID atIndex:RayTracingKernelMotionTextureIndex];
 	[computeArgumentTable setTexture:outputTexture.gpuResourceID atIndex:RayTracingKernelOutImageIndex];
 	[encoder setArgumentTable:computeArgumentTable];

@@ -21,7 +21,10 @@ constant float M_CAP_SPATIAL = 500.0;
 constant int SPATIAL_N = 4;
 constant int SPATIAL_R = 16;
 
-constant float MOTION_LIMIT = 128.0;
+// Thresholds for sample reuse
+constant float REUSE_MOTION_MAXIMUM = 256.0;      // Maximum screen-space distance
+constant float REUSE_DEPTH_CHANGE_MAXIMUM = 0.3;  // Maximum fractional depth difference
+constant float REUSE_NORMAL_CHANGE_MINIMUM = 0.9; // Minimum dot-product of normals
 
 constant float EMISSION_MULTIPLIER = 10.0;
 
@@ -88,6 +91,8 @@ struct RayTracer {
 	constant LightSource *lightSources;
 	constant Reservoir *previousReservoirs;
 	device Reservoir *currentReservoirs;
+	thread texture2d<float> *depthData;
+	thread texture2d<float> *normalData;
 	thread texture2d<float> *motionData;
 	uint2 tid;
 	bool useReSTIR;
@@ -189,7 +194,23 @@ bool collectSample(thread Sample &sample, thread RayTracer &rayTracer, constant 
 	
 	return true;
 }
+
+bool acceptReuse(uint2 xy, thread RayTracer &rayTracer) {
+	float prevDepth = 1.0 / (1.0 - rayTracer.depthData->read(xy).r);
+	float currDepth = 1.0 / (1.0 - rayTracer.depthData->read(rayTracer.tid).r);
+	float relativeDepthChange = abs((currDepth-prevDepth)/prevDepth);
 	
+	if (relativeDepthChange > REUSE_DEPTH_CHANGE_MAXIMUM) return false;
+	
+	float3 prevNormal = rayTracer.normalData->read(xy).xyz * 2.0 - 1.0;
+	float3 currNormal = rayTracer.normalData->read(rayTracer.tid).xyz * 2.0 - 1.0;
+	float cosTheta = dot(prevNormal, currNormal);
+	
+	if (cosTheta < REUSE_NORMAL_CHANGE_MINIMUM) return false;
+	
+	return true;
+}
+
 float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, constant Uniforms &uniforms, thread float &seed) {
 	RayTracingResult initialRayResult = castRay(origin, direction, rayTracer);
 	
@@ -225,18 +246,22 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 	float initialW = r.W;
 	
 	float2 motion = rayTracer.motionData->read(rayTracer.tid).xy;
-	if (length(motion) < MOTION_LIMIT) {
+	if (length(motion) < REUSE_MOTION_MAXIMUM) {
 		int prevX = (int)rayTracer.tid.x + round(motion.x);
 		int prevY = (int)rayTracer.tid.y + round(motion.y);
 
 		if (prevX >= 0 && prevX < (int)uniforms.resolution.x &&
 			prevY >= 0 && prevY < (int)uniforms.resolution.y)
 		{
-			uint32_t previousPixelIndex = getPixelIndex(uint2(prevX, prevY), uniforms);
-			Reservoir p = rayTracer.previousReservoirs[previousPixelIndex];
-			p.M = min(p.M, M_CAP_TEMPORAL);
-			r = combineReservoirs(r, p, seed);
-			r.M = min(r.M, M_CAP_TEMPORAL);
+			uint2 prevXY = uint2(prevX, prevY);
+			
+			if (acceptReuse(prevXY, rayTracer)) {
+				uint32_t previousPixelIndex = getPixelIndex(prevXY, uniforms);
+				Reservoir p = rayTracer.previousReservoirs[previousPixelIndex];
+				p.M = min(p.M, M_CAP_TEMPORAL);
+				r = combineReservoirs(r, p, seed);
+				r.M = min(r.M, M_CAP_TEMPORAL);
+			}
 		}
 	}
 
@@ -258,7 +283,12 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 			continue;
 		}
 		
-		uint32_t neighborIndex = getPixelIndex(uint2(x, y), uniforms);
+		uint2 xy = uint2(x, y);
+		if (!acceptReuse(xy, rayTracer)) {
+			continue;
+		}
+		
+		uint32_t neighborIndex = getPixelIndex(xy, uniforms);
 		Reservoir n = rayTracer.previousReservoirs[neighborIndex];
 		if (getTargetPDF(n.sample) > 0.0) {
 			spatialReservoir = combineReservoirs(spatialReservoir, n, seed);
@@ -282,6 +312,8 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 }
 
 kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
+				   texture2d<float> depthData [[ texture(RayTracingKernelDepthTextureIndex) ]],
+				   texture2d<float> normalData [[ texture(RayTracingKernelNormalTextureIndex) ]],
 				   texture2d<float> motionData [[ texture(RayTracingKernelMotionTextureIndex) ]],
 				   instance_acceleration_structure accelerationStructure [[ buffer(RayTracingKernelAccelerationStructureIndex) ]],
 				   constant Uniforms &uniforms [[ buffer(RayTracingKernelUniformsIndex) ]],
@@ -325,6 +357,8 @@ kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracin
 		.lightSources = &lightSources,
 		.previousReservoirs = previousReservoirs,
 		.currentReservoirs = currentReservoirs,
+		.depthData = &depthData,
+		.normalData = &normalData,
 		.motionData = &motionData,
 		.tid = tid,
 		.useReSTIR = true,

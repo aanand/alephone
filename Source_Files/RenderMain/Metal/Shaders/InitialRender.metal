@@ -79,12 +79,10 @@ struct TextureArgs {
 fragment GBuffer
 initialRenderFragmentShader(RasterizerData in [[stage_in]],
 							constant Uniforms &uniforms [[ buffer(InitialRenderFragmentShaderUniformsIndex) ]],
-							constant TextureArgs &textures [[ buffer(InitialRenderFragmentShaderAlbedoTexturesIndex) ]],
-							constant TextureArgs &normalMaps [[ buffer(InitialRenderFragmentShaderNormalMapsIndex) ]])
+							constant TextureArgs &textures [[ buffer(InitialRenderFragmentShaderAlbedoTexturesIndex) ]])
 {
 	constexpr sampler textureSampler (mag_filter::linear, min_filter::linear, address::repeat);
 	texture2d<float> colorTexture = textures.textures[in.textureIndex];
-	texture2d<float> normalMap = normalMaps.textures[in.textureIndex];
 
 	float4 colorSample = colorTexture.sample(textureSampler, in.textureCoordinate);
 	if (colorSample.a == 0) {
@@ -95,17 +93,7 @@ initialRenderFragmentShader(RasterizerData in [[stage_in]],
 		colorSample = float4(1.0);
 	}
 
-	float4 surfaceTangent = in.surfaceTangent;
-	float3 normal = in.surfaceNormal;
-	if (length(surfaceTangent) > 0.0) {
-		float3 T = normalize(surfaceTangent.xyz);
-		float3 N = normalize(in.surfaceNormal);
-		float3 B = cross(T, N) * surfaceTangent.w;
-		float3x3 TBN = float3x3(T, B, N);
-		
-		float3 texelNormal = normalMap.sample(textureSampler, in.textureCoordinate).xyz * 2.0 - 1.0;
-		normal = normalize(TBN * texelNormal);
-	}
+	float3 normal = in.surfaceNormal * 0.5 + 0.5;
 
 	float2 currentXY = in.position.xy / float2(uniforms.resolution) * 2.0 - 1.0;
 	float2 previousXY = in.previousPosition.xy / in.previousPosition.w;
