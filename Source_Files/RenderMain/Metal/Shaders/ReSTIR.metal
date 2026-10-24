@@ -60,14 +60,38 @@ float getTargetPDF(Sample sample) {
 	return length(sample.Lo) * getCosineTerm(sample);
 }
 
+float getJacobianDeterminant(Sample source, Sample destination) {
+	float3 surfaceToSource = source.xV - source.xS;
+	float3 surfaceToDestination = destination.xV - source.xS;
+
+	float distanceToSourceSquared = dot(surfaceToSource, surfaceToSource);
+	float distanceToDestinationSquared = dot(surfaceToDestination, surfaceToDestination);
+	
+	if (distanceToSourceSquared <= 0.0 || distanceToDestinationSquared <= 0.0) {
+		return 0.0;
+	}
+	
+	float cosToSource = clamp(dot(normalize(surfaceToSource), source.nS), 0.0, 1.0);
+	float cosToDestination = clamp(dot(normalize(surfaceToDestination), source.nS), 0.0, 1.0);
+	
+	if (cosToSource <= 0.0 || cosToDestination <= 0.0) {
+		return 0.0;
+	}
+	
+	return (cosToDestination / distanceToDestinationSquared) / (cosToSource / distanceToSourceSquared);
+}
+
 Reservoir combineReservoirs(Reservoir r1, Reservoir r2, thread float &seed) {
 	Reservoir s = newReservoir();
+	updateReservoir(s, r1.sample, getTargetPDF(r1.sample) * r1.W * r1.M, seed);
+
+	Sample candidate = r2.sample;
+	float J = getJacobianDeterminant(r2.sample, s.sample);
+
+	candidate.xV = s.sample.xV;
+	candidate.nV = s.sample.nV;
 	
-	float w1 = getTargetPDF(r1.sample) * r1.W * r1.M;
-	float w2 = getTargetPDF(r2.sample) * r2.W * r2.M;
-	
-	updateReservoir(s, r1.sample, w1, seed);
-	updateReservoir(s, r2.sample, w2, seed);
+	updateReservoir(s, candidate, getTargetPDF(candidate) * J * r2.W * r2.M, seed);
 
 	s.M = r1.M + r2.M;
 	updateW(s, getTargetPDF(s.sample));
