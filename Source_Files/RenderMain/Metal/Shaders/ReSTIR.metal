@@ -120,7 +120,7 @@ RayTracingResult castRay(float3 origin, float3 direction, thread RayTracer &rayT
 	return rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure);
 }
 
-constexpr sampler sam(mag_filter::nearest, min_filter::nearest, address::repeat);
+constexpr sampler sam(mag_filter::linear, min_filter::linear, address::repeat);
 
 float3 getEmission(RayTracingResult intersection, float3 direction, thread RayTracer &rayTracer, constant Uniforms &uniforms) {
 	if (intersection.type == intersection_type::none) {

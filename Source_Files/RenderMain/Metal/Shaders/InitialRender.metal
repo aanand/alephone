@@ -82,7 +82,7 @@ initialRenderFragmentShader(RasterizerData in [[stage_in]],
 							constant TextureArgs &textures [[ buffer(InitialRenderFragmentShaderAlbedoTexturesIndex) ]],
 							constant TextureArgs &normalMaps [[ buffer(InitialRenderFragmentShaderNormalMapsIndex) ]])
 {
-	constexpr sampler textureSampler (mag_filter::nearest, min_filter::nearest, address::repeat);
+	constexpr sampler textureSampler (mag_filter::linear, min_filter::linear, address::repeat);
 	texture2d<float> colorTexture = textures.textures[in.textureIndex];
 	texture2d<float> normalMap = normalMaps.textures[in.textureIndex];
 
