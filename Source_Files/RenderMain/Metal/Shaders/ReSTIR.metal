@@ -282,24 +282,23 @@ Reservoir reuseTemporalSample(thread Reservoir &r,
 							  thread float &seed)
 {
 	float2 motion = rayTracer.motionData->read(rayTracer.tid).xy;
-	if (length(motion) < REUSE_MOTION_MAXIMUM) {
-		int prevX = (int)rayTracer.tid.x + round(motion.x);
-		int prevY = (int)rayTracer.tid.y + round(motion.y);
+	if (length(motion) > REUSE_MOTION_MAXIMUM) return r;
 
-		if (prevX >= 0 && prevX < (int)uniforms.resolution.x &&
-			prevY >= 0 && prevY < (int)uniforms.resolution.y)
-		{
-			uint2 prevXY = uint2(prevX, prevY);
-			
-			if (acceptReuse(prevXY, rayTracer)) {
-				uint32_t previousPixelIndex = getPixelIndex(prevXY, uniforms);
-				Reservoir p = rayTracer.previousReservoirs[previousPixelIndex];
-				p.M = min(p.M, M_CAP_TEMPORAL);
-				r = combineReservoirs(r, p, seed);
-				r.M = min(r.M, M_CAP_TEMPORAL);
-			}
-		}
-	}
+	int prevX = (int)rayTracer.tid.x + round(motion.x);
+	int prevY = (int)rayTracer.tid.y + round(motion.y);
+
+	if (prevX < 0 || prevX >= (int)uniforms.resolution.x) return r;
+	if (prevY < 0 || prevY >= (int)uniforms.resolution.y) return r;
+
+	uint2 prevXY = uint2(prevX, prevY);
+	
+	if (!acceptReuse(prevXY, rayTracer)) return r;
+
+	uint32_t previousPixelIndex = getPixelIndex(prevXY, uniforms);
+	Reservoir p = rayTracer.previousReservoirs[previousPixelIndex];
+	p.M = min(p.M, M_CAP_TEMPORAL);
+	r = combineReservoirs(r, p, seed);
+	r.M = min(r.M, M_CAP_TEMPORAL);
 	
 	return r;
 }
