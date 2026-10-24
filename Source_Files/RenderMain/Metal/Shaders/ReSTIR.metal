@@ -199,6 +199,29 @@ float3 getAlbedo(RayTracingResult intersection, thread RayTracer &rayTracer) {
 	return float3(0.0);
 }
 
+float3 getNormal(RayTracingResult intersection, thread RayTracer &rayTracer) {
+	if (intersection.type == intersection_type::none) {
+		return float3(0.0, 0.0, 1.0);
+	}
+	
+	RayTracingData data = getData(intersection, rayTracer);
+
+	if (data.textureIndex == 0 || length(data.surfaceTangent) == 0.0) {
+		return data.surfaceNormal;
+	}
+
+	texture2d<float> normalMap = rayTracer.normalMaps->textures[data.textureIndex];
+	float2 uv = getUV(intersection, data);
+	float3 texelNormal = normalMap.sample(sam, uv).xyz * 2.0 - 1.0;
+
+	float3 T = normalize(data.surfaceTangent.xyz);
+	float3 N = normalize(data.surfaceNormal);
+	float3 B = cross(T, N) * data.surfaceTangent.w;
+	float3x3 TBN = float3x3(T, B, N);
+
+	return normalize(TBN * texelNormal);
+}
+
 // Expects xV, nV and random to be set.
 // Sets xS, nS and Lo.
 bool collectSample(thread Sample &sample, thread RayTracer &rayTracer, constant Uniforms &uniforms)
@@ -256,7 +279,7 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 
 	Sample initialSample = {
 		.xV = origin + (direction * initialRayResult.distance),
-		.nV = initialHitData.surfaceNormal,
+		.nV = getNormal(initialRayResult, rayTracer),
 		.random = float4(hash2(seed), hash2(seed)),
 	};
 	if (!collectSample(initialSample, rayTracer, uniforms)) {
