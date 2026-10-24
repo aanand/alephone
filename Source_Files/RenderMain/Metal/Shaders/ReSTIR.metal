@@ -40,6 +40,15 @@ void updateReservoir(thread Reservoir &r, Sample sample, float weight, thread fl
 	}
 }
 
+void updateW(thread Reservoir &r, float pHat) {
+	if (pHat <= 0.0 || r.M <= 0.0) {
+		r.W = 0.0;
+		return;
+	}
+	
+	r.W = r.wSum / (r.M * pHat);
+}
+
 float getCosineTerm(Sample sample) {
 	return clamp(dot(normalize(sample.xS - sample.xV), sample.nV), 0.0, 1.0);
 }
@@ -58,13 +67,7 @@ Reservoir combineReservoirs(Reservoir r1, Reservoir r2, thread float &seed) {
 	updateReservoir(s, r2.sample, w2, seed);
 
 	s.M = r1.M + r2.M;
-	
-	float pHatSelected = getTargetPDF(s.sample);
-	if (pHatSelected > 0.0 && s.M > 0.0) {
-		s.W = (s.wSum / s.M) / pHatSelected;
-	} else {
-		s.W = 0.0;
-	}
+	updateW(s, getTargetPDF(s.sample));
 	
 	return s;
 }
@@ -210,23 +213,14 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 		return float3(0.0);
 	}
 
+	float pHat = getTargetPDF(initialSample);
+	float q = getCosineTerm(initialSample) / M_PI_F;
+
 	Reservoir r = newReservoir();
 	r.sample = initialSample;
-
-	float pHat = getTargetPDF(initialSample);
-	
-	if (pHat > 0.0) {
-		float q = getCosineTerm(initialSample) / M_PI_F;
-		float w = pHat/q;
-		
-		r.wSum = w;
-		r.M = 1.0;
-		r.W = (1.0 / pHat) * (r.wSum / r.M);
-	} else {
-		r.wSum = 0.0;
-		r.M = 1.0;
-		r.W = 0.0;
-	}
+	r.M = 1.0;
+	r.wSum = (q > 0.0) ? (pHat/q) : 0.0;
+	updateW(r, pHat);
 	
 	float initialW = r.W;
 	
@@ -272,12 +266,7 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 	}
 	
 	spatialReservoir.M = min(spatialReservoir.M, M_CAP_SPATIAL);
-	float pHatSpatial = getTargetPDF(spatialReservoir.sample);
-	if (pHatSpatial > 0.0 && spatialReservoir.M > 0.0) {
-		spatialReservoir.W = (spatialReservoir.wSum / spatialReservoir.M) / pHatSpatial;
-	} else {
-		spatialReservoir.W = 0.0;
-	}
+	updateW(spatialReservoir, getTargetPDF(spatialReservoir.sample));
 	r = combineReservoirs(r, spatialReservoir, seed);
 
 	Sample finalSample = rayTracer.useReSTIR ? r.sample : initialSample;
