@@ -247,6 +247,19 @@ bool collectSample(thread Sample &sample, thread RayTracer &rayTracer, constant 
 	return true;
 }
 
+Reservoir createInitialReservoir(Sample initialSample) {
+	float pHat = getTargetPDF(initialSample);
+	float q = getCosineTerm(initialSample) / M_PI_F;
+
+	Reservoir r = newReservoir();
+	r.sample = initialSample;
+	r.M = 1.0;
+	r.wSum = (q > 0.0) ? (pHat/q) : 0.0;
+	updateW(r, pHat);
+	
+	return r;
+}
+
 bool acceptReuse(uint2 xy, thread RayTracer &rayTracer) {
 	float prevDepth = 1.0 / (1.0 - rayTracer.depthData->read(xy).r);
 	float currDepth = 1.0 / (1.0 - rayTracer.depthData->read(rayTracer.tid).r);
@@ -263,40 +276,11 @@ bool acceptReuse(uint2 xy, thread RayTracer &rayTracer) {
 	return true;
 }
 
-float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, constant Uniforms &uniforms, thread float &seed) {
-	RayTracingResult initialRayResult = castRay(origin, direction, rayTracer);
-	
-	if (initialRayResult.type == intersection_type::none) {
-		return float3(0.0);
-	}
-
-	RayTracingData initialHitData = getData(initialRayResult, rayTracer);
-	float3 directEmission = getEmission(initialRayResult, direction, rayTracer, uniforms);
-
-	if (initialHitData.material.isLandscape) {
-		return directEmission;
-	}
-
-	Sample initialSample = {
-		.xV = origin + (direction * initialRayResult.distance),
-		.nV = getNormal(initialRayResult, rayTracer),
-		.random = float4(hash2(seed), hash2(seed)),
-	};
-	if (!collectSample(initialSample, rayTracer, uniforms)) {
-		return float3(0.0);
-	}
-
-	float pHat = getTargetPDF(initialSample);
-	float q = getCosineTerm(initialSample) / M_PI_F;
-
-	Reservoir r = newReservoir();
-	r.sample = initialSample;
-	r.M = 1.0;
-	r.wSum = (q > 0.0) ? (pHat/q) : 0.0;
-	updateW(r, pHat);
-	
-	float initialW = r.W;
-	
+Reservoir reuseTemporalSample(thread Reservoir &r,
+							  thread RayTracer &rayTracer,
+							  constant Uniforms &uniforms,
+							  thread float &seed)
+{
 	float2 motion = rayTracer.motionData->read(rayTracer.tid).xy;
 	if (length(motion) < REUSE_MOTION_MAXIMUM) {
 		int prevX = (int)rayTracer.tid.x + round(motion.x);
@@ -316,11 +300,17 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 			}
 		}
 	}
+	
+	return r;
+}
 
-	uint32_t currentPixelIndex = getPixelIndex(rayTracer.tid, uniforms);
-	rayTracer.currentReservoirs[currentPixelIndex] = r;
-
+Reservoir reuseSpatialSamples(thread Reservoir &r,
+							  thread RayTracer &rayTracer,
+							  constant Uniforms &uniforms,
+							  thread float &seed)
+{
 	Reservoir spatialReservoir = r;
+
 	for (int i = 0; i < SPATIAL_N; i++) {
 		int xOffset = floor(hash1(seed) * (SPATIAL_R * 2 + 1)) - SPATIAL_R;
 		int yOffset = floor(hash1(seed) * (SPATIAL_R * 2 + 1)) - SPATIAL_R;
@@ -349,7 +339,42 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 	
 	spatialReservoir.M = min(spatialReservoir.M, M_CAP_SPATIAL);
 	updateW(spatialReservoir, getTargetPDF(spatialReservoir.sample));
-	r = combineReservoirs(r, spatialReservoir, seed);
+
+	return combineReservoirs(r, spatialReservoir, seed);
+}
+
+float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, constant Uniforms &uniforms, thread float &seed) {
+	RayTracingResult initialRayResult = castRay(origin, direction, rayTracer);
+	
+	if (initialRayResult.type == intersection_type::none) {
+		return float3(0.0);
+	}
+
+	RayTracingData initialHitData = getData(initialRayResult, rayTracer);
+	float3 directEmission = getEmission(initialRayResult, direction, rayTracer, uniforms);
+
+	if (initialHitData.material.isLandscape) {
+		return directEmission;
+	}
+
+	Sample initialSample = {
+		.xV = origin + (direction * initialRayResult.distance),
+		.nV = getNormal(initialRayResult, rayTracer),
+		.random = float4(hash2(seed), hash2(seed)),
+	};
+	if (!collectSample(initialSample, rayTracer, uniforms)) {
+		return float3(0.0);
+	}
+
+	Reservoir r = createInitialReservoir(initialSample);
+	float initialW = r.W;
+	
+	r = reuseTemporalSample(r, rayTracer, uniforms, seed);
+
+	uint32_t currentPixelIndex = getPixelIndex(rayTracer.tid, uniforms);
+	rayTracer.currentReservoirs[currentPixelIndex] = r;
+
+	r = reuseSpatialSamples(r, rayTracer, uniforms, seed);
 
 	Sample finalSample = rayTracer.useReSTIR ? r.sample : initialSample;
 	float3 finalW = (rayTracer.useReSTIR ? r.W : initialW);
