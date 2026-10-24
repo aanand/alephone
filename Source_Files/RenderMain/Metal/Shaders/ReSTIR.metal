@@ -138,12 +138,17 @@ float3 getEmission(RayTracingResult intersection, float3 direction, thread RayTr
 		return sampleSky(uniforms.sky, direction);
 	}
 
-	uint32_t textureIndex = data.textureIndex;
-	if (textureIndex > 0) {
+	if (data.textureIndex > 0) {
 		float2 uv = getUV(intersection, data);
-		texture2d<float> emissionMap = rayTracer.emissionMaps->textures[textureIndex];
+		texture2d<float> emissionMap = rayTracer.emissionMaps->textures[data.textureIndex];
 		float4 emission = emissionMap.sample(sam, uv);
-		return emission.rgb * emission.a * EMISSION_MULTIPLIER;
+
+		float lightSourceMultiplier = 1.0;
+		if (data.lightSourceIndex >= 0) {
+			lightSourceMultiplier = rayTracer.lightSources[data.lightSourceIndex].intensity;
+		}
+
+		return emission.rgb * emission.a * lightSourceMultiplier * EMISSION_MULTIPLIER;
 	}
 	
 	return float3(0.0);
