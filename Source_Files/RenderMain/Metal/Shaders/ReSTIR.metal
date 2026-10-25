@@ -224,7 +224,7 @@ float3 getNormal(RayTracingResult intersection, thread RayTracer &rayTracer) {
 
 // Expects xV, nV and random to be set.
 // Sets xS, nS and Lo.
-bool collectSample(thread Sample &sample, thread RayTracer &rayTracer, constant Uniforms &uniforms)
+bool collectDiffuseSample(thread Sample &sample, thread RayTracer &rayTracer, constant Uniforms &uniforms)
 {
 	float3 newDirection = sampleUnitHemisphereCosineWeighted(sample.random.xy, sample.nV);
 	RayTracingResult firstBounceResult = castRay(sample.xV, newDirection, rayTracer);
@@ -342,6 +342,22 @@ Reservoir reuseSpatialSamples(thread Reservoir &r,
 	return combineReservoirs(r, spatialReservoir, seed);
 }
 
+float getSpecularContribution(float3 direction, float3 normal, Material material) {
+	float f0 = material.f0;
+	float LdotH = clamp(dot(direction, -normal), 0.0, 1.0);
+	float schlick = f0 + (1.0 - f0) * pow(1.0 - LdotH, 5.0);
+	return schlick * (1.0 - material.roughness);
+}
+
+float3 collectSpecularSample(float3 xV, float3 direction, thread RayTracer &rayTracer, constant Uniforms &uniforms) {
+	RayTracingResult firstBounceResult = castRay(xV, direction, rayTracer);
+	if (firstBounceResult.type == intersection_type::none) {
+		return float3(0.0);
+	}
+	
+	return getEmission(firstBounceResult, direction, rayTracer, uniforms);
+}
+
 float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, constant Uniforms &uniforms, thread float &seed) {
 	RayTracingResult initialRayResult = castRay(origin, direction, rayTracer);
 	
@@ -355,13 +371,16 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 	if (initialHitData.material.isLandscape) {
 		return directEmission;
 	}
+	
+	float3 xV = origin + (direction * initialRayResult.distance);
+	float3 nV = getNormal(initialRayResult, rayTracer);
 
 	Sample initialSample = {
-		.xV = origin + (direction * initialRayResult.distance),
-		.nV = getNormal(initialRayResult, rayTracer),
+		.xV = xV,
+		.nV = nV,
 		.random = float4(hash2(seed), hash2(seed)),
 	};
-	if (!collectSample(initialSample, rayTracer, uniforms)) {
+	if (!collectDiffuseSample(initialSample, rayTracer, uniforms)) {
 		return float3(0.0);
 	}
 
@@ -382,9 +401,20 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 	float3 albedo = getAlbedo(initialRayResult, rayTracer);
 	float3 brdf = albedo / M_PI_F;
 	
-	float3 collectedEmission = finalSample.Lo * cosTheta * brdf * finalW;
+	float3 diffuseComponent = finalSample.Lo * cosTheta * brdf * finalW;
+	
+	float specularContribution = getSpecularContribution(direction, nV, initialHitData.material);
+	float3 specularComponent = float3(0.0);
+	if (specularContribution > 0.0) {
+		float3 outgoing = reflect(direction, nV);
+		if (dot(outgoing, initialHitData.surfaceNormal) > 0.0) {
+			specularComponent = collectSpecularSample(xV, outgoing, rayTracer, uniforms);
+		} else {
+			specularContribution = 0.0;
+		}
+	}
 
-	return directEmission + collectedEmission;
+	return directEmission + mix(diffuseComponent, specularComponent, specularContribution);
 }
 
 kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
