@@ -1095,7 +1095,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	uint64_t buildSignalValue = pipeline.sharedEvent.signaledValue + 1;
 	[pipeline.commandQueue commit:&commandBuffer count:1];
 	[pipeline.commandQueue signalEvent:pipeline.sharedEvent value:buildSignalValue];
-	bool didFinish = [pipeline.sharedEvent waitUntilSignaledValue:buildSignalValue timeoutMS:50];
+	bool didFinish = [pipeline.sharedEvent waitUntilSignaledValue:buildSignalValue timeoutMS:5000];
 	
 	if (!didFinish) {
 		NSLog(@"Timed out waiting for AS build at frameNumber=%llu", frameNumber);
