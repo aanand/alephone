@@ -85,7 +85,7 @@ initialRenderFragmentShader(RasterizerData in [[stage_in]],
 	texture2d<float> colorTexture = textures.textures[in.textureIndex];
 
 	float4 colorSample = colorTexture.sample(textureSampler, in.textureCoordinate);
-	if (colorSample.a == 0) {
+	if (colorSample.a < 0.5) {
 		discard_fragment();
 	}
 	if (in.isLandscape) {
