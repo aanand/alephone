@@ -137,6 +137,9 @@ typedef struct {
 	
 	// Transforms a view-space vector to clip-space
 	matrix_float4x4 perspectiveMat;
+	
+	// Pixel offset, -0.5 to +0.5
+	simd_float2 jitter;
 } Camera;
 
 typedef struct {

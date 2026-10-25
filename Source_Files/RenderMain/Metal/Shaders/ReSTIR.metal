@@ -435,7 +435,7 @@ kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracin
 	float2 deltaXY = float2(1.0) / float2(uniforms.resolution);
 
 	// Screen position in [0, 1]
-	float2 xy = float2(tid) * deltaXY;
+	float2 xy = (float2(tid) + uniforms.camera.jitter) * deltaXY;
 
 	float seed = getRandomSeed(xy, uniforms.frameNumber);
 

@@ -89,6 +89,7 @@ API_AVAILABLE(macos(26.0))
 	Camera camera;
 
 	uint64_t frameNumber;
+	simd_float2 jitter;
 	
 	// Metal pipeline internals
 	
@@ -1173,6 +1174,12 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 - (void) begin {
 	frameNumber += 1;
+
+	if (POST_PROCESSING_TYPE == TemporalUpscale || POST_PROCESSING_TYPE == TemporalDenoisedUpscale) {
+		jitter = simd_make_float2(drand48(), drand48()) - 0.5;
+	} else {
+		jitter = simd_make_float2(0.0, 0.0);
+	}
 }
 
 - (void) end {
@@ -1188,6 +1195,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	camera.yawMat = rotationMatrix(-yaw, simd_make_float3(0.0, 1.0, 0.0));
 	camera.rotateDirectionMat = simd_mul(rotationMatrix(yaw, simd_make_float3(0.0, 1.0, 0.0)), rotationMatrix(-pitch, simd_make_float3(1.0, 0.0, 0.0)));
 	camera.perspectiveMat = perspectiveProjection(fov, viewportSize.x, viewportSize.y);
+	camera.jitter = jitter;
 	
 	Uniforms uniforms;
 	uniforms.fullPathTracing = FULL_PATH_TRACING;
@@ -1527,6 +1535,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	temporalScaler.motionVectorScaleX = 1.0;
 	temporalScaler.motionVectorScaleY = 1.0;
 	temporalScaler.outputTexture = postProcessingOutputTexture;
+	temporalScaler.jitterOffsetX = jitter.x;
+	temporalScaler.jitterOffsetY = jitter.y;
 	temporalScaler.fence = fence;
 	[temporalScaler encodeToCommandBuffer:mtl3buffer];
 	[mtl3buffer commit];
@@ -1547,6 +1557,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	temporalDenoisedScaler.motionVectorScaleX = 1.0;
 	temporalDenoisedScaler.motionVectorScaleY = 1.0;
 	temporalDenoisedScaler.outputTexture = postProcessingOutputTexture;
+	temporalScaler.jitterOffsetX = jitter.x;
+	temporalScaler.jitterOffsetY = jitter.y;
 	temporalDenoisedScaler.fence = fence;
 	[temporalDenoisedScaler encodeToCommandBuffer:mtl3buffer];
 	[mtl3buffer commit];
