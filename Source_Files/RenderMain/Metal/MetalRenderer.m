@@ -105,6 +105,8 @@ API_AVAILABLE(macos(26.0))
 	id<MTL4ArgumentTable> fragmentArgumentTable;
 	id<MTL4ArgumentTable> computeArgumentTable;
 
+	// Using a Metal 3 command queue for the MetalFX upscalers because they seem to be buggy when using Metal 4
+	id<MTLCommandQueue> mtl3queue;
 	id<MTLFXTemporalScaler> temporalScaler;
 	id<MTLFXTemporalDenoisedScaler> temporalDenoisedScaler;
 
@@ -239,6 +241,7 @@ API_AVAILABLE(macos(26.0))
 	computePassFence = [pipeline.device newFence];
 	postProcessingPassFence = [pipeline.device newFence];
 	
+	mtl3queue = [pipeline.device newCommandQueue];
 	if (![self setupTemporalScaler]) {
 		return nil;
 	}
@@ -1515,7 +1518,6 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 -(void) encodeTemporalUpscaleUpdatingFence:(id<MTLFence>)fence {
-	id<MTLCommandQueue> mtl3queue = [pipeline.device newCommandQueue];
 	id<MTLCommandBuffer> mtl3buffer = [mtl3queue commandBuffer];
 	mtl3buffer.label = [NSString stringWithFormat:@"Frame %llu (denoise)", frameNumber];
 	
@@ -1532,7 +1534,6 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 -(void) encodeTemporalDenoisedUpscaleUpdatingFence:(id<MTLFence>)fence {
-	id<MTLCommandQueue> mtl3queue = [pipeline.device newCommandQueue];
 	id<MTLCommandBuffer> mtl3buffer = [mtl3queue commandBuffer];
 	mtl3buffer.label = [NSString stringWithFormat:@"Frame %llu (denoise)", frameNumber];
 	
