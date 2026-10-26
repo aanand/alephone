@@ -101,10 +101,6 @@ Reservoir combineReservoirs(Reservoir r1, Reservoir r2, thread float &seed) {
 
 typedef intersector<triangle_data, instancing>::result_type RayTracingResult;
 
-struct TextureArgs {
-	array<texture2d<float>, MAX_TEXTURES> textures [[id(0)]];
-};
-
 struct RayTracer {
 	intersector<triangle_data, instancing> intersector;
 	instance_acceleration_structure accelerationStructure;
@@ -126,13 +122,6 @@ struct RayTracer {
 RayTracingData getData(thread RayTracingResult &intersection, thread RayTracer &rayTracer) {
 	if (intersection.user_instance_id > 0) return rayTracer.perInstanceData[intersection.user_instance_id];
 	return *((const device RayTracingData*) intersection.primitive_data);
-}
-
-float2 getUV(thread RayTracingResult &intersection, thread RayTracingData &data) {
-	if (intersection.user_instance_id > 0) {
-		return getPolygonUV(intersection, data.uv);
-	}
-	return getTriangleUV(intersection, data.uv[0], data.uv[1], data.uv[2]);
 }
 
 uint32_t getPixelIndex(uint2 tid, constant Uniforms &uniforms) {

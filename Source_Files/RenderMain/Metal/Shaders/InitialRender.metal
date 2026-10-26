@@ -9,6 +9,7 @@
 using namespace metal;
 
 #include "ShaderTypes.h"
+#include "Utils.h"
 
 
 struct RasterizerData {
@@ -70,10 +71,6 @@ struct GBuffer {
 	float depth [[ color(InitialRenderAttachmentDepth) ]];
 	float4 normal [[ color(InitialRenderAttachmentNormal) ]];
 	float2 motion [[ color(InitialRenderAttachmentMotion) ]];
-};
-
-struct TextureArgs {
-	array<texture2d<float>, MAX_TEXTURES> textures [[id(0)]];
 };
 
 fragment GBuffer

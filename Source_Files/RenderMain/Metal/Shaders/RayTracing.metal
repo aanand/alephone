@@ -29,10 +29,6 @@ struct Hit {
 
 typedef intersector<triangle_data, instancing>::result_type RayTracingResult;
 
-struct TextureArgs {
-	array<texture2d<float>, MAX_TEXTURES> textures [[id(0)]];
-};
-
 struct RayTracer {
 	intersector<triangle_data, instancing> intersector;
 	instance_acceleration_structure accelerationStructure;
@@ -78,13 +74,8 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 		uint32_t instanceId = intersection.user_instance_id;
 		if (instanceId > 0) {
 			data = rayTracer.perInstanceData[instanceId];
-			
-			if (data.textureIndex > 0) {
-				uv = getPolygonUV(intersection, data.uv);
-			}
-		} else if (data.textureIndex > 0) {
-			uv = getTriangleUV(intersection, data.uv[0], data.uv[1], data.uv[2]);
 		}
+		uv = getUV(intersection, data);
 		
 		float3 surfaceNormal = data.surfaceNormal;
 		float4 surfaceTangent = data.surfaceTangent;
