@@ -137,6 +137,10 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 		geometryDescriptor.primitiveDataElementSize = primitiveDataElementSize;
 		geometryDescriptor.primitiveDataStride = primitiveDataElementSize;
 		
+		// TODO: only set this for triangles that actually have any transparency (which is the minority)
+		geometryDescriptor.intersectionFunctionTableOffset = 0;
+		geometryDescriptor.opaque = NO;
+		
 		MTL4PrimitiveAccelerationStructureDescriptor *primitiveASDescriptor = [[MTL4PrimitiveAccelerationStructureDescriptor alloc] init];
 		primitiveASDescriptor.geometryDescriptors = @[ geometryDescriptor ];
 		

@@ -41,6 +41,7 @@ enum {
 
 enum {
 	RayTracingKernelAccelerationStructureIndex,
+	RayTracingKernelIntersectionFunctionTableIndex,
 	RayTracingKernelUniformsIndex,
 	RayTracingKernelPerInstanceDataIndex,
 	RayTracingKernelAlbedoTexturesIndex,
@@ -100,6 +101,12 @@ enum {
 	FinalRenderFragmentShaderAlbedoTextureIndex,
 	FinalRenderFragmentShaderRayTracingTextureIndex,
 	FinalRenderFragmentShader_NumTextures,
+};
+
+enum {
+	AlphaTestPerInstanceDataIndex,
+	AlphaTestAlbedoTexturesIndex,
+	AlphaTest_NumBuffers,
 };
 
 typedef struct {

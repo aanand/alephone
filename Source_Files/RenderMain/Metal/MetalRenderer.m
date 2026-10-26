@@ -105,6 +105,7 @@ API_AVAILABLE(macos(26.0))
 	id<MTL4ArgumentTable> vertexArgumentTable;
 	id<MTL4ArgumentTable> fragmentArgumentTable;
 	id<MTL4ArgumentTable> computeArgumentTable;
+	id<MTLIntersectionFunctionTable> intersectionFunctionTable;
 
 	// Using a Metal 3 command queue for the MetalFX upscalers because they seem to be buggy when using Metal 4
 	id<MTLCommandQueue> mtl3queue;
@@ -699,12 +700,52 @@ API_AVAILABLE(macos(26.0))
 	[initialRenderResidencySet addAllocation:emissionMapArgumentBuffer];
 	[rayTracingResidencySet addAllocation:emissionMapArgumentBuffer];
 
-	id<MTLComputePipelineState> state = [pipeline.device newComputePipelineStateWithFunction:function
-																			  error:&error];
+	MTLIntersectionFunctionDescriptor *intersectionFuncDesc = [MTLIntersectionFunctionDescriptor new];
+	intersectionFuncDesc.name = @"alphaTestIntersection";
+	
+	id<MTLFunction> intersectionFunction = [pipeline.defaultLibrary newIntersectionFunctionWithDescriptor:intersectionFuncDesc
+																					error:&error];
 	
 	if (error) {
 		NSLog(@"%@", error);
+		return nil;
 	}
+	
+	MTLLinkedFunctions *linkedFunctions = [MTLLinkedFunctions new];
+	linkedFunctions.functions = @[ intersectionFunction ];
+
+	MTLComputePipelineDescriptor *pipelineDesc = [MTLComputePipelineDescriptor new];
+	pipelineDesc.computeFunction = function;
+	pipelineDesc.linkedFunctions = linkedFunctions;
+	pipelineDesc.maxCallStackDepth = 4;
+	
+	id<MTLComputePipelineState> state = [pipeline.device newComputePipelineStateWithDescriptor:pipelineDesc
+																					   options:MTLPipelineOptionNone
+																					reflection:nil
+																						 error:&error];
+	
+	if (error) {
+		NSLog(@"%@", error);
+		return nil;
+	}
+	
+	MTLIntersectionFunctionTableDescriptor *intersectionFuncTableDesc = [MTLIntersectionFunctionTableDescriptor intersectionFunctionTableDescriptor];
+	intersectionFuncTableDesc.functionCount = 1;
+	
+	intersectionFunctionTable = [state newIntersectionFunctionTableWithDescriptor:intersectionFuncTableDesc];
+	if (!intersectionFunctionTable) {
+		NSLog(@"Failed to create intersection function table");
+		return nil;
+	}
+	[rayTracingResidencySet addAllocation:intersectionFunctionTable];
+
+	id<MTLFunctionHandle> intersectionFunctionHandle = [state functionHandleWithFunction:intersectionFunction];
+	if (!intersectionFunctionHandle) {
+		NSLog(@"Failed to get function handle");
+		return nil;
+	}
+	
+	[intersectionFunctionTable setFunction:intersectionFunctionHandle atIndex:0];
 	
 	return state;
 }
@@ -1412,6 +1453,11 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[encoder setComputePipelineState:rayTracingPipeline];
 	
 	[computeArgumentTable setResource:topLevelIAS.gpuResourceID atBufferIndex:RayTracingKernelAccelerationStructureIndex];
+	
+	[intersectionFunctionTable setBuffer:perInstanceDataBuffer offset:0 atIndex:AlphaTestPerInstanceDataIndex];
+	[intersectionFunctionTable setBuffer:albedoTextureArgumentBuffer offset:0 atIndex:AlphaTestAlbedoTexturesIndex];
+	[computeArgumentTable setResource:intersectionFunctionTable.gpuResourceID atBufferIndex:RayTracingKernelIntersectionFunctionTableIndex];
+
 	[computeArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:RayTracingKernelUniformsIndex];
 	[computeArgumentTable setAddress:perInstanceDataBuffer.gpuAddress atIndex:RayTracingKernelPerInstanceDataIndex];
 	[computeArgumentTable setAddress:albedoTextureArgumentBuffer.gpuAddress atIndex:RayTracingKernelAlbedoTexturesIndex];

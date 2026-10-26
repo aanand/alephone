@@ -104,6 +104,7 @@ typedef intersector<triangle_data, instancing>::result_type RayTracingResult;
 struct RayTracer {
 	intersector<triangle_data, instancing> intersector;
 	instance_acceleration_structure accelerationStructure;
+	intersection_function_table<triangle_data, instancing> intersectionFunctionTable;
 	constant RayTracingData *perInstanceData;
 	constant TextureArgs *textures;
 	constant TextureArgs *normalMaps;
@@ -135,7 +136,7 @@ RayTracingResult castRay(float3 origin, float3 direction, thread RayTracer &rayT
 	ray.min_distance = rayEpsilon;
 	ray.max_distance = INFINITY;
 
-	return rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure);
+	return rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure, rayTracer.intersectionFunctionTable);
 }
 
 constexpr sampler sam(mag_filter::linear, min_filter::linear, address::repeat);
@@ -411,6 +412,7 @@ kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracin
 				   texture2d<float> normalData [[ texture(RayTracingKernelNormalTextureIndex) ]],
 				   texture2d<float> motionData [[ texture(RayTracingKernelMotionTextureIndex) ]],
 				   instance_acceleration_structure accelerationStructure [[ buffer(RayTracingKernelAccelerationStructureIndex) ]],
+				   intersection_function_table<triangle_data, instancing> intersectionFunctionTable [[ buffer(RayTracingKernelIntersectionFunctionTableIndex) ]],
 				   constant Uniforms &uniforms [[ buffer(RayTracingKernelUniformsIndex) ]],
 				   constant RayTracingData *perInstanceData [[ buffer(RayTracingKernelPerInstanceDataIndex) ]],
 				   constant TextureArgs &textures [[ buffer(RayTracingKernelAlbedoTexturesIndex) ]],
@@ -445,6 +447,7 @@ kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracin
 	RayTracer rayTracer{
 		.intersector = intersector,
 		.accelerationStructure = accelerationStructure,
+		.intersectionFunctionTable = intersectionFunctionTable,
 		.perInstanceData = perInstanceData,
 		.textures = &textures,
 		.normalMaps = &normalMaps,
