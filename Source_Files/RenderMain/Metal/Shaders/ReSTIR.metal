@@ -425,6 +425,39 @@ float3 collectRefractedSample(float3 xV,
 	return tcol * fcol;
 }
 
+float3 diffuseReSTIR(float3 xV, float3 nV, float3 albedo,
+					 thread RayTracer &rayTracer,
+					 constant Uniforms &uniforms,
+					 thread float &seed)
+{
+	Sample initialSample = {
+		.xV = xV,
+		.nV = nV,
+		.random = float4(hash2(seed), hash2(seed)),
+	};
+	if (!collectDiffuseSample(initialSample, rayTracer, uniforms)) {
+		return float3(0.0);
+	}
+
+	Reservoir r = createInitialReservoir(initialSample);
+	float initialW = r.W;
+	
+	r = reuseTemporalSample(r, rayTracer, uniforms, seed);
+
+	uint32_t currentPixelIndex = getPixelIndex(rayTracer.tid, uniforms);
+	rayTracer.currentReservoirs[currentPixelIndex] = r;
+
+	r = reuseSpatialSamples(r, rayTracer, uniforms, seed);
+
+	Sample finalSample = rayTracer.useReSTIR ? r.sample : initialSample;
+	float3 finalW = (rayTracer.useReSTIR ? r.W : initialW);
+	
+	float cosTheta = getCosineTerm(finalSample);
+	float3 brdf = albedo / M_PI_F;
+	
+	return finalSample.Lo * cosTheta * brdf * finalW;
+}
+
 float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, constant Uniforms &uniforms, thread float &seed) {
 	RayTracingResult initialRayResult = castRay(origin, direction, rayTracer);
 	
@@ -449,33 +482,8 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 		return mix(refractedComponent, specular.color, specular.contribution);
 	}
 	
-	Sample initialSample = {
-		.xV = xV,
-		.nV = nV,
-		.random = float4(hash2(seed), hash2(seed)),
-	};
-	if (!collectDiffuseSample(initialSample, rayTracer, uniforms)) {
-		return float3(0.0);
-	}
-
-	Reservoir r = createInitialReservoir(initialSample);
-	float initialW = r.W;
-	
-	r = reuseTemporalSample(r, rayTracer, uniforms, seed);
-
-	uint32_t currentPixelIndex = getPixelIndex(rayTracer.tid, uniforms);
-	rayTracer.currentReservoirs[currentPixelIndex] = r;
-
-	r = reuseSpatialSamples(r, rayTracer, uniforms, seed);
-
-	Sample finalSample = rayTracer.useReSTIR ? r.sample : initialSample;
-	float3 finalW = (rayTracer.useReSTIR ? r.W : initialW);
-	
-	float cosTheta = getCosineTerm(finalSample);
 	float3 albedo = getAlbedo(initialRayResult, rayTracer);
-	float3 brdf = albedo / M_PI_F;
-	
-	float3 diffuseComponent = finalSample.Lo * cosTheta * brdf * finalW;
+	float3 diffuseComponent = diffuseReSTIR(xV, nV, albedo, rayTracer, uniforms, seed);
 	
 	return directEmission + mix(diffuseComponent, specular.color, specular.contribution);
 }
