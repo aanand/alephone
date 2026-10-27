@@ -24,7 +24,6 @@ constant int SPATIAL_R = 16;
 // Thresholds for sample reuse
 constant float REUSE_MOTION_MAXIMUM = 256.0;      // Maximum screen-space distance
 constant float REUSE_DEPTH_CHANGE_MAXIMUM = 0.3;  // Maximum fractional depth difference
-constant float REUSE_NORMAL_CHANGE_MINIMUM = 0.9; // Minimum dot-product of normals
 
 constant float EMISSION_MULTIPLIER = 10.0;
 
@@ -113,7 +112,6 @@ struct RayTracer {
 	constant Reservoir *previousReservoirs;
 	device Reservoir *currentReservoirs;
 	thread texture2d<float> *depthData;
-	thread texture2d<float> *normalData;
 	thread texture2d<float> *motionData;
 	uint2 tid;
 	bool useReSTIR;
@@ -256,12 +254,6 @@ bool acceptReuse(uint2 xy, thread RayTracer &rayTracer) {
 	float relativeDepthChange = abs((currDepth-prevDepth)/prevDepth);
 	
 	if (relativeDepthChange > REUSE_DEPTH_CHANGE_MAXIMUM) return false;
-	
-	float3 prevNormal = rayTracer.normalData->read(xy).xyz * 2.0 - 1.0;
-	float3 currNormal = rayTracer.normalData->read(rayTracer.tid).xyz * 2.0 - 1.0;
-	float cosTheta = dot(prevNormal, currNormal);
-	
-	if (cosTheta < REUSE_NORMAL_CHANGE_MINIMUM) return false;
 	
 	return true;
 }
@@ -494,7 +486,6 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 
 kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
 				   texture2d<float> depthData [[ texture(RayTracingKernelDepthTextureIndex) ]],
-				   texture2d<float> normalData [[ texture(RayTracingKernelNormalTextureIndex) ]],
 				   texture2d<float> motionData [[ texture(RayTracingKernelMotionTextureIndex) ]],
 				   instance_acceleration_structure accelerationStructure [[ buffer(RayTracingKernelAccelerationStructureIndex) ]],
 				   intersection_function_table<triangle_data, instancing> intersectionFunctionTable [[ buffer(RayTracingKernelIntersectionFunctionTableIndex) ]],
@@ -541,7 +532,6 @@ kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracin
 		.previousReservoirs = previousReservoirs,
 		.currentReservoirs = currentReservoirs,
 		.depthData = &depthData,
-		.normalData = &normalData,
 		.motionData = &motionData,
 		.tid = tid,
 		.useReSTIR = true,

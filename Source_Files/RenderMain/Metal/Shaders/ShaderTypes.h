@@ -55,7 +55,6 @@ enum {
 
 enum {
 	RayTracingKernelDepthTextureIndex,
-	RayTracingKernelNormalTextureIndex,
 	RayTracingKernelMotionTextureIndex,
 	RayTracingKernelOutImageIndex,
 	RayTracingKernel_NumTextures,
