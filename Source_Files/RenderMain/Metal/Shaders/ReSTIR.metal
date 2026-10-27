@@ -332,6 +332,11 @@ Reservoir reuseSpatialSamples(thread Reservoir &r,
 	return combineReservoirs(r, spatialReservoir, seed);
 }
 
+typedef struct {
+	float contribution;
+	float3 color;
+} SpecularSample;
+
 float getSpecularContribution(float3 direction, float3 normal, Material material) {
 	float f0 = material.f0;
 	float LdotH = clamp(dot(direction, -normal), 0.0, 1.0);
@@ -339,13 +344,21 @@ float getSpecularContribution(float3 direction, float3 normal, Material material
 	return schlick * (1.0 - material.roughness);
 }
 
-float3 collectSpecularSample(float3 xV, float3 outgoingDirection, thread RayTracer &rayTracer, constant Uniforms &uniforms) {
-	RayTracingResult firstBounceResult = castRay(xV, outgoingDirection, rayTracer);
-	if (firstBounceResult.type == intersection_type::none) {
-		return float3(0.0);
+SpecularSample collectSpecularSample(float3 xV, float3 nV, float3 incomingDirection, RayTracingData hitData, thread RayTracer &rayTracer, constant Uniforms &uniforms) {
+	float contribution = getSpecularContribution(incomingDirection, nV, hitData.material);
+
+	if (contribution > 0.0) {
+		float3 outgoingDirection = reflect(incomingDirection, nV);
+		if (dot(outgoingDirection, hitData.surfaceNormal) > 0.0) {
+			RayTracingResult firstBounceResult = castRay(xV, outgoingDirection, rayTracer);
+			if (firstBounceResult.type != intersection_type::none) {
+				float3 color = getEmission(firstBounceResult, outgoingDirection, rayTracer, uniforms);
+				return { .contribution = contribution, .color = color };
+			}
+		}
 	}
-	
-	return getEmission(firstBounceResult, outgoingDirection, rayTracer, uniforms);
+
+	return { .contribution = 0.0, .color = float3(0.0) };
 }
 
 // For transparent materials, perform a naïve 3-ray Monte Carlo path trace.
@@ -429,20 +442,11 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 	float3 xV = origin + (direction * initialRayResult.distance);
 	float3 nV = getNormal(initialRayResult, rayTracer);
 
-	float specularContribution = getSpecularContribution(direction, nV, initialHitData.material);
-	float3 specularComponent = float3(0.0);
-	if (specularContribution > 0.0) {
-		float3 outgoing = reflect(direction, nV);
-		if (dot(outgoing, initialHitData.surfaceNormal) > 0.0) {
-			specularComponent = collectSpecularSample(xV, outgoing, rayTracer, uniforms);
-		} else {
-			specularContribution = 0.0;
-		}
-	}
+	SpecularSample specular = collectSpecularSample(xV, nV, direction, initialHitData, rayTracer, uniforms);
 
 	if (initialHitData.material.isTransparent) {
 		float3 refractedComponent = collectRefractedSample(xV, nV, direction, initialRayResult, initialHitData, rayTracer, uniforms, seed);
-		return mix(refractedComponent, specularComponent, specularContribution);
+		return mix(refractedComponent, specular.color, specular.contribution);
 	}
 	
 	Sample initialSample = {
@@ -473,7 +477,7 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 	
 	float3 diffuseComponent = finalSample.Lo * cosTheta * brdf * finalW;
 	
-	return directEmission + mix(diffuseComponent, specularComponent, specularContribution);
+	return directEmission + mix(diffuseComponent, specular.color, specular.contribution);
 }
 
 kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
