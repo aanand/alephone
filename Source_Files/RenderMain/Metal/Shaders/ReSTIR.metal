@@ -21,8 +21,6 @@ constant float M_CAP_SPATIAL = 500.0;
 constant int SPATIAL_N = 4;
 constant int SPATIAL_R = 16;
 
-// Thresholds for sample reuse
-constant float REUSE_MOTION_MAXIMUM = 256.0;      // Maximum screen-space distance
 constant float REUSE_DEPTH_CHANGE_MAXIMUM = 0.3;  // Maximum fractional depth difference
 
 constant float EMISSION_MULTIPLIER = 10.0;
@@ -264,7 +262,6 @@ Reservoir reuseTemporalSample(thread Reservoir &r,
 							  thread float &seed)
 {
 	float2 motion = rayTracer.motionData->read(rayTracer.tid).xy;
-	if (length(motion) > REUSE_MOTION_MAXIMUM) return r;
 
 	int prevX = (int)rayTracer.tid.x + round(motion.x);
 	int prevY = (int)rayTracer.tid.y + round(motion.y);
