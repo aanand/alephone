@@ -344,7 +344,12 @@ float getSpecularContribution(float3 direction, float3 normal, Material material
 	return schlick * (1.0 - material.roughness);
 }
 
-SpecularSample collectSpecularSample(float3 xV, float3 nV, float3 incomingDirection, RayTracingData hitData, thread RayTracer &rayTracer, constant Uniforms &uniforms) {
+SpecularSample collectSpecularSample(float3 xV, float3 nV,
+									 float3 incomingDirection,
+									 RayTracingData hitData,
+									 thread RayTracer &rayTracer,
+									 constant Uniforms &uniforms)
+{
 	float contribution = getSpecularContribution(incomingDirection, nV, hitData.material);
 
 	if (contribution > 0.0) {
@@ -363,8 +368,7 @@ SpecularSample collectSpecularSample(float3 xV, float3 nV, float3 incomingDirect
 
 // For transparent materials, perform a naïve 3-ray Monte Carlo path trace.
 // First ray continues into the medium, second ray hopefully bounces back up, third ray escapes and hopefully hits a light.
-float3 collectRefractedSample(float3 xV,
-							  float3 nV,
+float3 collectRefractedSample(float3 xV, float3 nV,
 							  float3 incomingDirection,
 							  thread RayTracingResult &initialHitResult,
 							  thread RayTracingData &initialHitData,
