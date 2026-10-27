@@ -185,7 +185,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 			float specularProbability = schlick * (1.0 - hit.material.roughness);
 			
 			// If the material we just hit is a medium, decide whether to enter it
-			if (hit.material.transparency > hash1(seed)) {
+			if (hit.material.isTransparent) {
 				bool isEntering = dot(ray.direction, hit.surfaceNormal) < 0.0;
 
 				if (isEntering && specularProbability > hash1(seed)) {

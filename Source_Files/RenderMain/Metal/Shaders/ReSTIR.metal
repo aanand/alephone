@@ -339,13 +339,77 @@ float getSpecularContribution(float3 direction, float3 normal, Material material
 	return schlick * (1.0 - material.roughness);
 }
 
-float3 collectSpecularSample(float3 xV, float3 direction, thread RayTracer &rayTracer, constant Uniforms &uniforms) {
-	RayTracingResult firstBounceResult = castRay(xV, direction, rayTracer);
+float3 collectSpecularSample(float3 xV, float3 outgoingDirection, thread RayTracer &rayTracer, constant Uniforms &uniforms) {
+	RayTracingResult firstBounceResult = castRay(xV, outgoingDirection, rayTracer);
 	if (firstBounceResult.type == intersection_type::none) {
 		return float3(0.0);
 	}
 	
-	return getEmission(firstBounceResult, direction, rayTracer, uniforms);
+	return getEmission(firstBounceResult, outgoingDirection, rayTracer, uniforms);
+}
+
+// For transparent materials, perform a naïve 3-ray Monte Carlo path trace.
+// First ray continues into the medium, second ray hopefully bounces back up, third ray escapes and hopefully hits a light.
+float3 collectRefractedSample(float3 xV,
+							  float3 nV,
+							  float3 incomingDirection,
+							  thread RayTracingResult &initialHitResult,
+							  thread RayTracingData &initialHitData,
+							  thread RayTracer &rayTracer,
+							  constant Uniforms &uniforms,
+							  thread float &seed)
+{
+	float3 currentPosition = xV;
+	float3 currentNormal = nV;
+	float3 currentDirection = incomingDirection;
+	RayTracingResult currentResult = initialHitResult;
+	RayTracingData currentData = initialHitData;
+	
+	float3 tcol = float3(0.0);
+	float3 fcol = float3(1.0);
+
+	int bounce = 0;
+	while (true) {
+		float3 outgoingDirection;
+
+		if (currentData.material.isTransparent) {
+			bool isEntering = dot(currentDirection, currentData.surfaceNormal) < 0.0;
+			float refractiveIndex = currentData.material.refractiveIndex;
+			
+			float3 refractedDirection = refract(currentDirection,
+												isEntering ? currentNormal : -currentNormal,
+												isEntering ? 1.0/refractiveIndex : refractiveIndex);
+			
+			outgoingDirection = length(refractedDirection) < 0.5 ? reflect(currentDirection, currentNormal) : refractedDirection;
+		} else {
+			float3 emission = getEmission(currentResult, currentDirection, rayTracer, uniforms);
+			tcol += fcol * emission;
+
+			if (currentData.material.isLandscape) break;
+
+			float3 albedo = getAlbedo(currentResult, rayTracer);
+			fcol *= albedo;
+			
+			outgoingDirection = sampleUnitHemisphereCosineWeighted(hash2(seed), getNormal(currentResult, rayTracer));
+		}
+		
+		if (bounce >= 3) break;
+		
+		RayTracingResult result = castRay(currentPosition, outgoingDirection, rayTracer);
+		if (result.type == intersection_type::none) break;
+
+		RayTracingData data = getData(result, rayTracer);
+		float3 normal = getNormal(result, rayTracer);
+		
+		currentPosition = currentPosition + outgoingDirection * result.distance;
+		currentNormal = normal;
+		currentDirection = outgoingDirection;
+		currentResult = result;
+		currentData = data;
+		bounce++;
+	}
+	
+	return tcol * fcol;
 }
 
 float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, constant Uniforms &uniforms, thread float &seed) {
@@ -365,6 +429,22 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 	float3 xV = origin + (direction * initialRayResult.distance);
 	float3 nV = getNormal(initialRayResult, rayTracer);
 
+	float specularContribution = getSpecularContribution(direction, nV, initialHitData.material);
+	float3 specularComponent = float3(0.0);
+	if (specularContribution > 0.0) {
+		float3 outgoing = reflect(direction, nV);
+		if (dot(outgoing, initialHitData.surfaceNormal) > 0.0) {
+			specularComponent = collectSpecularSample(xV, outgoing, rayTracer, uniforms);
+		} else {
+			specularContribution = 0.0;
+		}
+	}
+
+	if (initialHitData.material.isTransparent) {
+		float3 refractedComponent = collectRefractedSample(xV, nV, direction, initialRayResult, initialHitData, rayTracer, uniforms, seed);
+		return mix(refractedComponent, specularComponent, specularContribution);
+	}
+	
 	Sample initialSample = {
 		.xV = xV,
 		.nV = nV,
@@ -393,17 +473,6 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 	
 	float3 diffuseComponent = finalSample.Lo * cosTheta * brdf * finalW;
 	
-	float specularContribution = getSpecularContribution(direction, nV, initialHitData.material);
-	float3 specularComponent = float3(0.0);
-	if (specularContribution > 0.0) {
-		float3 outgoing = reflect(direction, nV);
-		if (dot(outgoing, initialHitData.surfaceNormal) > 0.0) {
-			specularComponent = collectSpecularSample(xV, outgoing, rayTracer, uniforms);
-		} else {
-			specularContribution = 0.0;
-		}
-	}
-
 	return directEmission + mix(diffuseComponent, specularComponent, specularContribution);
 }
 

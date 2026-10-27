@@ -486,7 +486,7 @@ std::unordered_map<std::string, Material> materials = {
 	// Water (M2)
 	{ "[ShapeDesc=4371/Collection=17/CTable=0/Frame=19/Bitmap=19]", {
 		.f0 = 0.2,
-		.transparency = 1.0,
+		.isTransparent = true,
 		.refractiveIndex = 1.33,
 	} },
 };
