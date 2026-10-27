@@ -22,6 +22,10 @@ bool alphaTestIntersection(             float2          coordinates     [[ baryc
 {
 	RayTracingData data = (instanceIndex > 0) ? perInstanceData[instanceIndex] : *primitiveData;
 	if (data.textureIndex == 0) return true;
+	
+	// Some landscape textures in M2 seem to have alpha=0 pixels,
+	// which causes a zebra stripe effect when the ray escapes into the void
+	if (data.material.isLandscape) return true;
 
 	float2 uv = getUV(coordinates, primitiveIndex, instanceIndex, data);
 	texture2d<float> texture = albedoTextures->textures[data.textureIndex];
