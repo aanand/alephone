@@ -87,7 +87,7 @@ inline float getPlayerLightIntensity(constant Uniforms &uniforms, float3 forward
 
 	float3 lightToHitPoint = hitPoint - getPlayerLightPosition(forward, uniforms);
 	float angleFromCenter = acos(dot(normalize(lightToHitPoint), forward));
-	float flashlightAngleWeight = 1.0 - clamp(angleFromCenter/(M_PI_F/6.0), 0.0, 1.0);
+	float flashlightAngleWeight = 1.0 - clamp(angleFromCenter/flashlightConeRadius, 0.0, 1.0);
 	float flashlight = uniforms.flashlight * flashlightAngleWeight;
 
 	return weaponFlare + flashlight;

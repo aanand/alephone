@@ -16,6 +16,7 @@ constant float defaultAttenuation = 0.9;
 constant bool toneMap = true;
 
 constant float weaponFlareMultiplier = 5.0;
+constant float flashlightConeRadius = (M_PI_F/4.0);
 
 constant uint samplesPerPixel = 1;
 constant uint maxBounces = 2;

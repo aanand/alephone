@@ -475,7 +475,7 @@ float3 samplePlayerLightEmission(float3 xV, float3 nV, thread RayTracer &rayTrac
 	}
 
 	float angleWeight = clamp(dot(nV, directRay.direction), 0.0, 1.0);
-	float distanceWeight = clamp(pow(length(hitPointToLight) * 0.001, -2.0), 0.0, 1.0);
+	float distanceWeight = clamp(pow(length(hitPointToLight) / 1024.0, -2.0), 0.0, 1.0);
 	return playerLightIntensity * angleWeight * distanceWeight;
 }
 
