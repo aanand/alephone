@@ -40,21 +40,6 @@ struct RayTracer {
 	float3 forward; // Unit vector representing the player's look direction in world-space
 };
 
-float3 getPlayerLightPosition(constant Uniforms &uniforms) {
-	return float3(uniforms.camera.origin + int3(0, 0, -128));
-}
-
-float getPlayerLightIntensity(constant Uniforms &uniforms, thread RayTracer &rayTracer, float3 hitPoint) {
-	float weaponFlare = uniforms.weaponFlare * weaponFlareMultiplier;
-
-	float3 lightToHitPoint = hitPoint - getPlayerLightPosition(uniforms);
-	float angleFromCenter = acos(dot(normalize(lightToHitPoint), rayTracer.forward));
-	float flashlightAngleWeight = 1.0 - clamp(angleFromCenter/(M_PI_F/6.0), 0.0, 1.0);
-	float flashlight = uniforms.flashlight * flashlightAngleWeight;
-
-	return weaponFlare + flashlight;
-}
-
 // Cast a ray, continuing in the case of hitting a transparent surface.
 Hit castRay(thread RayTracer &rayTracer, ray ray)
 {
@@ -227,7 +212,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 				couldHitSun = dot(normal, towardSun) > 0;
 			}
 
-			float playerLight = getPlayerLightIntensity(uniforms, rayTracer, hitPoint);
+			float playerLight = getPlayerLightIntensity(uniforms, rayTracer.forward, hitPoint);
 			bool hasPlayerLight = playerLight > 0;
 			
 			bool sampleSun = false;
@@ -258,7 +243,7 @@ float3 rayTraceSoft(float3 origin, float3 direction,
 					tcol += fcol * diffuse * uniforms.sky.sunEmission * contribution * weight;
 				}
 			} else if (samplePlayerLight) {
-				float3 hitPointToLight = getPlayerLightPosition(uniforms) - hitPoint;
+				float3 hitPointToLight = getPlayerLightPosition(rayTracer.forward, uniforms) - hitPoint;
 
 				struct ray directRay;
 				directRay.origin = hitPoint;

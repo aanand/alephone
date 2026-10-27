@@ -13,6 +13,7 @@ using namespace metal;
 using namespace raytracing;
 
 #include "ShaderTypes.h"
+#include "Constants.h"
 
 struct TextureArgs {
 	array<texture2d<float>, MAX_TEXTURES> textures [[id(0)]];
@@ -75,6 +76,21 @@ inline float3 sampleSky(Sky sky, float3 direction) {
 	
 	float cosThetaToTop = dot(direction, float3(0.0, 0.0, 1.0));
 	return mix(sky.bottomEmission, sky.topEmission, cosThetaToTop * 0.5 + 0.5);
+}
+
+inline float3 getPlayerLightPosition(float3 forward, constant Uniforms &uniforms) {
+	return float3(uniforms.camera.origin) + (forward * 128.0) + float3(0.0, 0.0, -64.0);
+}
+
+inline float getPlayerLightIntensity(constant Uniforms &uniforms, float3 forward, float3 hitPoint) {
+	float weaponFlare = uniforms.weaponFlare * weaponFlareMultiplier;
+
+	float3 lightToHitPoint = hitPoint - getPlayerLightPosition(forward, uniforms);
+	float angleFromCenter = acos(dot(normalize(lightToHitPoint), forward));
+	float flashlightAngleWeight = 1.0 - clamp(angleFromCenter/(M_PI_F/6.0), 0.0, 1.0);
+	float flashlight = uniforms.flashlight * flashlightAngleWeight;
+
+	return weaponFlare + flashlight;
 }
 
 #endif /* Utils_h */

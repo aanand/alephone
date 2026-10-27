@@ -125,6 +125,10 @@ uint32_t getPixelIndex(uint2 tid, constant Uniforms &uniforms) {
 	return tid.y * uniforms.resolution.x + tid.x;
 }
 
+RayTracingResult castRay(ray ray, thread RayTracer &rayTracer) {
+	return rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure, rayTracer.intersectionFunctionTable);
+}
+
 RayTracingResult castRay(float3 origin, float3 direction, thread RayTracer &rayTracer) {
 	ray ray;
 	ray.origin = origin;
@@ -132,7 +136,7 @@ RayTracingResult castRay(float3 origin, float3 direction, thread RayTracer &rayT
 	ray.min_distance = rayEpsilon;
 	ray.max_distance = INFINITY;
 
-	return rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure, rayTracer.intersectionFunctionTable);
+	return castRay(ray, rayTracer);
 }
 
 constexpr sampler sam(mag_filter::linear, min_filter::linear, address::repeat);
@@ -451,6 +455,30 @@ float3 diffuseReSTIR(float3 xV, float3 nV, float3 albedo,
 	return finalSample.Lo * cosTheta * brdf * finalW;
 }
 
+float3 samplePlayerLightEmission(float3 xV, float3 nV, thread RayTracer &rayTracer, constant Uniforms &uniforms) {
+	float playerLightIntensity = getPlayerLightIntensity(uniforms, rayTracer.forward, xV);
+	float3 playerLightPosition = getPlayerLightPosition(rayTracer.forward, uniforms);
+
+	float3 hitPointToLight = playerLightPosition - xV;
+
+	struct ray directRay;
+	directRay.origin = xV;
+	directRay.direction = normalize(hitPointToLight);
+	directRay.min_distance = rayEpsilon;
+	directRay.max_distance = length(hitPointToLight) - rayEpsilon;
+	
+	RayTracingResult result = castRay(directRay, rayTracer);
+	
+	// If we DID hit something on the way to the light, the point is in shadow
+	if (result.type != intersection_type::none) {
+		return float3(0.0);
+	}
+
+	float angleWeight = clamp(dot(nV, directRay.direction), 0.0, 1.0);
+	float distanceWeight = clamp(pow(length(hitPointToLight) * 0.001, -2.0), 0.0, 1.0);
+	return playerLightIntensity * angleWeight * distanceWeight;
+}
+
 float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, constant Uniforms &uniforms, thread float &seed) {
 	RayTracingResult initialRayResult = castRay(origin, direction, rayTracer);
 	
@@ -475,10 +503,12 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 		return mix(refractedComponent, specular.color, specular.contribution);
 	}
 	
+	float3 playerLightEmission = samplePlayerLightEmission(xV, nV, rayTracer, uniforms);
+	
 	float3 albedo = getAlbedo(initialRayResult, rayTracer);
 	float3 diffuseComponent = diffuseReSTIR(xV, nV, albedo, rayTracer, uniforms, seed);
 	
-	return directEmission + mix(diffuseComponent, specular.color, specular.contribution);
+	return directEmission + (playerLightEmission * albedo) + mix(diffuseComponent, specular.color, specular.contribution);
 }
 
 kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
