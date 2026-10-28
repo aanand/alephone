@@ -139,6 +139,18 @@ RayTracingResult castRay(float3 origin, float3 direction, thread RayTracer &rayT
 	return castRay(ray, rayTracer);
 }
 
+bool isVisible(float3 from, float3 to, thread RayTracer &rayTracer) {
+	ray ray;
+	ray.origin = from;
+	ray.direction = normalize(to - from);
+	ray.min_distance = rayEpsilon;
+	ray.max_distance = distance(from, to) - rayEpsilon;
+	
+	RayTracingResult result = castRay(ray, rayTracer);
+	
+	return result.type == intersection_type::none;
+}
+
 constexpr sampler sam(mag_filter::linear, min_filter::linear, address::repeat);
 
 float3 getEmission(RayTracingResult intersection, float3 direction, thread RayTracer &rayTracer, constant Uniforms &uniforms) {
@@ -456,26 +468,18 @@ float3 diffuseReSTIR(float3 xV, float3 nV, float3 albedo,
 }
 
 float3 samplePlayerLightEmission(float3 xV, float3 nV, thread RayTracer &rayTracer, constant Uniforms &uniforms) {
-	float playerLightIntensity = getPlayerLightIntensity(uniforms, rayTracer.forward, xV);
 	float3 playerLightPosition = getPlayerLightPosition(rayTracer.forward, uniforms);
 
-	float3 hitPointToLight = playerLightPosition - xV;
-
-	struct ray directRay;
-	directRay.origin = xV;
-	directRay.direction = normalize(hitPointToLight);
-	directRay.min_distance = rayEpsilon;
-	directRay.max_distance = length(hitPointToLight) - rayEpsilon;
-	
-	RayTracingResult result = castRay(directRay, rayTracer);
-	
-	// If we DID hit something on the way to the light, the point is in shadow
-	if (result.type != intersection_type::none) {
+	if (!isVisible(xV, playerLightPosition, rayTracer)) {
 		return float3(0.0);
 	}
+	
+	float playerLightIntensity = getPlayerLightIntensity(uniforms, rayTracer.forward, xV);
 
-	float angleWeight = clamp(dot(nV, directRay.direction), 0.0, 1.0);
+	float3 hitPointToLight = playerLightPosition - xV;
+	float angleWeight = clamp(dot(nV, normalize(hitPointToLight)), 0.0, 1.0);
 	float distanceWeight = clamp(pow(length(hitPointToLight) / 1024.0, -2.0), 0.0, 1.0);
+
 	return playerLightIntensity * angleWeight * distanceWeight;
 }
 
