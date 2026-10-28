@@ -461,6 +461,10 @@ float3 diffuseReSTIR(float3 xV, float3 nV, float3 albedo,
 	Sample finalSample = rayTracer.useReSTIR ? r.sample : initialSample;
 	float3 finalW = (rayTracer.useReSTIR ? r.W : initialW);
 	
+	if (!isVisible(xV, finalSample.xV, rayTracer)) {
+		return float3(0.0);
+	}
+	
 	float cosTheta = getCosineTerm(finalSample);
 	float3 brdf = albedo / M_PI_F;
 	
