@@ -13,6 +13,8 @@ using namespace metal;
 
 
 constant float defaultAttenuation = 0.9;
+constant float3 defaultAbsorption = float3(0.1, 0.05, 0.01);
+
 constant bool toneMap = true;
 
 constant float weaponFlareMultiplier = 5.0;
@@ -24,5 +26,7 @@ constant uint maxAlphaPassthroughs = 10;
 constant int denoiseRadius = 1;
 
 constant float rayEpsilon = 0.1;
+
+constant float worldOne = 1024.0;
 
 #endif /* Constants_h */

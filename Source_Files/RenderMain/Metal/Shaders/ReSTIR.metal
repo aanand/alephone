@@ -232,6 +232,10 @@ float3 getNormal(RayTracingResult intersection, thread RayTracer &rayTracer) {
 	return normalize(TBN * texelNormal);
 }
 
+float3 absorb(float3 absorption, float distance) {
+	return exp(-absorption * distance / worldOne);
+}
+
 // Expects xV, nV and random to be set.
 // Sets xS, nS and Lo.
 bool collectDiffuseSample(thread Sample &sample, thread RayTracer &rayTracer, constant Uniforms &uniforms)
@@ -398,11 +402,19 @@ float3 collectRefractedSample(float3 xV, float3 nV,
 	float3 tcol = float3(0.0);
 	float3 fcol = float3(1.0);
 
+	bool isInMedium = uniforms.isInMedium;
+
 	int bounce = 0;
 	while (true) {
 		float3 outgoingDirection;
 
+		if (isInMedium) {
+			fcol *= absorb(defaultAbsorption, currentResult.distance);
+		}
+
 		if (currentData.material.isTransparent) {
+			isInMedium = !isInMedium;
+
 			bool isEntering = dot(currentDirection, currentData.surfaceNormal) < 0.0;
 			float refractiveIndex = currentData.material.refractiveIndex;
 			
@@ -523,8 +535,16 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 	
 	float3 albedo = getAlbedo(initialRayResult, rayTracer);
 	float3 diffuseComponent = diffuseReSTIR(xV, nV, albedo, rayTracer, uniforms, seed);
+
+	float3 result = directEmission + (playerLightEmission * albedo) + mix(diffuseComponent, specular.color, specular.contribution);
+
+	// Apply absorption to the final result if we're underwater.
+	// This is inaccurate - it doesn't count for absorption in bounced light - but it's close enough.
+	if (uniforms.isInMedium) {
+		result *= absorb(defaultAbsorption, initialRayResult.distance);
+	}
 	
-	return directEmission + (playerLightEmission * albedo) + mix(diffuseComponent, specular.color, specular.contribution);
+	return result;
 }
 
 kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
