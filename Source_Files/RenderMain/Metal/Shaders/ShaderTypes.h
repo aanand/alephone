@@ -12,8 +12,9 @@
 
 #define MAX_TEXTURES 1024
 
-#define MASK_ALL  0xFF
-#define MASK_NONE 0x00
+#define MASK_NONE    0x00
+#define MASK_ENABLED 0x01 // Used to disable things on a per-map-polygon basis.
+#define MASK_SOLID   0x02 // Set for everything except transparent media. Used to optionally pass through them on secondary raycasts.
 
 // Copied from map.h
 #define MAXIMUM_VERTICES_PER_POLYGON 8

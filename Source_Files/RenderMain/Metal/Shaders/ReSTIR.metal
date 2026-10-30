@@ -125,18 +125,26 @@ uint32_t getPixelIndex(uint2 tid, constant Uniforms &uniforms) {
 	return tid.y * uniforms.resolution.x + tid.x;
 }
 
-RayTracingResult castRay(ray ray, thread RayTracer &rayTracer) {
-	return rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure, rayTracer.intersectionFunctionTable);
+RayTracingResult castRay(ray ray, uint mask, thread RayTracer &rayTracer) {
+	return rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure, mask, rayTracer.intersectionFunctionTable);
 }
 
-RayTracingResult castRay(float3 origin, float3 direction, thread RayTracer &rayTracer) {
+RayTracingResult castRay(ray ray, thread RayTracer &rayTracer) {
+	return rayTracer.intersector.intersect(ray, rayTracer.accelerationStructure, MASK_ENABLED, rayTracer.intersectionFunctionTable);
+}
+
+RayTracingResult castRay(float3 origin, float3 direction, uint mask, thread RayTracer &rayTracer) {
 	ray ray;
 	ray.origin = origin;
 	ray.direction = direction;
 	ray.min_distance = rayEpsilon;
 	ray.max_distance = INFINITY;
 
-	return castRay(ray, rayTracer);
+	return castRay(ray, mask, rayTracer);
+}
+
+RayTracingResult castRay(float3 origin, float3 direction, thread RayTracer &rayTracer) {
+	return castRay(origin, direction, MASK_ENABLED, rayTracer);
 }
 
 bool isVisible(float3 from, float3 to, thread RayTracer &rayTracer) {
@@ -229,7 +237,7 @@ float3 getNormal(RayTracingResult intersection, thread RayTracer &rayTracer) {
 bool collectDiffuseSample(thread Sample &sample, thread RayTracer &rayTracer, constant Uniforms &uniforms)
 {
 	float3 newDirection = sampleUnitHemisphereCosineWeighted(sample.random.xy, sample.nV);
-	RayTracingResult firstBounceResult = castRay(sample.xV, newDirection, rayTracer);
+	RayTracingResult firstBounceResult = castRay(sample.xV, newDirection, MASK_SOLID, rayTracer);
 	if (firstBounceResult.type == intersection_type::none) {
 		return false;
 	}

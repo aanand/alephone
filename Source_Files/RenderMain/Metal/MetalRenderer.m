@@ -41,6 +41,14 @@ simd_float4x4 perspectiveProjection(float horizontalFOV, float width, float heig
 					   (simd_float4){ 0.0, 0.0, -nz, 0.0 });
 }
 
+uint getMask(bool isEnabled, bool isTransparent) {
+	if (!isEnabled) return MASK_NONE;
+
+	uint mask = MASK_ENABLED;
+	if (!isTransparent) mask |= MASK_SOLID;
+	return mask;
+}
+
 uint MAX_TRIANGLES = 10000;
 uint MAX_INSTANCES = 1000;
 
@@ -868,7 +876,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[dynamicIASManager addInstanceOfPrimitive:primitive
 								withTransform:polygon.instanceTransform
 								   instanceID:instanceID
-										 mask:(isEnabled ? MASK_ALL : MASK_NONE)];
+										 mask:getMask(isEnabled, polygon.surface.material.isTransparent)];
 }
 
 -(void)addDynamicWall:(MetalWall *)wall enabled:(BOOL)isEnabled {
@@ -900,7 +908,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
 								withTransform:wall.instanceTransform
 								   instanceID:instanceID
-										 mask:(isEnabled ? MASK_ALL : MASK_NONE)];
+										 mask:getMask(isEnabled, wall.surface.material.isTransparent)];
 }
 
 - (void) updateSprite:(MetalSprite *)sprite {
@@ -932,7 +940,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
 								withTransform:[sprite instanceTransformForRotation:theta]
 								   instanceID:instanceID
-										 mask:MASK_ALL];
+										 mask:getMask(true, sprite.surface.material.isTransparent)];
 }
 
 - (void) updateLightSourceIntensities:(NSArray<NSNumber *> *)intensities {
@@ -959,7 +967,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 		[staticIASManager addInstanceOfPrimitive:batch
 								   withTransform:transform
 									  instanceID:0
-											mask:MASK_ALL];
+											mask:getMask(true, false)];
 	}
 }
 
