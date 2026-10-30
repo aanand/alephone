@@ -38,6 +38,10 @@ simd_float4 tangent(simd_float3 p0, simd_float3 p1, simd_float3 p2,
 	return simd_make_float4(T, H);
 }
 
+bool isValidTangent(simd_float4 t) {
+	return !isnan(t.x) && !isnan(t.y) && !isnan(t.z);
+}
+
 @implementation Triangle
 
 -(Triangle *)initWithV0:(WorldVertex)v0 v1:(WorldVertex)v1 v2:(WorldVertex)v2 surface:(MetalSurface *)surface
@@ -226,11 +230,22 @@ simd_float4 tangent(simd_float3 p0, simd_float3 p1, simd_float3 p2,
 }
 
 -(simd_float4)tangent {
-	return tangent(simd_make_float3(_vertices[0].x, _vertices[0].y, _height),
-				   simd_make_float3(_vertices[1].x, _vertices[1].y, _height),
-				   simd_make_float3(_vertices[2].x, _vertices[2].y, _height),
-				   _uv[0], _uv[1], _uv[2],
-				   _surface.normal);
+	// Some triangles will be invalid, e.g. if points 0, 1 and 2 happen to be in a straight line.
+	// Iterate until we find a triangle with a valid tangent.
+	for (int j = 0; j < _vertexCount -2; j++) {
+		simd_float4 t = tangent(simd_make_float3(_vertices[0].x, _vertices[0].y, _height),
+								simd_make_float3(_vertices[j+1].x, _vertices[j+1].y, _height),
+								simd_make_float3(_vertices[j+2].x, _vertices[j+2].y, _height),
+								_uv[0], _uv[j+1], _uv[j+2],
+								_surface.normal);
+		
+		if (isValidTangent(t)) {
+			return t;
+		}
+	}
+	
+	NSAssert(false, @"Failed to calculate tangent for MetalPolygon");
+	return simd_make_float4(0.0, 0.0, 0.0, 0.0);
 }
 
 @end
