@@ -842,9 +842,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 -(void)addDynamicPolygon:(MetalPolygon *)polygon withID:(int)ID enabled:(BOOL)isEnabled {
-	Triangle __block *firstTriangle = nil;
 	[polygon eachTriangle:^(Triangle *triangle) {
-		if (firstTriangle == nil) firstTriangle = triangle;
 		[self->dynamicTriangles addObject:triangle];
 	}];
 	assert(dynamicTriangles.count < MAX_TRIANGLES);
@@ -861,7 +859,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 	RayTracingData instanceData = {
 		.surfaceNormal = polygon.surface.normal,
-		.surfaceTangent = firstTriangle.tangent,
+		.surfaceTangent = polygon.tangent,
 		.material = polygon.surface.material,
 		.numVertices = polygon.vertexCount,
 		.textureIndex = (uint32_t)textureIndex,
@@ -880,9 +878,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 -(void)addDynamicWall:(MetalWall *)wall enabled:(BOOL)isEnabled {
-	Triangle __block *firstTriangle = nil;
 	[wall eachTriangle:^(Triangle *triangle) {
-		if (firstTriangle == nil) firstTriangle = triangle;
 		[self->dynamicTriangles addObject:triangle];
 	}];
 	assert(dynamicTriangles.count < MAX_TRIANGLES);
@@ -892,7 +888,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 	RayTracingData instanceData = {
 		.surfaceNormal = wall.surface.normal,
-		.surfaceTangent = firstTriangle.tangent,
+		.surfaceTangent = wall.tangent,
 		.material = wall.surface.material,
 		.numVertices = 4,
 		.textureIndex = (uint32_t)textureIndex,
@@ -924,7 +920,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 	RayTracingData instanceData = {
 		.surfaceNormal = simd_make_float3(-cos(theta), -sin(theta), 0.0),
-		// TODO: set surfaceTangent (need to take firstTriangle.tangent and rotate it)
+		// surfaceTangent is unnecessary as long as sprites don't have normal maps
 		.material = sprite.surface.material,
 		.numVertices = 4,
 		.textureIndex = (uint32_t)textureIndex,

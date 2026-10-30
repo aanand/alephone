@@ -214,11 +214,7 @@ simd_float4 tangent(simd_float3 p0, simd_float3 p1, simd_float3 p2,
 
 - (void) eachTriangle:(void (^)(Triangle *))callback
 {
-	simd_float4 surfaceTangent = tangent(simd_make_float3(_vertices[0].x, _vertices[0].y, _height),
-										 simd_make_float3(_vertices[1].x, _vertices[1].y, _height),
-										 simd_make_float3(_vertices[2].x, _vertices[2].y, _height),
-										 _uv[0], _uv[1], _uv[2],
-										 _surface.normal);
+	simd_float4 surfaceTangent = [self tangent];
 
 	// Triangle fan: draw 0-1-2, 0-2-3, 0-3-4, etc
 	for (int j = 0; j < _vertexCount - 2; j++) {
@@ -228,6 +224,15 @@ simd_float4 tangent(simd_float3 p0, simd_float3 p1, simd_float3 p2,
 									  surface:_surface]);
 	}
 }
+
+-(simd_float4)tangent {
+	return tangent(simd_make_float3(_vertices[0].x, _vertices[0].y, _height),
+				   simd_make_float3(_vertices[1].x, _vertices[1].y, _height),
+				   simd_make_float3(_vertices[2].x, _vertices[2].y, _height),
+				   _uv[0], _uv[1], _uv[2],
+				   _surface.normal);
+}
+
 @end
 
 @implementation MetalWall
@@ -247,11 +252,7 @@ simd_float4 tangent(simd_float3 p0, simd_float3 p1, simd_float3 p2,
 
 - (void) eachTriangle:(void (^)(Triangle *))callback
 {
-	simd_float4 surfaceTangent = tangent(simd_make_float3(_v0.x, _v0.y, _bottom),
-										 simd_make_float3(_v0.x, _v0.y, _top),
-										 simd_make_float3(_v1.x, _v1.y, _top),
-										 _uv.columns[0], _uv.columns[1], _uv.columns[2],
-										 _surface.normal);
+	simd_float4 surfaceTangent = [self tangent];
 
 	WorldVertex v0 = {
 		.position = { _v0.x, _v0.y, _bottom },
@@ -283,6 +284,14 @@ simd_float4 tangent(simd_float3 p0, simd_float3 p1, simd_float3 p2,
 	
 	callback(t0);
 	callback(t1);
+}
+
+-(simd_float4)tangent {
+	return tangent(simd_make_float3(_v0.x, _v0.y, _bottom),
+				   simd_make_float3(_v0.x, _v0.y, _top),
+				   simd_make_float3(_v1.x, _v1.y, _top),
+				   _uv.columns[0], _uv.columns[1], _uv.columns[2],
+				   _surface.normal);
 }
 
 - (simd_float4x3) instanceTransform {

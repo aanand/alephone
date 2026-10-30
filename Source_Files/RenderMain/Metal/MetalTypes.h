@@ -129,6 +129,7 @@
 - (void) eachTriangle:(void (^)(Triangle *triangle))callback;
 - (id<ASTrianglePrimitive>) primitiveForTextureIDs:(NSOrderedSet<NSString*>*)textureIDs;
 - (simd_float4x3) instanceTransform;
+- (simd_float4) tangent;
 
 @end
 
@@ -155,6 +156,7 @@
 
 - (void) eachTriangle:(void (^)(Triangle *triangle))callback;
 - (simd_float4x3) instanceTransform;
+- (simd_float4) tangent;
 
 @end
 
