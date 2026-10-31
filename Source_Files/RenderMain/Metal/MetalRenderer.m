@@ -21,6 +21,7 @@
 #include "MetalRenderer.h"
 #include "MetalTypes.h"
 #include "Utils.h"
+#include "Common.h"
 
 uint getMask(bool isEnabled, bool isTransparent) {
 	if (!isEnabled) return MASK_NONE;
@@ -29,27 +30,6 @@ uint getMask(bool isEnabled, bool isTransparent) {
 	if (!isTransparent) mask |= MASK_SOLID;
 	return mask;
 }
-
-uint MAX_TRIANGLES = 10000;
-uint MAX_INSTANCES = 1000;
-
-NSString* const PLACEHOLDER_TEXTURE_ID = @"PLACEHOLDER";
-
-const MTLPixelFormat DiffuseAlbedoPixelFormat = MTLPixelFormatRGBA16Float;
-const MTLPixelFormat SpecularAlbedoPixelFormat = MTLPixelFormatRGBA16Float;
-const MTLPixelFormat RoughnessPixelFormat = MTLPixelFormatR32Float;
-const MTLPixelFormat DepthPixelFormat = MTLPixelFormatR32Float;
-const MTLPixelFormat NormalPixelFormat = MTLPixelFormatRGBA16Float;
-const MTLPixelFormat MotionPixelFormat = MTLPixelFormatRG16Float;
-const MTLPixelFormat RayTracingPixelFormat = MTLPixelFormatRGBA16Float;
-
-typedef enum {
-	NoPostProcessing,
-	WaveletDenoise,
-	TAA,
-	TemporalUpscale,
-	TemporalDenoisedUpscale,
-} PostProcessingType;
 
 const bool FULL_PATH_TRACING = true;
 const PostProcessingType POST_PROCESSING_TYPE = NoPostProcessing;
