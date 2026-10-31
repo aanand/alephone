@@ -223,16 +223,13 @@ void Rasterizer_Metal_Class::SetView(view_data &ViewData) {
 	float weaponFlare = PIN(view->maximum_depth_intensity - NATURAL_LIGHT_INTENSITY, 0, FIXED_ONE)/float(FIXED_ONE);
 	float flashlight = isFlashlightOn ? flashlightIntensity : 0.0;
 	
-	View *v = [[View alloc] init];
-	v.origin = simd_make_int3(ViewData.origin.x, ViewData.origin.y, ViewData.origin.z);
-	v.pitch = ViewData.virtual_pitch * FixedAngleToDegrees;
-	v.yaw = ViewData.virtual_yaw * FixedAngleToDegrees;
-	v.fov = ViewData.field_of_view;
-	v.weaponFlare = weaponFlare;
-	v.flashlight = flashlight;
-	v.isInMedium = ViewData.under_media_boundary;
-
-	[renderer updateView:v];
+	renderer.view.origin = simd_make_int3(ViewData.origin.x, ViewData.origin.y, ViewData.origin.z);
+	renderer.view.pitch = ViewData.virtual_pitch * FixedAngleToDegrees;
+	renderer.view.yaw = ViewData.virtual_yaw * FixedAngleToDegrees;
+	renderer.view.fov = ViewData.field_of_view;
+	renderer.view.weaponFlare = weaponFlare;
+	renderer.view.flashlight = flashlight;
+	renderer.view.isInMedium = ViewData.under_media_boundary;
 }
 
 void Rasterizer_Metal_Class::Begin() {

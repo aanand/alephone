@@ -20,6 +20,11 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) float flashlight;
 @property (nonatomic, assign) bool isInMedium;
 
+@property (nonatomic, assign) simd_uint2 viewportSize;
+@property (nonatomic, assign) simd_float2 jitter;
+
+- (Camera) camera;
+
 @end
 
 NS_ASSUME_NONNULL_END

@@ -29,7 +29,8 @@ API_AVAILABLE(macos(26.0))
  Rendering
  */
 
-- (void) updateView:(View*)view;
+@property (readonly) View *view;
+
 - (void) updateSky:(Sky)sky;
 
 - (void) begin;

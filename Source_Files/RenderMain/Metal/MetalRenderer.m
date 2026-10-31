@@ -20,26 +20,7 @@
 #include "IASManager.h"
 #include "MetalRenderer.h"
 #include "MetalTypes.h"
-
-float radians(float degrees) {
-	return degrees * 8.0 * atan(1.0) / 360.0;
-}
-
-simd_float4x4 rotationMatrix(float angle, simd_float3 axis) {
-	simd_quatf quat = simd_quaternion(radians(angle), axis);
-	return simd_matrix4x4(quat);
-}
-
-simd_float4x4 perspectiveProjection(float horizontalFOV, float width, float height) {
-	float xs = 1.0 / tanf(radians(horizontalFOV) * 0.5);
-	float ys = xs * width / height;
-	float nz = 0.01;
-	
-	return simd_matrix((simd_float4){  xs, 0.0, 0.0, 0.0 },
-					   (simd_float4){ 0.0,  ys, 0.0, 0.0 },
-					   (simd_float4){ 0.0, 0.0, 1.0, 1.0 },
-					   (simd_float4){ 0.0, 0.0, -nz, 0.0 });
-}
+#include "Utils.h"
 
 uint getMask(bool isEnabled, bool isTransparent) {
 	if (!isEnabled) return MASK_NONE;
@@ -84,13 +65,10 @@ API_AVAILABLE(macos(26.0))
 	SDL_Renderer *renderer;
 	CAMetalLayer *metalLayer;
 
-	simd_uint2 viewportSize;
-	View *view;
 	Sky sky;
 	Camera camera;
 
 	uint64_t frameNumber;
-	simd_float2 jitter;
 	
 	// Metal pipeline internals
 	
@@ -188,7 +166,9 @@ API_AVAILABLE(macos(26.0))
 	window = sdlWindow;
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
 	
-	viewportSize = simd_make_uint2(width, height);
+	_view = [[View alloc] init];
+	_view.viewportSize = simd_make_uint2(width, height);
+
 	frameNumber = 0;
 	
 	metalLayer = (__bridge CAMetalLayer*)SDL_RenderGetMetalLayer(renderer);
@@ -377,16 +357,16 @@ API_AVAILABLE(macos(26.0))
 	denoiseConfigBuffer.label = @"Denoise config";
 	[postProcessingResidencySet addAllocation:denoiseConfigBuffer];
 	
-	reservoirBufferA = [pipeline.device newBufferWithLength:sizeof(Reservoir) * viewportSize.x * viewportSize.y options:MTLResourceStorageModeShared];
-	reservoirBufferB = [pipeline.device newBufferWithLength:sizeof(Reservoir) * viewportSize.x * viewportSize.y options:MTLResourceStorageModeShared];
+	reservoirBufferA = [pipeline.device newBufferWithLength:sizeof(Reservoir) * _view.viewportSize.x * _view.viewportSize.y options:MTLResourceStorageModeShared];
+	reservoirBufferB = [pipeline.device newBufferWithLength:sizeof(Reservoir) * _view.viewportSize.x * _view.viewportSize.y options:MTLResourceStorageModeShared];
 	[rayTracingResidencySet addAllocation:reservoirBufferA];
 	[rayTracingResidencySet addAllocation:reservoirBufferB];
 }
 
 - (void) setupIntermediateTextures {
 	MTLTextureDescriptor *initial = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:DiffuseAlbedoPixelFormat
-																					   width:viewportSize.x
-																					  height:viewportSize.y
+																					   width:_view.viewportSize.x
+																					  height:_view.viewportSize.y
 																				   mipmapped:NO];
 	initial.storageMode = MTLStorageModePrivate;
 	initial.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
@@ -414,8 +394,8 @@ API_AVAILABLE(macos(26.0))
 	initialRenderGBufferMotion.label = @"Motion";
 
 	MTLTextureDescriptor *raytrace = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:RayTracingPixelFormat
-																						width:viewportSize.x
-																					   height:viewportSize.y
+																						width:_view.viewportSize.x
+																					   height:_view.viewportSize.y
 																					mipmapped:NO];
 	raytrace.storageMode = MTLStorageModePrivate;
 	raytrace.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
@@ -423,8 +403,8 @@ API_AVAILABLE(macos(26.0))
 	rayTracingOutputTexture.label = @"Ray-tracing output";
 	
 	MTLTextureDescriptor *denoised = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:RayTracingPixelFormat
-																						width:viewportSize.x
-																					   height:viewportSize.y
+																						width:_view.viewportSize.x
+																					   height:_view.viewportSize.y
 																					mipmapped:NO];
 	denoised.storageMode = MTLStorageModePrivate;
 	denoised.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
@@ -500,10 +480,10 @@ API_AVAILABLE(macos(26.0))
 	}
 	
 	MTLFXTemporalScalerDescriptor *descriptor = [MTLFXTemporalScalerDescriptor new];
-	descriptor.inputWidth = viewportSize.x;
-	descriptor.inputHeight = viewportSize.y;
-	descriptor.outputWidth = viewportSize.x;
-	descriptor.outputHeight = viewportSize.y;
+	descriptor.inputWidth = _view.viewportSize.x;
+	descriptor.inputHeight = _view.viewportSize.y;
+	descriptor.outputWidth = _view.viewportSize.x;
+	descriptor.outputHeight = _view.viewportSize.y;
 
 	descriptor.colorTextureFormat = RayTracingPixelFormat;
 	descriptor.outputTextureFormat = RayTracingPixelFormat;
@@ -529,10 +509,10 @@ API_AVAILABLE(macos(26.0))
 	}
 
 	MTLFXTemporalDenoisedScalerDescriptor *descriptor = [MTLFXTemporalDenoisedScalerDescriptor new];
-	descriptor.inputWidth = viewportSize.x;
-	descriptor.inputHeight = viewportSize.y;
-	descriptor.outputWidth = viewportSize.x;
-	descriptor.outputHeight = viewportSize.y;
+	descriptor.inputWidth = _view.viewportSize.x;
+	descriptor.inputHeight = _view.viewportSize.y;
+	descriptor.outputWidth = _view.viewportSize.x;
+	descriptor.outputHeight = _view.viewportSize.y;
 
 	descriptor.colorTextureFormat = RayTracingPixelFormat;
 	descriptor.outputTextureFormat = RayTracingPixelFormat;
@@ -792,10 +772,6 @@ API_AVAILABLE(macos(26.0))
 	window = nil;
 }
 
--(void)updateView:(View *)v {
-	view = v;
-}
-
 - (void) updateSky:(Sky)newSky {
 	sky = newSky;
 }
@@ -894,7 +870,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 - (void) updateSprite:(MetalSprite *)sprite {
-	float theta = radians(view.yaw);
+	float theta = radians(_view.yaw);
 
 	[sprite eachTriangle:^(Triangle *triangle) {
 		[self->dynamicTriangles addObject:triangle];
@@ -1206,9 +1182,9 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	frameNumber += 1;
 
 	if (POST_PROCESSING_TYPE == TemporalUpscale || POST_PROCESSING_TYPE == TemporalDenoisedUpscale) {
-		jitter = simd_make_float2(drand48(), drand48()) - 0.5;
+		_view.jitter = simd_make_float2(drand48(), drand48()) - 0.5;
 	} else {
-		jitter = simd_make_float2(0.0, 0.0);
+		_view.jitter = simd_make_float2(0.0, 0.0);
 	}
 }
 
@@ -1219,24 +1195,18 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	adjustedSky.sunPosition = simd_normalize(simd_mul(simd_matrix4x4(sunRotation), simd_make_float4(sky.sunPosition, 1.0)).xyz);
 
 	Camera previousCamera = camera;
-	camera.fov = view.fov;
-	camera.origin = view.origin;
-	camera.pitchMat = rotationMatrix(view.pitch, simd_make_float3(1.0, 0.0, 0.0));
-	camera.yawMat = rotationMatrix(-view.yaw, simd_make_float3(0.0, 1.0, 0.0));
-	camera.rotateDirectionMat = simd_mul(rotationMatrix(view.yaw, simd_make_float3(0.0, 1.0, 0.0)), rotationMatrix(-view.pitch, simd_make_float3(1.0, 0.0, 0.0)));
-	camera.perspectiveMat = perspectiveProjection(view.fov, viewportSize.x, viewportSize.y);
-	camera.jitter = jitter;
+	camera = _view.camera;
 	
 	Uniforms uniforms;
 	uniforms.fullPathTracing = FULL_PATH_TRACING;
-	uniforms.resolution = viewportSize;
+	uniforms.resolution = _view.viewportSize;
 	uniforms.frameNumber = frameNumber;
 	uniforms.camera = camera;
 	uniforms.previousCamera = (frameNumber > 1) ? previousCamera : camera;
 	uniforms.sky = adjustedSky;
-	uniforms.weaponFlare = view.weaponFlare;
-	uniforms.flashlight = view.flashlight;
-	uniforms.isInMedium = view.isInMedium;
+	uniforms.weaponFlare = _view.weaponFlare;
+	uniforms.flashlight = _view.flashlight;
+	uniforms.isInMedium = _view.isInMedium;
 	memcpy(uniformsBuffer.contents, &uniforms, sizeof(Uniforms));
 		
 	id<CAMetalDrawable> currentDrawable = [metalLayer nextDrawable];
@@ -1569,8 +1539,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	temporalScaler.motionVectorScaleX = 1.0;
 	temporalScaler.motionVectorScaleY = 1.0;
 	temporalScaler.outputTexture = postProcessingOutputTexture;
-	temporalScaler.jitterOffsetX = jitter.x;
-	temporalScaler.jitterOffsetY = jitter.y;
+	temporalScaler.jitterOffsetX = _view.jitter.x;
+	temporalScaler.jitterOffsetY = _view.jitter.y;
 	temporalScaler.fence = fence;
 	[temporalScaler encodeToCommandBuffer:mtl3buffer];
 	[mtl3buffer commit];
@@ -1591,8 +1561,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	temporalDenoisedScaler.motionVectorScaleX = 1.0;
 	temporalDenoisedScaler.motionVectorScaleY = 1.0;
 	temporalDenoisedScaler.outputTexture = postProcessingOutputTexture;
-	temporalScaler.jitterOffsetX = jitter.x;
-	temporalScaler.jitterOffsetY = jitter.y;
+	temporalScaler.jitterOffsetX = _view.jitter.x;
+	temporalScaler.jitterOffsetY = _view.jitter.y;
 	temporalDenoisedScaler.fence = fence;
 	[temporalDenoisedScaler encodeToCommandBuffer:mtl3buffer];
 	[mtl3buffer commit];
@@ -1643,8 +1613,8 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	viewPort.originY = 0.0;
 	viewPort.znear = 0.0;
 	viewPort.zfar = 1.0;
-	viewPort.width = (double)viewportSize.x * multiplier;
-	viewPort.height = (double)viewportSize.y * multiplier;
+	viewPort.width = (double)_view.viewportSize.x * multiplier;
+	viewPort.height = (double)_view.viewportSize.y * multiplier;
 	return viewPort;
 }
 
