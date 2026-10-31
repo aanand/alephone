@@ -6,6 +6,7 @@
 //
 
 #import <Foundation/Foundation.h>
+#import <Metal/Metal.h>
 #import <simd/simd.h>
 
 #include "Shaders/ShaderTypes.h"
@@ -24,6 +25,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) simd_float2 jitter;
 
 - (Camera) camera;
+- (MTLViewport) getViewportWithPixelScaling:(bool)scale;
 
 @end
 

@@ -5,6 +5,8 @@
 //  Created by Aanand Prasad on 31/10/2026.
 //
 
+#import <AppKit/AppKit.h>
+
 #import "View.h"
 #import "Metal/Utils.h"
 
@@ -36,6 +38,19 @@ simd_float4x4 perspectiveProjection(float horizontalFOV, float width, float heig
 		.perspectiveMat = perspectiveProjection(_fov, _viewportSize.x, _viewportSize.y),
 		.jitter = _jitter,
 	};
+}
+
+- (MTLViewport) getViewportWithPixelScaling:(bool)scale {
+	float multiplier = scale ? ((float) NSScreen.mainScreen.backingScaleFactor) : 1.0;
+
+	MTLViewport viewPort;
+	viewPort.originX = 0.0;
+	viewPort.originY = 0.0;
+	viewPort.znear = 0.0;
+	viewPort.zfar = 1.0;
+	viewPort.width = (double)_viewportSize.x * multiplier;
+	viewPort.height = (double)_viewportSize.y * multiplier;
+	return viewPort;
 }
 
 @end
