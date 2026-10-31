@@ -18,6 +18,7 @@
 #include "Rasterizer_Metal.h"
 
 #include "Metal/MetalRenderer.h"
+#include "Metal/View.h"
 
 #include "OGL_Textures.h"
 #include "Logging.h"
@@ -205,8 +206,8 @@ bool shouldMarkVisible(short polyIdx) {
 	return TEST_RENDER_FLAG(polyIdx, _polygon_is_visible) || !overlapsWithVisiblePolygon(polyIdx);
 }
 
-void Rasterizer_Metal_Class::SetView(view_data &View) {
-	view = &View;
+void Rasterizer_Metal_Class::SetView(view_data &ViewData) {
+	view = &ViewData;
 
 	if (current_player_index != NONE) {
 		player_data *player = get_player_data(current_player_index);
@@ -222,17 +223,16 @@ void Rasterizer_Metal_Class::SetView(view_data &View) {
 	float weaponFlare = PIN(view->maximum_depth_intensity - NATURAL_LIGHT_INTENSITY, 0, FIXED_ONE)/float(FIXED_ONE);
 	float flashlight = isFlashlightOn ? flashlightIntensity : 0.0;
 	
-	if (@available(macOS 26.0, *)) {
-		if (renderer) {
-			[renderer updateViewWithOrigin:simd_make_int3(View.origin.x, View.origin.y, View.origin.z)
-								  pitch:View.virtual_pitch * FixedAngleToDegrees
-									yaw:View.virtual_yaw * FixedAngleToDegrees
-									   FOV:View.field_of_view
-							   weaponFlare:weaponFlare
-								flashlight:flashlight
-								isInMedium:View.under_media_boundary];
-		}
-	}
+	View *v = [[View alloc] init];
+	v.origin = simd_make_int3(ViewData.origin.x, ViewData.origin.y, ViewData.origin.z);
+	v.pitch = ViewData.virtual_pitch * FixedAngleToDegrees;
+	v.yaw = ViewData.virtual_yaw * FixedAngleToDegrees;
+	v.fov = ViewData.field_of_view;
+	v.weaponFlare = weaponFlare;
+	v.flashlight = flashlight;
+	v.isInMedium = ViewData.under_media_boundary;
+
+	[renderer updateView:v];
 }
 
 void Rasterizer_Metal_Class::Begin() {

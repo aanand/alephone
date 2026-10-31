@@ -84,15 +84,8 @@ API_AVAILABLE(macos(26.0))
 	SDL_Renderer *renderer;
 	CAMetalLayer *metalLayer;
 
-	// Variables
-	
 	simd_uint2 viewportSize;
-	float fov, pitch, yaw;
-	simd_int3 origin;
-	float weaponFlare;
-	float flashlight;
-	bool isInMedium;
-
+	View *view;
 	Sky sky;
 	Camera camera;
 
@@ -195,7 +188,6 @@ API_AVAILABLE(macos(26.0))
 	window = sdlWindow;
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
 	
-	fov = 90.0;
 	viewportSize = simd_make_uint2(width, height);
 	frameNumber = 0;
 	
@@ -800,14 +792,8 @@ API_AVAILABLE(macos(26.0))
 	window = nil;
 }
 
-- (void) updateViewWithOrigin:(simd_int3)newOrigin pitch:(float)newPitch yaw:(float)newYaw FOV:(float)newFOV weaponFlare:(float)newWeaponFlare flashlight:(float)newFlashlight isInMedium:(bool)newIsInMedium {
-	origin = newOrigin;
-	fov = newFOV;
-	pitch = newPitch;
-	yaw = newYaw;
-	weaponFlare = newWeaponFlare;
-	flashlight = newFlashlight;
-	isInMedium = newIsInMedium;
+-(void)updateView:(View *)v {
+	view = v;
 }
 
 - (void) updateSky:(Sky)newSky {
@@ -908,7 +894,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 - (void) updateSprite:(MetalSprite *)sprite {
-	float theta = radians(yaw);
+	float theta = radians(view.yaw);
 
 	[sprite eachTriangle:^(Triangle *triangle) {
 		[self->dynamicTriangles addObject:triangle];
@@ -1233,12 +1219,12 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	adjustedSky.sunPosition = simd_normalize(simd_mul(simd_matrix4x4(sunRotation), simd_make_float4(sky.sunPosition, 1.0)).xyz);
 
 	Camera previousCamera = camera;
-	camera.fov = fov;
-	camera.origin = origin;
-	camera.pitchMat = rotationMatrix(pitch, simd_make_float3(1.0, 0.0, 0.0));
-	camera.yawMat = rotationMatrix(-yaw, simd_make_float3(0.0, 1.0, 0.0));
-	camera.rotateDirectionMat = simd_mul(rotationMatrix(yaw, simd_make_float3(0.0, 1.0, 0.0)), rotationMatrix(-pitch, simd_make_float3(1.0, 0.0, 0.0)));
-	camera.perspectiveMat = perspectiveProjection(fov, viewportSize.x, viewportSize.y);
+	camera.fov = view.fov;
+	camera.origin = view.origin;
+	camera.pitchMat = rotationMatrix(view.pitch, simd_make_float3(1.0, 0.0, 0.0));
+	camera.yawMat = rotationMatrix(-view.yaw, simd_make_float3(0.0, 1.0, 0.0));
+	camera.rotateDirectionMat = simd_mul(rotationMatrix(view.yaw, simd_make_float3(0.0, 1.0, 0.0)), rotationMatrix(-view.pitch, simd_make_float3(1.0, 0.0, 0.0)));
+	camera.perspectiveMat = perspectiveProjection(view.fov, viewportSize.x, viewportSize.y);
 	camera.jitter = jitter;
 	
 	Uniforms uniforms;
@@ -1248,9 +1234,9 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	uniforms.camera = camera;
 	uniforms.previousCamera = (frameNumber > 1) ? previousCamera : camera;
 	uniforms.sky = adjustedSky;
-	uniforms.weaponFlare = weaponFlare;
-	uniforms.flashlight = flashlight;
-	uniforms.isInMedium = isInMedium;
+	uniforms.weaponFlare = view.weaponFlare;
+	uniforms.flashlight = view.flashlight;
+	uniforms.isInMedium = view.isInMedium;
 	memcpy(uniformsBuffer.contents, &uniforms, sizeof(Uniforms));
 		
 	id<CAMetalDrawable> currentDrawable = [metalLayer nextDrawable];

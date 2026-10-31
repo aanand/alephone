@@ -14,6 +14,7 @@
 #import <SDL2/SDL.h>
 
 #import "Metal/MetalTypes.h"
+#import "Metal/View.h"
 
 API_AVAILABLE(macos(26.0))
 @interface MetalRenderer : NSObject
@@ -28,14 +29,7 @@ API_AVAILABLE(macos(26.0))
  Rendering
  */
 
-- (void) updateViewWithOrigin:(simd_int3)origin
-						pitch:(float)pitch
-						  yaw:(float)yaw
-						  FOV:(float)fov
-				  weaponFlare:(float)weaponFlare
-				   flashlight:(float)flashlight
-				   isInMedium:(bool)isInMedium;
-
+- (void) updateView:(View*)view;
 - (void) updateSky:(Sky)sky;
 
 - (void) begin;
