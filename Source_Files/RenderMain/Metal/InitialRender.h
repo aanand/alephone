@@ -10,6 +10,8 @@
 
 #import "MetalPipeline.h"
 #import "MetalTypes.h"
+#import "GeometryManager.h"
+#import "TextureManager.h"
 #import "View.h"
 #import "Common.h"
 
@@ -26,9 +28,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) id<MTLDepthStencilState> depthState;
 @property (nonatomic) id<MTLBuffer> uniformsBuffer;
 
-@property (nonatomic) NSMutableArray<Triangle*> *staticTriangles;
-@property (nonatomic) NSMutableArray<Triangle*> *dynamicTriangles;
-@property (nonatomic) NSMutableOrderedSet<NSString*> *textureIDs;
+@property (nonatomic) GeometryManager *geometryManager;
+@property (nonatomic) TextureManager *textureManager;
 
 // Owned resources
 

@@ -18,6 +18,8 @@
 #include "MetalRenderer.h"
 #include "Shaders/ShaderTypes.h"
 #include "MetalPipeline.h"
+#include "GeometryManager.h"
+#include "TextureManager.h"
 #include "InitialRender.h"
 #include "IASManager.h"
 #include "MetalTypes.h"
@@ -55,6 +57,8 @@ API_AVAILABLE(macos(26.0))
 	
 	MetalPipeline *pipeline;
 
+	GeometryManager *geometryManager;
+	TextureManager *textureManager;
 	InitialRender *initialRender;
 	
 	id<MTLComputePipelineState> rayTracingPipeline;
@@ -94,8 +98,6 @@ API_AVAILABLE(macos(26.0))
 	id<MTLBuffer> reservoirBufferA;
 	id<MTLBuffer> reservoirBufferB;
 
-	NSMutableOrderedSet<NSString*> *textureIDs;
-
 	id<MTLArgumentEncoder> albedoTextureArgumentEncoder;
 	id<MTLArgumentEncoder> normalMapArgumentEncoder;
 	id<MTLArgumentEncoder> emissionMapArgumentEncoder;
@@ -103,10 +105,6 @@ API_AVAILABLE(macos(26.0))
 	id<MTLBuffer> albedoTextureArgumentBuffer;
 	id<MTLBuffer> normalMapArgumentBuffer;
 	id<MTLBuffer> emissionMapArgumentBuffer;
-
-	NSMutableDictionary<NSString *, id<MTLTexture>> *albedoTextures;
-	NSMutableDictionary<NSString *, id<MTLTexture>> *normalMaps;
-	NSMutableDictionary<NSString *, id<MTLTexture>> *emissionMaps;
 
 	// Geometry primitives that get reused across levels
 	VerticalQuad *verticalQuadPrimitive;
@@ -148,16 +146,21 @@ API_AVAILABLE(macos(26.0))
 	pipeline.commandAllocator = [pipeline.device newCommandAllocator];
 	pipeline.sharedEvent = [pipeline.device newSharedEvent];
 
-	textureIDs = [NSMutableOrderedSet new];
 	[self setupBuffers];
 	depthState = [self configureDepth];
+	
+	geometryManager = [[GeometryManager alloc] init];
+
+	textureManager = [[TextureManager alloc] init];
+	textureManager.pipeline = pipeline;
 	
 	initialRender = [[InitialRender alloc] initWithPipeline:pipeline];
 	initialRender.view = _view;
 	initialRender.postProcessingType = POST_PROCESSING_TYPE;
-	initialRender.textureIDs = textureIDs;
 	initialRender.uniformsBuffer = uniformsBuffer;
 	initialRender.depthState = depthState;
+	initialRender.geometryManager = geometryManager;
+	initialRender.textureManager = textureManager;
 
 	// Requires everything to be set on initialRender
 	if (![initialRender compile]) {
@@ -560,6 +563,9 @@ API_AVAILABLE(macos(26.0))
 	[pipeline.commandQueue removeResidencySet:initialRender.residencySet];
 	[initialRender shutdown];
 	initialRender = nil;
+	
+	[geometryManager shutdown];
+	[textureManager shutdown];
 
 	[rayTracingResidencySet removeAllAllocations];
 	[finalRenderResidencySet removeAllAllocations];
@@ -570,10 +576,6 @@ API_AVAILABLE(macos(26.0))
 	dynamicIASManager = nil;
 	pipeline = nil;
 	
-	textureIDs = nil;
-	albedoTextures = nil;
-	normalMaps = nil;
-	emissionMaps = nil;
 	dynamicPolygonPrimitives = nil;
 	
 	metalLayer = nil;
@@ -597,16 +599,16 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 - (void)addStaticPolygon:(MetalPolygon *)polygon {
 	[polygon eachTriangle:^(Triangle *triangle) {
-		[self->initialRender.staticTriangles addObject:triangle];
+		[self->geometryManager.staticTriangles addObject:triangle];
 	}];
-	assert(initialRender.staticTriangles.count < MAX_TRIANGLES);
+	assert(geometryManager.staticTriangles.count < MAX_TRIANGLES);
 }
 
 - (void)addStaticWall:(MetalWall *)wall {
 	[wall eachTriangle:^(Triangle *triangle) {
-		[self->initialRender.staticTriangles addObject:triangle];
+		[self->geometryManager.staticTriangles addObject:triangle];
 	}];
-	assert(initialRender.staticTriangles.count < MAX_TRIANGLES);
+	assert(geometryManager.staticTriangles.count < MAX_TRIANGLES);
 }
 
 - (uint32_t)addInstanceData:(RayTracingData)instanceData {
@@ -619,18 +621,18 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 -(void)addDynamicPolygon:(MetalPolygon *)polygon withID:(int)ID enabled:(BOOL)isEnabled {
 	[polygon eachTriangle:^(Triangle *triangle) {
-		[self->initialRender.dynamicTriangles addObject:triangle];
+		[self->geometryManager.dynamicTriangles addObject:triangle];
 	}];
-	assert(initialRender.dynamicTriangles.count < MAX_TRIANGLES);
+	assert(geometryManager.dynamicTriangles.count < MAX_TRIANGLES);
 
 	id<ASTrianglePrimitive> primitive = [dynamicPolygonPrimitives objectForKey:[NSNumber numberWithInt:ID]];
 	if (primitive == nil) {
-		primitive = [polygon primitiveForTextureIDs:textureIDs];
+		primitive = [polygon primitiveForTextureIDs:textureManager.textureIDs];
 		[dynamicIASManager addPrimitive:primitive];
 		[dynamicPolygonPrimitives setObject:primitive forKey:[NSNumber numberWithInt:ID]];
 	}
 	
-	NSUInteger textureIndex = [textureIDs indexOfObject:polygon.surface.textureID];
+	NSUInteger textureIndex = [textureManager.textureIDs indexOfObject:polygon.surface.textureID];
 	NSAssert(textureIndex != NSNotFound, @"Missing dynamic polygon texture ID");
 
 	RayTracingData instanceData = {
@@ -655,11 +657,11 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 -(void)addDynamicWall:(MetalWall *)wall enabled:(BOOL)isEnabled {
 	[wall eachTriangle:^(Triangle *triangle) {
-		[self->initialRender.dynamicTriangles addObject:triangle];
+		[self->geometryManager.dynamicTriangles addObject:triangle];
 	}];
-	assert(initialRender.dynamicTriangles.count < MAX_TRIANGLES);
+	assert(geometryManager.dynamicTriangles.count < MAX_TRIANGLES);
 	
-	NSUInteger textureIndex = [textureIDs indexOfObject:wall.surface.textureID];
+	NSUInteger textureIndex = [textureManager.textureIDs indexOfObject:wall.surface.textureID];
 	NSAssert(textureIndex != NSNotFound, @"Missing dynamic wall texture ID");
 
 	RayTracingData instanceData = {
@@ -687,11 +689,11 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	float theta = radians(_view.yaw);
 
 	[sprite eachTriangle:^(Triangle *triangle) {
-		[self->initialRender.dynamicTriangles addObject:triangle];
+		[self->geometryManager.dynamicTriangles addObject:triangle];
 	} forRotation:theta];
-	assert(initialRender.dynamicTriangles.count < MAX_TRIANGLES);
+	assert(geometryManager.dynamicTriangles.count < MAX_TRIANGLES);
 
-	NSUInteger textureIndex = [textureIDs indexOfObject:sprite.surface.textureID];
+	NSUInteger textureIndex = [textureManager.textureIDs indexOfObject:sprite.surface.textureID];
 	NSAssert(textureIndex != NSNotFound, @"Missing sprite texture ID");
 
 	RayTracingData instanceData = {
@@ -721,13 +723,13 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 
 // FIXME: the staticTriangles list powers both the initial render and the static IAS, but is owned by initial render.
 - (void) writeStaticTrianglesToIAS {
-	NSUInteger numTriangles = initialRender.staticTriangles.count;
+	NSUInteger numTriangles = geometryManager.staticTriangles.count;
 	NSUInteger trianglesPerBatch = 100;
 	
 	for (int b = 0; b < numTriangles; b += trianglesPerBatch) {
-		NSArray *triangles = [initialRender.staticTriangles subarrayWithRange:NSMakeRange(b, MIN(trianglesPerBatch, numTriangles - b))];
+		NSArray *triangles = [geometryManager.staticTriangles subarrayWithRange:NSMakeRange(b, MIN(trianglesPerBatch, numTriangles - b))];
 		TriangleBatch *batch = [[TriangleBatch alloc] initWithTriangles:triangles
-															 textureIDs:textureIDs];
+															 textureIDs:textureManager.textureIDs];
 		[staticIASManager addPrimitive:batch];
 		simd_float4x3 transform = {
 			.columns = {
@@ -811,16 +813,12 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 - (void) startUpdatingAllGeometry {
-	initialRender.staticTriangles = [NSMutableArray array];
-	initialRender.dynamicTriangles = [NSMutableArray array];
+	[geometryManager startUpdatingAllGeometry];
 	dynamicPolygonPrimitives = [NSMutableDictionary dictionary];
 	numInstances = 0;
 
-	[textureIDs removeAllObjects];
-	albedoTextures = [NSMutableDictionary dictionary];
-	normalMaps = [NSMutableDictionary dictionary];
-	emissionMaps = [NSMutableDictionary dictionary];
-	[self addPlaceholderTextureWithID:PLACEHOLDER_TEXTURE_ID];
+	[textureManager startUpdatingAllGeometry];
+	[textureManager addPlaceholderTextureWithID:PLACEHOLDER_TEXTURE_ID];
 
 	if (!verticalQuadPrimitive) {
 		// spriteQuad initializes exactly once and is reused across frames + level changes
@@ -836,6 +834,9 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 - (void) finishUpdatingAllGeometry {
+	[geometryManager finishUpdatingAllGeometry];
+	[textureManager finishUpdatingAllGeometry];
+
 	[self writeStaticTrianglesToIAS];
 	[staticIASManager commitGeometry];
 	[dynamicIASManager commitGeometry];
@@ -849,7 +850,9 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 - (void) startUpdatingDynamicGeometry {
-	initialRender.dynamicTriangles = [NSMutableArray array];
+	[geometryManager startUpdatingDynamicGeometry];
+	[textureManager startUpdatingDynamicGeometry];
+
 	numInstances = 0;
 	[dynamicIASManager clearInstances];
 	[self clearLightSources];
@@ -932,64 +935,15 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 - (bool) hasTextureWithID:(NSString*)textureID {
-	return [textureIDs containsObject:textureID];
+	return [textureManager hasTextureWithID:textureID];
 }
 
 -(void)addTextureWithID:(NSString *)textureID albedo:(MetalImage *)albedo normal:(MetalImage *)normal emission:(MetalImage *)emission {
-	NSAssert(textureIDs.count < MAX_TEXTURES, @"Exceeded texture limit");
-
-	id<MTLTexture> albedoTexture = [self makeTextureFromImage:(albedo ? albedo : [self defaultAlbedoImage])];
-	albedoTexture.label = textureID;
-	[albedoTextures setObject:albedoTexture forKey:textureID];
-
-	id<MTLTexture> normalMap = [self makeTextureFromImage:(normal ? normal : [self defaultNormalMap])];
-	normalMap.label = [NSString stringWithFormat:@"%@ (normal map)", textureID];
-	[normalMaps setObject:normalMap forKey:textureID];
-
-	id<MTLTexture> emissionMap = [self makeTextureFromImage:(emission ? emission : [self defaultEmissionMap])];
-	emissionMap.label = [NSString stringWithFormat:@"%@ (emission map)", textureID];
-	[emissionMaps setObject:emissionMap forKey:textureID];
-
-	[textureIDs addObject:textureID];
+	[textureManager addTextureWithID:textureID albedo:albedo normal:normal emission:emission];
 }
 
 - (void) addPlaceholderTextureWithID:(NSString *)textureID {
-	[self addTextureWithID:textureID albedo:nil normal:nil emission:nil];
-}
-
-- (MetalImage*) defaultAlbedoImage {
-	uint32 albedoPixels[1] = { 255u | (0u << 8) | (255u << 16) | (255u << 24) };
-	return [[MetalImage alloc] initWithWidth:1 height:1 pixels:albedoPixels];
-}
-
-- (MetalImage*) defaultNormalMap {
-	uint32 normalPixels[1] = { 255u | (128u << 8) | (128u << 16) | (255u << 24) };
-	return [[MetalImage alloc] initWithWidth:1 height:1 pixels:normalPixels];
-}
-
-- (MetalImage*) defaultEmissionMap {
-	uint32 emissionPixels[1] = { 0u | (0u << 8) | (0u << 16) | (0u << 24) };
-	return [[MetalImage alloc] initWithWidth:1 height:1 pixels:emissionPixels];
-}
-
-- (id<MTLTexture>) makeTextureFromImage:(MetalImage *)image {
-	MTLTextureDescriptor *descriptor = [[MTLTextureDescriptor alloc] init];
-	descriptor.pixelFormat = MTLPixelFormatBGRA8Unorm;
-	descriptor.width = image.width;
-	descriptor.height = image.height;
-	
-	MTLRegion region = {
-		{ 0, 0, 0 },
-		{ image.width, image.height, 1 }
-	};
-
-	id<MTLTexture> texture = [pipeline.device newTextureWithDescriptor:descriptor];
-	[texture replaceRegion:region
-			   mipmapLevel:0
-				 withBytes:image.data.bytes
-			   bytesPerRow:sizeof(uint32) * image.width];
-
-	return texture;
+	[textureManager addPlaceholderTextureWithID:textureID];
 }
 
 - (void) begin {
@@ -1030,7 +984,7 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu (initial + raytracing)", frameNumber];
 
 	[self populateTextureArgumentBuffers];
-	[initialRender populateTextureArgumentBuffer:albedoTextures];
+	[initialRender populateTextureArgumentBuffer:textureManager.albedoTextures];
 	
 	[initialRender encodeAndUpdateFence:initialPassFence];
 
@@ -1086,10 +1040,11 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	[normalMapArgumentEncoder setArgumentBuffer:normalMapArgumentBuffer offset:0];
 	[emissionMapArgumentEncoder setArgumentBuffer:emissionMapArgumentBuffer offset:0];
 
-	for (NSUInteger i = 0; i < textureIDs.count; i++) {
-		id<MTLTexture> albedoTexture = albedoTextures[textureIDs[i]];
-		id<MTLTexture> normalMap = normalMaps[textureIDs[i]];
-		id<MTLTexture> emissionMap = emissionMaps[textureIDs[i]];
+	for (NSUInteger i = 0; i < textureManager.textureIDs.count; i++) {
+		NSString *textureID = textureManager.textureIDs[i];
+		id<MTLTexture> albedoTexture = textureManager.albedoTextures[textureID];
+		id<MTLTexture> normalMap = textureManager.normalMaps[textureID];
+		id<MTLTexture> emissionMap = textureManager.emissionMaps[textureID];
 
 		[albedoTextureArgumentEncoder setTexture:albedoTexture atIndex:i];
 		[normalMapArgumentEncoder setTexture:normalMap atIndex:i];

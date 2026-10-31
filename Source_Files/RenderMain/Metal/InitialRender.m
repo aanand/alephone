@@ -67,8 +67,6 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 
 -(void)shutdown {
 	[_residencySet removeAllAllocations];
-	_staticTriangles = nil;
-	_dynamicTriangles = nil;
 }
 
 -(bool)setupResidencySet {
@@ -270,8 +268,8 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 }
 
 - (void) populateTextureArgumentBuffer:(NSDictionary<NSString *,id<MTLTexture>> *)albedoTextures {
-	for (NSUInteger i = 0; i < _textureIDs.count; i++) {
-		id<MTLTexture> albedoTexture = albedoTextures[_textureIDs[i]];
+	for (NSUInteger i = 0; i < _textureManager.textureIDs.count; i++) {
+		id<MTLTexture> albedoTexture = albedoTextures[_textureManager.textureIDs[i]];
 		[albedoTextureArgumentEncoder setTexture:albedoTexture atIndex:i];
 		[_residencySet addAllocation:albedoTexture];
 	}
@@ -355,12 +353,10 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 	WorldVertex *target = (WorldVertex*)triangleBuffer.contents;
 	NSUInteger __block numVertices = 0;
 
-	NSAssert(_textureIDs != nil, @"textureIDs is not set");
-
 	void (^drawTriangle)(Triangle*) = ^(Triangle *triangle){
 		NSAssert(numVertices/3 < MAX_TRIANGLES, @"Exceeded triangle buffer size");
 
-		NSUInteger textureIndex = [self->_textureIDs indexOfObject:triangle.surface.textureID];
+		NSUInteger textureIndex = [self->_textureManager.textureIDs indexOfObject:triangle.surface.textureID];
 		NSAssert(textureIndex != NSNotFound, @"Missing triangle texture ID");
 
 		target[numVertices] = triangle.v0;
@@ -376,8 +372,8 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 		numVertices += 3;
 	};
 	
-	for (Triangle *triangle in _staticTriangles) drawTriangle(triangle);
-	for (Triangle *triangle in _dynamicTriangles) drawTriangle(triangle);
+	for (Triangle *triangle in _geometryManager.staticTriangles) drawTriangle(triangle);
+	for (Triangle *triangle in _geometryManager.dynamicTriangles) drawTriangle(triangle);
 
 	[renderPassEncoder setArgumentTable:vertexArgumentTable atStages:MTLRenderStageVertex];
 	[renderPassEncoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];

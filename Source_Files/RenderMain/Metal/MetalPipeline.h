@@ -9,7 +9,7 @@
 #define MetalPipeline_h
 
 #import <Foundation/NSObject.h>
-#include <MetalKit/MetalKit.h>
+#import <MetalKit/MetalKit.h>
 
 @interface MetalPipeline : NSObject
 
