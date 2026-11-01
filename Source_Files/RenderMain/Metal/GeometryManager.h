@@ -8,18 +8,39 @@
 #import <Foundation/Foundation.h>
 
 #import "MetalTypes.h"
+#import "MetalPipeline.h"
+#import "TextureManager.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
 @interface GeometryManager : NSObject
 
-@property (nonatomic) NSMutableArray<Triangle*> *staticTriangles;
-@property (nonatomic) NSMutableArray<Triangle*> *dynamicTriangles;
+@property (nonatomic) TextureManager *textureManager;
+
+// Triangle data for rasterizer
+@property (nonatomic, readonly) NSMutableArray<Triangle*> *staticTriangles;
+@property (nonatomic, readonly) NSMutableArray<Triangle*> *dynamicTriangles;
+
+// Acceleration structure for raytracer
+@property (nonatomic, readonly) id<MTLBuffer> perInstanceDataBuffer;
+@property (nonatomic, readonly) id<MTLAccelerationStructure> topLevelIAS;
+
+@property (nonatomic, readonly) id<MTLResidencySet> residencySet;
+
+- (instancetype) initWithPipeline:(MetalPipeline*)pipeline;
+- (bool) compile;
 
 - (void) startUpdatingAllGeometry;
 - (void) finishUpdatingAllGeometry;
 - (void) startUpdatingDynamicGeometry;
-- (void) finishUpdatingDynamicGeometry;
+- (void) finishUpdatingDynamicGeometryForFrameNumber:(uint64_t)frameNumber;
+
+- (void) addStaticPolygon:(MetalPolygon*)polygon;
+- (void) addDynamicPolygon:(MetalPolygon*)polygon withID:(int)ID enabled:(BOOL)isEnabled;
+- (void) addStaticWall:(MetalWall*)wall;
+- (void) addDynamicWall:(MetalWall*)wall enabled:(BOOL)isEnabled;
+- (void) updateSprite:(MetalSprite*)sprite yawRadians:(float)theta;
+
 - (void) shutdown;
 
 @end

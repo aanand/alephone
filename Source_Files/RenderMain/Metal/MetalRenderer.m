@@ -21,18 +21,9 @@
 #include "GeometryManager.h"
 #include "TextureManager.h"
 #include "InitialRender.h"
-#include "IASManager.h"
 #include "MetalTypes.h"
 #include "Utils.h"
 #include "Common.h"
-
-uint getMask(bool isEnabled, bool isTransparent) {
-	if (!isEnabled) return MASK_NONE;
-
-	uint mask = MASK_ENABLED;
-	if (!isTransparent) mask |= MASK_SOLID;
-	return mask;
-}
 
 const bool FULL_PATH_TRACING = true;
 const PostProcessingType POST_PROCESSING_TYPE = NoPostProcessing;
@@ -91,10 +82,6 @@ API_AVAILABLE(macos(26.0))
 	// Constants shared across all pipelines
 	id<MTLBuffer> uniformsBuffer;
 
-	// Normals, UVs etc. for dynamic geometry
-	id<MTLBuffer> perInstanceDataBuffer;
-	uint32_t numInstances;
-	
 	id<MTLBuffer> reservoirBufferA;
 	id<MTLBuffer> reservoirBufferB;
 
@@ -106,23 +93,9 @@ API_AVAILABLE(macos(26.0))
 	id<MTLBuffer> normalMapArgumentBuffer;
 	id<MTLBuffer> emissionMapArgumentBuffer;
 
-	// Geometry primitives that get reused across levels
-	VerticalQuad *verticalQuadPrimitive;
-	
-	// Static geometry (walls, floors, ceilings)
-	IASManager *staticIASManager;
-
-	// Dynamic geometry (sprites, doors, platforms)
-	IASManager *dynamicIASManager;
-	NSMutableDictionary<NSNumber*, id<ASTrianglePrimitive>> *dynamicPolygonPrimitives;
-
 	// Light sources
 	NSArray<NSNumber*> *lightSourceIntensities;
 	id<MTLBuffer> lightSourcesBuffer;
-
-	id<MTLBuffer> topLevelIASInstanceBuffer;
-	id<MTLAccelerationStructure> topLevelIAS;
-	MTL4InstanceAccelerationStructureDescriptor *topLevelIASDescriptor;
 	
 	id<MTLBuffer> denoiseConfigBuffer;
 }
@@ -149,11 +122,17 @@ API_AVAILABLE(macos(26.0))
 	[self setupBuffers];
 	depthState = [self configureDepth];
 	
-	geometryManager = [[GeometryManager alloc] init];
-
 	textureManager = [[TextureManager alloc] init];
 	textureManager.pipeline = pipeline;
 	
+	geometryManager = [[GeometryManager alloc] initWithPipeline:pipeline];
+	geometryManager.textureManager = textureManager;
+
+	if (![geometryManager compile]) {
+		return nil;
+	}
+	[pipeline.commandQueue addResidencySet:geometryManager.residencySet];
+
 	initialRender = [[InitialRender alloc] initWithPipeline:pipeline];
 	initialRender.view = _view;
 	initialRender.postProcessingType = POST_PROCESSING_TYPE;
@@ -162,10 +141,10 @@ API_AVAILABLE(macos(26.0))
 	initialRender.geometryManager = geometryManager;
 	initialRender.textureManager = textureManager;
 
-	// Requires everything to be set on initialRender
 	if (![initialRender compile]) {
 		return nil;
 	}
+	[pipeline.commandQueue addResidencySet:initialRender.residencySet];
 
 	if (![self setupResidencySets]) {
 		return nil;
@@ -210,25 +189,6 @@ API_AVAILABLE(macos(26.0))
 		return nil;
 	}
 
-	NSError *error;
-	staticIASManager = [[IASManager alloc] initWithPipeline:pipeline
-								   primitiveDataElementSize:sizeof(RayTracingData)
-													  error:&error];
-	if (!staticIASManager) {
-		NSLog(@"%@", error);
-		return nil;
-	}
-	staticIASManager.label = @"staticIASManager";
-
-	dynamicIASManager = [[IASManager alloc] initWithPipeline:pipeline
-									primitiveDataElementSize:sizeof(RayTracingData)
-													   error:&error];
-	if (!dynamicIASManager) {
-		NSLog(@"%@", error);
-		return nil;
-	}
-	dynamicIASManager.label = @"dynamicIASManager";
-	
 	[rayTracingResidencySet commit];
 	[finalRenderResidencySet commit];
 	
@@ -289,7 +249,6 @@ API_AVAILABLE(macos(26.0))
 		return false;
 	}
 	
-	[pipeline.commandQueue addResidencySet:initialRender.residencySet];
 	[pipeline.commandQueue addResidencySet:rayTracingResidencySet];
 	[pipeline.commandQueue addResidencySet:postProcessingResidencySet];
 	[pipeline.commandQueue addResidencySet:finalRenderResidencySet];
@@ -301,9 +260,6 @@ API_AVAILABLE(macos(26.0))
 - (void) setupBuffers {
 	uniformsBuffer = [pipeline.device newBufferWithLength:sizeof(Uniforms) options:MTLResourceStorageModeShared];
 	uniformsBuffer.label = @"Uniforms";
-	
-	perInstanceDataBuffer = [pipeline.device newBufferWithLength:(sizeof(RayTracingData) * MAX_INSTANCES) options:MTLResourceStorageModeShared];
-	perInstanceDataBuffer.label = @"Per-instance data";
 	
 	denoiseConfigBuffer = [pipeline.device newBufferWithLength:sizeof(DenoiseConfig) * waveletDenoisePasses.count options:MTLResourceStorageModeShared];
 	denoiseConfigBuffer.label = @"Denoise config";
@@ -319,7 +275,6 @@ API_AVAILABLE(macos(26.0))
 	[postProcessingResidencySet addAllocation:uniformsBuffer];
 	[finalRenderResidencySet addAllocation:uniformsBuffer];
 
-	[rayTracingResidencySet addAllocation:perInstanceDataBuffer];
 	[postProcessingResidencySet addAllocation:denoiseConfigBuffer];
 
 	[rayTracingResidencySet addAllocation:reservoirBufferA];
@@ -572,11 +527,7 @@ API_AVAILABLE(macos(26.0))
 	[pipeline.commandQueue removeResidencySet:rayTracingResidencySet];
 	[pipeline.commandQueue removeResidencySet:finalRenderResidencySet];
 	
-	staticIASManager = nil;
-	dynamicIASManager = nil;
 	pipeline = nil;
-	
-	dynamicPolygonPrimitives = nil;
 	
 	metalLayer = nil;
 	
@@ -592,198 +543,28 @@ API_AVAILABLE(macos(26.0))
 	sky = newSky;
 }
 
-simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
-	simd_float4 transformed = simd_mul(matrix, simd_make_float4(position.x, position.y, position.z, 1.0));
-	return simd_make_int3(transformed.x, transformed.y, transformed.z);
-}
-
 - (void)addStaticPolygon:(MetalPolygon *)polygon {
-	[polygon eachTriangle:^(Triangle *triangle) {
-		[self->geometryManager.staticTriangles addObject:triangle];
-	}];
-	assert(geometryManager.staticTriangles.count < MAX_TRIANGLES);
+	[geometryManager addStaticPolygon:polygon];
 }
 
 - (void)addStaticWall:(MetalWall *)wall {
-	[wall eachTriangle:^(Triangle *triangle) {
-		[self->geometryManager.staticTriangles addObject:triangle];
-	}];
-	assert(geometryManager.staticTriangles.count < MAX_TRIANGLES);
-}
-
-- (uint32_t)addInstanceData:(RayTracingData)instanceData {
-	// Purposefully skip index 0, which is shorthand for "use the per-primitive data"
-	uint32_t instanceID = ++numInstances;
-	assert(numInstances < MAX_INSTANCES);
-	*(RayTracingData*)(perInstanceDataBuffer.contents + sizeof(RayTracingData)*instanceID) = instanceData;
-	return instanceID;
+	[geometryManager addStaticWall:wall];
 }
 
 -(void)addDynamicPolygon:(MetalPolygon *)polygon withID:(int)ID enabled:(BOOL)isEnabled {
-	[polygon eachTriangle:^(Triangle *triangle) {
-		[self->geometryManager.dynamicTriangles addObject:triangle];
-	}];
-	assert(geometryManager.dynamicTriangles.count < MAX_TRIANGLES);
-
-	id<ASTrianglePrimitive> primitive = [dynamicPolygonPrimitives objectForKey:[NSNumber numberWithInt:ID]];
-	if (primitive == nil) {
-		primitive = [polygon primitiveForTextureIDs:textureManager.textureIDs];
-		[dynamicIASManager addPrimitive:primitive];
-		[dynamicPolygonPrimitives setObject:primitive forKey:[NSNumber numberWithInt:ID]];
-	}
-	
-	NSUInteger textureIndex = [textureManager.textureIDs indexOfObject:polygon.surface.textureID];
-	NSAssert(textureIndex != NSNotFound, @"Missing dynamic polygon texture ID");
-
-	RayTracingData instanceData = {
-		.surfaceNormal = polygon.surface.normal,
-		.surfaceTangent = polygon.tangent,
-		.material = polygon.surface.material,
-		.numVertices = polygon.vertexCount,
-		.textureIndex = (uint32_t)textureIndex,
-		.lightSourceIndex = polygon.surface.lightSourceIndex,
-	};
-	for (int i = 0; i < polygon.vertexCount; i++) {
-		instanceData.uv[i] = polygon.uv[i];
-	}
-	
-	uint32_t instanceID = [self addInstanceData:instanceData];
-
-	[dynamicIASManager addInstanceOfPrimitive:primitive
-								withTransform:polygon.instanceTransform
-								   instanceID:instanceID
-										 mask:getMask(isEnabled, polygon.surface.material.isTransparent)];
+	[geometryManager addDynamicPolygon:polygon withID:ID enabled:isEnabled];
 }
 
 -(void)addDynamicWall:(MetalWall *)wall enabled:(BOOL)isEnabled {
-	[wall eachTriangle:^(Triangle *triangle) {
-		[self->geometryManager.dynamicTriangles addObject:triangle];
-	}];
-	assert(geometryManager.dynamicTriangles.count < MAX_TRIANGLES);
-	
-	NSUInteger textureIndex = [textureManager.textureIDs indexOfObject:wall.surface.textureID];
-	NSAssert(textureIndex != NSNotFound, @"Missing dynamic wall texture ID");
-
-	RayTracingData instanceData = {
-		.surfaceNormal = wall.surface.normal,
-		.surfaceTangent = wall.tangent,
-		.material = wall.surface.material,
-		.numVertices = 4,
-		.textureIndex = (uint32_t)textureIndex,
-		.lightSourceIndex = wall.surface.lightSourceIndex,
-	};
-	instanceData.uv[0] = wall.uv.columns[0];
-	instanceData.uv[1] = wall.uv.columns[1];
-	instanceData.uv[2] = wall.uv.columns[2];
-	instanceData.uv[3] = wall.uv.columns[3];
-
-	uint32_t instanceID = [self addInstanceData:instanceData];
-
-	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
-								withTransform:wall.instanceTransform
-								   instanceID:instanceID
-										 mask:getMask(isEnabled, wall.surface.material.isTransparent)];
+	[geometryManager addDynamicWall:wall enabled:isEnabled];
 }
 
 - (void) updateSprite:(MetalSprite *)sprite {
-	float theta = radians(_view.yaw);
-
-	[sprite eachTriangle:^(Triangle *triangle) {
-		[self->geometryManager.dynamicTriangles addObject:triangle];
-	} forRotation:theta];
-	assert(geometryManager.dynamicTriangles.count < MAX_TRIANGLES);
-
-	NSUInteger textureIndex = [textureManager.textureIDs indexOfObject:sprite.surface.textureID];
-	NSAssert(textureIndex != NSNotFound, @"Missing sprite texture ID");
-
-	RayTracingData instanceData = {
-		.surfaceNormal = simd_make_float3(-cos(theta), -sin(theta), 0.0),
-		// surfaceTangent is unnecessary as long as sprites don't have normal maps
-		.material = sprite.surface.material,
-		.numVertices = 4,
-		.textureIndex = (uint32_t)textureIndex,
-		.lightSourceIndex = -1,
-	};
-	instanceData.uv[0] = sprite.uv.columns[0];
-	instanceData.uv[1] = sprite.uv.columns[1];
-	instanceData.uv[2] = sprite.uv.columns[2];
-	instanceData.uv[3] = sprite.uv.columns[3];
-
-	uint32_t instanceID = [self addInstanceData:instanceData];
-
-	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
-								withTransform:[sprite instanceTransformForRotation:theta]
-								   instanceID:instanceID
-										 mask:getMask(true, sprite.surface.material.isTransparent)];
+	[geometryManager updateSprite:sprite yawRadians:radians(_view.yaw)];
 }
 
 - (void) updateLightSourceIntensities:(NSArray<NSNumber *> *)intensities {
 	lightSourceIntensities = intensities;
-}
-
-// FIXME: the staticTriangles list powers both the initial render and the static IAS, but is owned by initial render.
-- (void) writeStaticTrianglesToIAS {
-	NSUInteger numTriangles = geometryManager.staticTriangles.count;
-	NSUInteger trianglesPerBatch = 100;
-	
-	for (int b = 0; b < numTriangles; b += trianglesPerBatch) {
-		NSArray *triangles = [geometryManager.staticTriangles subarrayWithRange:NSMakeRange(b, MIN(trianglesPerBatch, numTriangles - b))];
-		TriangleBatch *batch = [[TriangleBatch alloc] initWithTriangles:triangles
-															 textureIDs:textureManager.textureIDs];
-		[staticIASManager addPrimitive:batch];
-		simd_float4x3 transform = {
-			.columns = {
-				{ 1.0, 0.0, 0.0 },
-				{ 0.0, 1.0, 0.0 },
-				{ 0.0, 0.0, 1.0 },
-				{ 0.0, 0.0, 0.0 },
-			}
-		};
-		[staticIASManager addInstanceOfPrimitive:batch
-								   withTransform:transform
-									  instanceID:0
-											mask:getMask(true, false)];
-	}
-}
-
-- (void) initializeTopLevelIAS {
-	NSArray<IASManager*> *IASes = @[staticIASManager, dynamicIASManager];
-
-	MTLIndirectAccelerationStructureInstanceDescriptor descriptors[IASes.count];
-
-	for (int i = 0; i < IASes.count; i++) {
-		descriptors[i] = (MTLIndirectAccelerationStructureInstanceDescriptor){};
-		descriptors[i].accelerationStructureID = [IASes objectAtIndex:i].IASResourceID;
-		descriptors[i].options = MTLAccelerationStructureInstanceOptionNone;
-		descriptors[i].intersectionFunctionTableOffset = 0;
-		descriptors[i].mask = 0xFF;
-		descriptors[i].transformationMatrix.columns[0] = MTLPackedFloat3Make(1.0, 0.0, 0.0);
-		descriptors[i].transformationMatrix.columns[1] = MTLPackedFloat3Make(0.0, 1.0, 0.0);
-		descriptors[i].transformationMatrix.columns[2] = MTLPackedFloat3Make(0.0, 0.0, 1.0);
-		descriptors[i].transformationMatrix.columns[3] = MTLPackedFloat3Make(0.0, 0.0, 0.0);
-	}
-	
-	topLevelIASInstanceBuffer = [pipeline.device newBufferWithBytes:&descriptors
-													length:sizeof(MTLIndirectAccelerationStructureInstanceDescriptor) * IASes.count
-												   options:MTLResourceStorageModeShared];
-	topLevelIASInstanceBuffer.label = @"topLevelIASInstanceBuffer";
-	
-	topLevelIASDescriptor = [[MTL4InstanceAccelerationStructureDescriptor alloc] init];
-	topLevelIASDescriptor.instanceCount = IASes.count;
-	topLevelIASDescriptor.instanceDescriptorBuffer = MTL4BufferRangeMake(topLevelIASInstanceBuffer.gpuAddress, topLevelIASInstanceBuffer.length);
-	
-	topLevelIAS = [pipeline.device newAccelerationStructureWithDescriptor:topLevelIASDescriptor];
-	
-	[rayTracingResidencySet addAllocation:topLevelIASInstanceBuffer];
-	[rayTracingResidencySet addAllocation:topLevelIAS];
-	[rayTracingResidencySet commit];
-}
-
-- (void) clearTopLevelIAS {
-	if (topLevelIASInstanceBuffer) [rayTracingResidencySet removeAllocation:topLevelIASInstanceBuffer];
-	if (topLevelIAS) [rayTracingResidencySet removeAllocation:topLevelIAS];
-	topLevelIASInstanceBuffer = nil;
-	topLevelIAS = nil;
 }
 
 - (void) clearLightSources {
@@ -813,125 +594,45 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 }
 
 - (void) startUpdatingAllGeometry {
+	if (geometryManager.perInstanceDataBuffer) [rayTracingResidencySet removeAllocation:geometryManager.perInstanceDataBuffer];
+	if (geometryManager.topLevelIAS) [rayTracingResidencySet removeAllocation:geometryManager.topLevelIAS];
+
 	[geometryManager startUpdatingAllGeometry];
-	dynamicPolygonPrimitives = [NSMutableDictionary dictionary];
-	numInstances = 0;
 
 	[textureManager startUpdatingAllGeometry];
 	[textureManager addPlaceholderTextureWithID:PLACEHOLDER_TEXTURE_ID];
 
-	if (!verticalQuadPrimitive) {
-		// spriteQuad initializes exactly once and is reused across frames + level changes
-		verticalQuadPrimitive = [[VerticalQuad alloc] init];
-	}
-
-	[staticIASManager clearGeometry];
-	[dynamicIASManager clearGeometry];
-	[dynamicIASManager addPrimitive:verticalQuadPrimitive];
 	[self clearLightSources];
-
-	[self clearTopLevelIAS];
 }
 
 - (void) finishUpdatingAllGeometry {
 	[geometryManager finishUpdatingAllGeometry];
 	[textureManager finishUpdatingAllGeometry];
 
-	[self writeStaticTrianglesToIAS];
-	[staticIASManager commitGeometry];
-	[dynamicIASManager commitGeometry];
 	[self writeLightSources];
-
-	[self initializeTopLevelIAS];
 	
-	[self buildAccelerationStructureWithChangesTo:@[staticIASManager, dynamicIASManager]
-						  primitiveDataHasChanged:YES
-											label:@"Full IAS build"];
+	[rayTracingResidencySet addAllocation:geometryManager.perInstanceDataBuffer];
+	[rayTracingResidencySet addAllocation:geometryManager.topLevelIAS];
 }
 
 - (void) startUpdatingDynamicGeometry {
+	if (geometryManager.perInstanceDataBuffer) [rayTracingResidencySet removeAllocation:geometryManager.perInstanceDataBuffer];
+	if (geometryManager.topLevelIAS) [rayTracingResidencySet removeAllocation:geometryManager.topLevelIAS];
+
 	[geometryManager startUpdatingDynamicGeometry];
 	[textureManager startUpdatingDynamicGeometry];
 
-	numInstances = 0;
-	[dynamicIASManager clearInstances];
 	[self clearLightSources];
-	[self clearTopLevelIAS];
 }
 
 - (void) finishUpdatingDynamicGeometry {
-	[dynamicIASManager commitInstances];
+	[geometryManager finishUpdatingDynamicGeometryForFrameNumber:frameNumber];
+	[textureManager finishUpdatingDynamicGeometry];
+
 	[self writeLightSources];
 
-	[self initializeTopLevelIAS];
-	[self buildAccelerationStructureWithChangesTo:@[dynamicIASManager]
-						  primitiveDataHasChanged:NO
-											label:[NSString stringWithFormat:@"Dynamic IAS build (frame #%llu)", frameNumber]];
-}
-
-- (void) buildAccelerationStructureWithChangesTo:(NSArray<IASManager*>*)iasManagers
-						 primitiveDataHasChanged:(BOOL)primitiveDataHasChanged
-										   label:(NSString*)label {
-	// Calculate largest scratch size needed
-	NSMutableArray<MTL4AccelerationStructureDescriptor*> *allDescriptors = [NSMutableArray array];
-	[allDescriptors addObject:topLevelIASDescriptor];
-	for (IASManager *iasm in iasManagers) {
-		[allDescriptors addObjectsFromArray:iasm.allASDescriptors];
-	}
-	
-	NSUInteger scratchSize = 0;
-	for (MTL4AccelerationStructureDescriptor *asd in allDescriptors) {
-		NSUInteger primSize = [pipeline.device accelerationStructureSizesWithDescriptor:asd].buildScratchBufferSize;
-		if (primSize > scratchSize) {
-			scratchSize = primSize;
-		}
-	}
-	
-	// Build everything
-	
-	id<MTLBuffer> scratchBuffer = [pipeline.device newBufferWithLength:scratchSize options:MTLResourceStorageModePrivate];
-	[rayTracingResidencySet addAllocation:scratchBuffer];
-	[rayTracingResidencySet commit];
-	
-	id<MTL4CommandBuffer> commandBuffer = pipeline.commandBuffer;
-	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
-	commandBuffer.label = label;
-
-	id<MTL4ComputeCommandEncoder> encoder = [pipeline.commandBuffer computeCommandEncoder];
-	encoder.label = @"Build acceleration structures";
-	
-	if (primitiveDataHasChanged) {
-		for (IASManager *iasm in iasManagers) {
-			[iasm encodeBuildCommandsForPASes:encoder
-								scratchBuffer:MTL4BufferRangeMake(scratchBuffer.gpuAddress, scratchBuffer.length)];
-		}
-	}
-	
-	for (IASManager *iasm in iasManagers) {
-		[iasm encodeBuildCommandsForIAS:encoder
-						  scratchBuffer:MTL4BufferRangeMake(scratchBuffer.gpuAddress, scratchBuffer.length)];
-	}
-
-	[encoder buildAccelerationStructure:topLevelIAS
-							 descriptor:topLevelIASDescriptor
-						  scratchBuffer:MTL4BufferRangeMake(scratchBuffer.gpuAddress, scratchBuffer.length)];
-
-	[encoder endEncoding];
-	[commandBuffer endCommandBuffer];
-	
-	uint64_t buildSignalValue = pipeline.sharedEvent.signaledValue + 1;
-	[pipeline.commandQueue commit:&commandBuffer count:1];
-	[pipeline.commandQueue signalEvent:pipeline.sharedEvent value:buildSignalValue];
-	bool didFinish = [pipeline.sharedEvent waitUntilSignaledValue:buildSignalValue timeoutMS:5000];
-	
-	if (!didFinish) {
-		NSLog(@"Timed out waiting for AS build at frameNumber=%llu", frameNumber);
-	}
-	
-	[pipeline.commandAllocator reset];
-
-	[rayTracingResidencySet removeAllocation:scratchBuffer];
-	[rayTracingResidencySet commit];
+	[rayTracingResidencySet addAllocation:geometryManager.perInstanceDataBuffer];
+	[rayTracingResidencySet addAllocation:geometryManager.topLevelIAS];
 }
 
 - (bool) hasTextureWithID:(NSString*)textureID {
@@ -1070,14 +771,14 @@ simd_int3 transform(simd_int3 position, simd_float4x4 matrix) {
 	
 	[encoder setComputePipelineState:rayTracingPipeline];
 	
-	[computeArgumentTable setResource:topLevelIAS.gpuResourceID atBufferIndex:RayTracingKernelAccelerationStructureIndex];
+	[computeArgumentTable setResource:geometryManager.topLevelIAS.gpuResourceID atBufferIndex:RayTracingKernelAccelerationStructureIndex];
 	
-	[intersectionFunctionTable setBuffer:perInstanceDataBuffer offset:0 atIndex:AlphaTestPerInstanceDataIndex];
+	[intersectionFunctionTable setBuffer:geometryManager.perInstanceDataBuffer offset:0 atIndex:AlphaTestPerInstanceDataIndex];
 	[intersectionFunctionTable setBuffer:albedoTextureArgumentBuffer offset:0 atIndex:AlphaTestAlbedoTexturesIndex];
 	[computeArgumentTable setResource:intersectionFunctionTable.gpuResourceID atBufferIndex:RayTracingKernelIntersectionFunctionTableIndex];
 
 	[computeArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:RayTracingKernelUniformsIndex];
-	[computeArgumentTable setAddress:perInstanceDataBuffer.gpuAddress atIndex:RayTracingKernelPerInstanceDataIndex];
+	[computeArgumentTable setAddress:geometryManager.perInstanceDataBuffer.gpuAddress atIndex:RayTracingKernelPerInstanceDataIndex];
 	[computeArgumentTable setAddress:albedoTextureArgumentBuffer.gpuAddress atIndex:RayTracingKernelAlbedoTexturesIndex];
 	[computeArgumentTable setAddress:normalMapArgumentBuffer.gpuAddress atIndex:RayTracingKernelNormalMapsIndex];
 	[computeArgumentTable setAddress:emissionMapArgumentBuffer.gpuAddress atIndex:RayTracingKernelEmissionMapsIndex];
