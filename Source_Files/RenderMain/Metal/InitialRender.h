@@ -47,7 +47,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (instancetype) initWithPipeline:(MetalPipeline*)pipeline;
 - (bool) compile;
-- (void) populateTextureArgumentBuffer:(NSDictionary<NSString*, id<MTLTexture>>*)textures;
 - (void) encodeAndUpdateFence:(id<MTLFence>)fence;
 - (void) shutdown;
 

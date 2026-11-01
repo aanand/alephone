@@ -267,17 +267,13 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 	return true;
 }
 
-- (void) populateTextureArgumentBuffer:(NSDictionary<NSString *,id<MTLTexture>> *)albedoTextures {
+- (void) encodeAndUpdateFence:(id<MTLFence>)fence
+{
 	for (NSUInteger i = 0; i < _textureManager.textureIDs.count; i++) {
-		id<MTLTexture> albedoTexture = albedoTextures[_textureManager.textureIDs[i]];
+		id<MTLTexture> albedoTexture = _textureManager.albedoTextures[_textureManager.textureIDs[i]];
 		[albedoTextureArgumentEncoder setTexture:albedoTexture atIndex:i];
 		[_residencySet addAllocation:albedoTexture];
 	}
-}
-
-- (void) encodeAndUpdateFence:(id<MTLFence>)fence
-{
-	// Commit any textures that were added
 	[_residencySet commit];
 
 	MTL4RenderPassDescriptor *configuration = [MTL4RenderPassDescriptor new];

@@ -21,6 +21,7 @@
 #include "GeometryManager.h"
 #include "TextureManager.h"
 #include "InitialRender.h"
+#include "RayTracer.h"
 #include "MetalTypes.h"
 #include "Utils.h"
 #include "Common.h"
@@ -41,8 +42,6 @@ API_AVAILABLE(macos(26.0))
 
 	Sky sky;
 	Camera camera;
-
-	uint64_t frameNumber;
 	
 	// Metal pipeline internals
 	
@@ -51,8 +50,8 @@ API_AVAILABLE(macos(26.0))
 	GeometryManager *geometryManager;
 	TextureManager *textureManager;
 	InitialRender *initialRender;
+	RayTracer *rayTracer;
 	
-	id<MTLComputePipelineState> rayTracingPipeline;
 	id<MTLComputePipelineState> denoisePipeline;
 	id<MTLComputePipelineState> taaPipeline;
 	id<MTLRenderPipelineState> finalRenderPipeline;
@@ -60,14 +59,12 @@ API_AVAILABLE(macos(26.0))
 
 	id<MTL4ArgumentTable> fragmentArgumentTable;
 	id<MTL4ArgumentTable> computeArgumentTable;
-	id<MTLIntersectionFunctionTable> intersectionFunctionTable;
 
 	// Using a Metal 3 command queue for the MetalFX upscalers because they seem to be buggy when using Metal 4
 	id<MTLCommandQueue> mtl3queue;
 	id<MTLFXTemporalScaler> temporalScaler;
 	id<MTLFXTemporalDenoisedScaler> temporalDenoisedScaler;
 
-	id<MTLResidencySet> rayTracingResidencySet;
 	id<MTLResidencySet> postProcessingResidencySet;
 	id<MTLResidencySet> finalRenderResidencySet;
 	
@@ -75,27 +72,11 @@ API_AVAILABLE(macos(26.0))
 	id<MTLFence> computePassFence;
 	id<MTLFence> postProcessingPassFence;
 	
-	id<MTLTexture> rayTracingOutputTexture;
 	id<MTLTexture> postProcessingScratchTexture;
 	id<MTLTexture> postProcessingOutputTexture;
 
 	// Constants shared across all pipelines
 	id<MTLBuffer> uniformsBuffer;
-
-	id<MTLBuffer> reservoirBufferA;
-	id<MTLBuffer> reservoirBufferB;
-
-	id<MTLArgumentEncoder> albedoTextureArgumentEncoder;
-	id<MTLArgumentEncoder> normalMapArgumentEncoder;
-	id<MTLArgumentEncoder> emissionMapArgumentEncoder;
-
-	id<MTLBuffer> albedoTextureArgumentBuffer;
-	id<MTLBuffer> normalMapArgumentBuffer;
-	id<MTLBuffer> emissionMapArgumentBuffer;
-
-	// Light sources
-	NSArray<NSNumber*> *lightSourceIntensities;
-	id<MTLBuffer> lightSourcesBuffer;
 	
 	id<MTLBuffer> denoiseConfigBuffer;
 }
@@ -106,8 +87,7 @@ API_AVAILABLE(macos(26.0))
 	
 	_view = [[View alloc] init];
 	_view.viewportSize = simd_make_uint2(width, height);
-
-	frameNumber = 0;
+	_view.frameNumber = 0;
 	
 	metalLayer = (__bridge CAMetalLayer*)SDL_RenderGetMetalLayer(renderer);
 
@@ -126,6 +106,7 @@ API_AVAILABLE(macos(26.0))
 	textureManager.pipeline = pipeline;
 	
 	geometryManager = [[GeometryManager alloc] initWithPipeline:pipeline];
+	geometryManager.view = _view;
 	geometryManager.textureManager = textureManager;
 
 	if (![geometryManager compile]) {
@@ -150,14 +131,23 @@ API_AVAILABLE(macos(26.0))
 		return nil;
 	}
 	[self addBuffersToResidencySets];
-
-	[self setupIntermediateTextures];
 	
-	rayTracingPipeline = [self compileRayTracingPipeline];
-	if (!rayTracingPipeline) {
+	rayTracer = [[RayTracer alloc] init];
+	rayTracer.pipeline = pipeline;
+	rayTracer.view = _view;
+	rayTracer.textureManager = textureManager;
+	rayTracer.geometryManager = geometryManager;
+	rayTracer.uniformsBuffer = uniformsBuffer;
+	rayTracer.depthTexture = initialRender.depthTexture;
+	rayTracer.motionTexture = initialRender.motionTexture;
+	
+	if (![rayTracer compile]) {
 		return nil;
 	}
-	
+	[pipeline.commandQueue addResidencySet:rayTracer.residencySet];
+
+	[self setupIntermediateTextures];
+
 	denoisePipeline = [self compileComputePipelineWithFunctionName:@"denoiseKernel"];
 	if (!denoisePipeline) {
 		return nil;
@@ -189,7 +179,6 @@ API_AVAILABLE(macos(26.0))
 		return nil;
 	}
 
-	[rayTracingResidencySet commit];
 	[finalRenderResidencySet commit];
 	
 	return self;
@@ -209,8 +198,8 @@ API_AVAILABLE(macos(26.0))
 	}
 	
 	MTL4ArgumentTableDescriptor *computeArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
-	computeArgumentTableDescriptor.maxBufferBindCount = MAX(RayTracingKernel_NumBuffers, DenoisePass_NumBuffers);
-	computeArgumentTableDescriptor.maxTextureBindCount = MAX(RayTracingKernel_NumTextures, DenoisePass_NumTextures);
+	computeArgumentTableDescriptor.maxBufferBindCount = DenoisePass_NumBuffers;
+	computeArgumentTableDescriptor.maxTextureBindCount = DenoisePass_NumTextures;
 	computeArgumentTableDescriptor.label = @"Compute argument table";
 	computeArgumentTable = [pipeline.device newArgumentTableWithDescriptor:computeArgumentTableDescriptor error:&error];
 	if (error) {
@@ -225,13 +214,6 @@ API_AVAILABLE(macos(26.0))
 	NSError *error;
 
 	MTLResidencySetDescriptor *residencySetDescriptor = [MTLResidencySetDescriptor new];
-	residencySetDescriptor.label = @"rayTracingResidencySet";
-	rayTracingResidencySet = [pipeline.device newResidencySetWithDescriptor:residencySetDescriptor
-															 error:&error];
-	if (error) {
-		NSLog(@"%@", error);
-		return false;
-	}
 	
 	residencySetDescriptor.label = @"denoiseResidencySet";
 	postProcessingResidencySet = [pipeline.device newResidencySetWithDescriptor:residencySetDescriptor
@@ -249,7 +231,6 @@ API_AVAILABLE(macos(26.0))
 		return false;
 	}
 	
-	[pipeline.commandQueue addResidencySet:rayTracingResidencySet];
 	[pipeline.commandQueue addResidencySet:postProcessingResidencySet];
 	[pipeline.commandQueue addResidencySet:finalRenderResidencySet];
 	[pipeline.commandQueue addResidencySet:metalLayer.residencySet];
@@ -263,34 +244,16 @@ API_AVAILABLE(macos(26.0))
 	
 	denoiseConfigBuffer = [pipeline.device newBufferWithLength:sizeof(DenoiseConfig) * waveletDenoisePasses.count options:MTLResourceStorageModeShared];
 	denoiseConfigBuffer.label = @"Denoise config";
-	
-	reservoirBufferA = [pipeline.device newBufferWithLength:sizeof(Reservoir) * _view.viewportSize.x * _view.viewportSize.y options:MTLResourceStorageModeShared];
-	reservoirBufferA.label = @"Reservoir buffer A";
-	reservoirBufferB = [pipeline.device newBufferWithLength:sizeof(Reservoir) * _view.viewportSize.x * _view.viewportSize.y options:MTLResourceStorageModeShared];
-	reservoirBufferB.label = @"Reservoir buffer B";
 }
 
 - (void) addBuffersToResidencySets {
-	[rayTracingResidencySet addAllocation:uniformsBuffer];
 	[postProcessingResidencySet addAllocation:uniformsBuffer];
 	[finalRenderResidencySet addAllocation:uniformsBuffer];
 
 	[postProcessingResidencySet addAllocation:denoiseConfigBuffer];
-
-	[rayTracingResidencySet addAllocation:reservoirBufferA];
-	[rayTracingResidencySet addAllocation:reservoirBufferB];
 }
 
 - (void) setupIntermediateTextures {
-	MTLTextureDescriptor *raytrace = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:RayTracingPixelFormat
-																						width:_view.viewportSize.x
-																					   height:_view.viewportSize.y
-																					mipmapped:NO];
-	raytrace.storageMode = MTLStorageModePrivate;
-	raytrace.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
-	rayTracingOutputTexture = [pipeline.device newTextureWithDescriptor:raytrace];
-	rayTracingOutputTexture.label = @"Ray-tracing output";
-	
 	MTLTextureDescriptor *denoised = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:RayTracingPixelFormat
 																						width:_view.viewportSize.x
 																					   height:_view.viewportSize.y
@@ -306,13 +269,11 @@ API_AVAILABLE(macos(26.0))
 		[postProcessingResidencySet addAllocation:texture];
 	}
 
-	[rayTracingResidencySet addAllocation:rayTracingOutputTexture];
-	
 	[postProcessingResidencySet addAllocation:postProcessingScratchTexture];
 	[postProcessingResidencySet addAllocation:postProcessingOutputTexture];
 
 	[finalRenderResidencySet addAllocation:initialRender.diffuseAlbedoTexture];
-	[finalRenderResidencySet addAllocation:rayTracingOutputTexture];
+	[finalRenderResidencySet addAllocation:rayTracer.outputTexture];
 	[finalRenderResidencySet addAllocation:postProcessingScratchTexture];
 	[finalRenderResidencySet addAllocation:postProcessingOutputTexture];
 }
@@ -423,84 +384,6 @@ API_AVAILABLE(macos(26.0))
 	return [pipeline.device newDepthStencilStateWithDescriptor:depthDescriptor];
 }
 
-- (id<MTLComputePipelineState>) compileRayTracingPipeline {
-	NSError *error;
-	id<MTLFunction> function = [pipeline.defaultLibrary newFunctionWithName:@"reSTIR"];
-	
-	albedoTextureArgumentEncoder = [function newArgumentEncoderWithBufferIndex:RayTracingKernelAlbedoTexturesIndex];
-	albedoTextureArgumentEncoder.label = @"albedoTextureArgumentEncoder";
-	albedoTextureArgumentBuffer = [pipeline.device newBufferWithLength:albedoTextureArgumentEncoder.encodedLength
-															   options:MTLResourceStorageModeShared];
-	albedoTextureArgumentBuffer.label = @"albedoTextureArgumentBuffer";
-	[albedoTextureArgumentEncoder setArgumentBuffer:albedoTextureArgumentBuffer offset:0];
-	[rayTracingResidencySet addAllocation:albedoTextureArgumentBuffer];
-
-	normalMapArgumentEncoder = [function newArgumentEncoderWithBufferIndex:RayTracingKernelNormalMapsIndex];
-	normalMapArgumentEncoder.label = @"normalMapArgumentEncoder";
-	normalMapArgumentBuffer = [pipeline.device newBufferWithLength:normalMapArgumentEncoder.encodedLength
-														   options:MTLResourceStorageModeShared];
-	normalMapArgumentBuffer.label = @"normalMapArgumentBuffer";
-	[normalMapArgumentEncoder setArgumentBuffer:normalMapArgumentBuffer offset:0];
-	[rayTracingResidencySet addAllocation:normalMapArgumentBuffer];
-
-	emissionMapArgumentEncoder = [function newArgumentEncoderWithBufferIndex:RayTracingKernelEmissionMapsIndex];
-	emissionMapArgumentEncoder.label = @"emissionMapArgumentEncoder";
-	emissionMapArgumentBuffer = [pipeline.device newBufferWithLength:emissionMapArgumentEncoder.encodedLength
-														   options:MTLResourceStorageModeShared];
-	emissionMapArgumentBuffer.label = @"emissionMapArgumentBuffer";
-	[emissionMapArgumentEncoder setArgumentBuffer:emissionMapArgumentBuffer offset:0];
-	[rayTracingResidencySet addAllocation:emissionMapArgumentBuffer];
-
-	MTLIntersectionFunctionDescriptor *intersectionFuncDesc = [MTLIntersectionFunctionDescriptor new];
-	intersectionFuncDesc.name = @"alphaTestIntersection";
-	
-	id<MTLFunction> intersectionFunction = [pipeline.defaultLibrary newIntersectionFunctionWithDescriptor:intersectionFuncDesc
-																					error:&error];
-	
-	if (error) {
-		NSLog(@"%@", error);
-		return nil;
-	}
-	
-	MTLLinkedFunctions *linkedFunctions = [MTLLinkedFunctions new];
-	linkedFunctions.functions = @[ intersectionFunction ];
-
-	MTLComputePipelineDescriptor *pipelineDesc = [MTLComputePipelineDescriptor new];
-	pipelineDesc.computeFunction = function;
-	pipelineDesc.linkedFunctions = linkedFunctions;
-	pipelineDesc.maxCallStackDepth = 4;
-	
-	id<MTLComputePipelineState> state = [pipeline.device newComputePipelineStateWithDescriptor:pipelineDesc
-																					   options:MTLPipelineOptionNone
-																					reflection:nil
-																						 error:&error];
-	
-	if (error) {
-		NSLog(@"%@", error);
-		return nil;
-	}
-	
-	MTLIntersectionFunctionTableDescriptor *intersectionFuncTableDesc = [MTLIntersectionFunctionTableDescriptor intersectionFunctionTableDescriptor];
-	intersectionFuncTableDesc.functionCount = 1;
-	
-	intersectionFunctionTable = [state newIntersectionFunctionTableWithDescriptor:intersectionFuncTableDesc];
-	if (!intersectionFunctionTable) {
-		NSLog(@"Failed to create intersection function table");
-		return nil;
-	}
-	[rayTracingResidencySet addAllocation:intersectionFunctionTable];
-
-	id<MTLFunctionHandle> intersectionFunctionHandle = [state functionHandleWithFunction:intersectionFunction];
-	if (!intersectionFunctionHandle) {
-		NSLog(@"Failed to get function handle");
-		return nil;
-	}
-	
-	[intersectionFunctionTable setFunction:intersectionFunctionHandle atIndex:0];
-	
-	return state;
-}
-
 - (id<MTLComputePipelineState>) compileComputePipelineWithFunctionName:(NSString*)functionName {
 	NSError *error;
 	id<MTLFunction> function = [pipeline.defaultLibrary newFunctionWithName:functionName];
@@ -518,13 +401,15 @@ API_AVAILABLE(macos(26.0))
 	[pipeline.commandQueue removeResidencySet:initialRender.residencySet];
 	[initialRender shutdown];
 	initialRender = nil;
-	
+
+	[pipeline.commandQueue removeResidencySet:rayTracer.residencySet];
+	[rayTracer shutdown];
+	rayTracer = nil;
+
 	[geometryManager shutdown];
 	[textureManager shutdown];
 
-	[rayTracingResidencySet removeAllAllocations];
 	[finalRenderResidencySet removeAllAllocations];
-	[pipeline.commandQueue removeResidencySet:rayTracingResidencySet];
 	[pipeline.commandQueue removeResidencySet:finalRenderResidencySet];
 	
 	pipeline = nil;
@@ -563,76 +448,44 @@ API_AVAILABLE(macos(26.0))
 	[geometryManager updateSprite:sprite yawRadians:radians(_view.yaw)];
 }
 
-- (void) updateLightSourceIntensities:(NSArray<NSNumber *> *)intensities {
-	lightSourceIntensities = intensities;
-}
-
-- (void) clearLightSources {
-	lightSourceIntensities = nil;
-	if (lightSourcesBuffer) {
-		[rayTracingResidencySet removeAllocation:lightSourcesBuffer];
-		lightSourcesBuffer = nil;
-	}
-}
-
-- (void) writeLightSources {
-	if (lightSourceIntensities.count == 0) {
-		return;
-	}
-
-	lightSourcesBuffer = [pipeline.device newBufferWithLength:sizeof(LightSource) * lightSourceIntensities.count
-													  options:MTLResourceStorageModeShared];
-	lightSourcesBuffer.label = @"lightSourcesBuffer";
-	
-	LightSource *lightSources = (LightSource*)lightSourcesBuffer.contents;
-	
-	for (NSUInteger i = 0; i < lightSourceIntensities.count; i++) {
-		lightSources[i].intensity = lightSourceIntensities[i].floatValue;
-	}
-	
-	[rayTracingResidencySet addAllocation:lightSourcesBuffer];
+-(void)updateLightSourceIntensities:(NSArray<NSNumber *> *)intensities {
+	[rayTracer updateLightSourceIntensities:intensities];
 }
 
 - (void) startUpdatingAllGeometry {
-	if (geometryManager.perInstanceDataBuffer) [rayTracingResidencySet removeAllocation:geometryManager.perInstanceDataBuffer];
-	if (geometryManager.topLevelIAS) [rayTracingResidencySet removeAllocation:geometryManager.topLevelIAS];
+	[rayTracer clearGeometryAllocations];
 
 	[geometryManager startUpdatingAllGeometry];
 
 	[textureManager startUpdatingAllGeometry];
 	[textureManager addPlaceholderTextureWithID:PLACEHOLDER_TEXTURE_ID];
 
-	[self clearLightSources];
+	[rayTracer clearLightSources];
 }
 
 - (void) finishUpdatingAllGeometry {
 	[geometryManager finishUpdatingAllGeometry];
 	[textureManager finishUpdatingAllGeometry];
 
-	[self writeLightSources];
-	
-	[rayTracingResidencySet addAllocation:geometryManager.perInstanceDataBuffer];
-	[rayTracingResidencySet addAllocation:geometryManager.topLevelIAS];
+	[rayTracer writeLightSources];
+	[rayTracer addGeometryAllocations];
 }
 
 - (void) startUpdatingDynamicGeometry {
-	if (geometryManager.perInstanceDataBuffer) [rayTracingResidencySet removeAllocation:geometryManager.perInstanceDataBuffer];
-	if (geometryManager.topLevelIAS) [rayTracingResidencySet removeAllocation:geometryManager.topLevelIAS];
+	[rayTracer clearGeometryAllocations];
 
 	[geometryManager startUpdatingDynamicGeometry];
 	[textureManager startUpdatingDynamicGeometry];
 
-	[self clearLightSources];
+	[rayTracer clearLightSources];
 }
 
 - (void) finishUpdatingDynamicGeometry {
-	[geometryManager finishUpdatingDynamicGeometryForFrameNumber:frameNumber];
+	[geometryManager finishUpdatingDynamicGeometry];
 	[textureManager finishUpdatingDynamicGeometry];
 
-	[self writeLightSources];
-
-	[rayTracingResidencySet addAllocation:geometryManager.perInstanceDataBuffer];
-	[rayTracingResidencySet addAllocation:geometryManager.topLevelIAS];
+	[rayTracer writeLightSources];
+	[rayTracer addGeometryAllocations];
 }
 
 - (bool) hasTextureWithID:(NSString*)textureID {
@@ -648,7 +501,7 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (void) begin {
-	frameNumber += 1;
+	_view.frameNumber += 1;
 
 	if (POST_PROCESSING_TYPE == TemporalUpscale || POST_PROCESSING_TYPE == TemporalDenoisedUpscale) {
 		_view.jitter = simd_make_float2(drand48(), drand48()) - 0.5;
@@ -660,7 +513,7 @@ API_AVAILABLE(macos(26.0))
 - (void) end {
 	// Rotate sun and ensure position is a unit vector
 	Sky adjustedSky = sky;
-	simd_quatf sunRotation = simd_quaternion(fmod(frameNumber * sky.sunRotationSpeed, 2*M_PI), sky.sunRotationAxis);
+	simd_quatf sunRotation = simd_quaternion(fmod(_view.frameNumber * sky.sunRotationSpeed, 2*M_PI), sky.sunRotationAxis);
 	adjustedSky.sunPosition = simd_normalize(simd_mul(simd_matrix4x4(sunRotation), simd_make_float4(sky.sunPosition, 1.0)).xyz);
 
 	Camera previousCamera = camera;
@@ -669,9 +522,9 @@ API_AVAILABLE(macos(26.0))
 	Uniforms uniforms;
 	uniforms.fullPathTracing = FULL_PATH_TRACING;
 	uniforms.resolution = _view.viewportSize;
-	uniforms.frameNumber = frameNumber;
+	uniforms.frameNumber = _view.frameNumber;
 	uniforms.camera = camera;
-	uniforms.previousCamera = (frameNumber > 1) ? previousCamera : camera;
+	uniforms.previousCamera = (_view.frameNumber > 1) ? previousCamera : camera;
 	uniforms.sky = adjustedSky;
 	uniforms.weaponFlare = _view.weaponFlare;
 	uniforms.flashlight = _view.flashlight;
@@ -682,15 +535,9 @@ API_AVAILABLE(macos(26.0))
 
 	id<MTL4CommandBuffer> commandBuffer = pipeline.commandBuffer;
 	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
-	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu (initial + raytracing)", frameNumber];
-
-	[self populateTextureArgumentBuffers];
-	[initialRender populateTextureArgumentBuffer:textureManager.albedoTextures];
-	
+	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu (initial + raytracing)", _view.frameNumber];
 	[initialRender encodeAndUpdateFence:initialPassFence];
-
-	[self encodeRayTracingPassToOutputTexture:rayTracingOutputTexture updatingFence:computePassFence];
-
+	[rayTracer encodeAndUpdateFence:computePassFence];
 	[commandBuffer endCommandBuffer];
 	
 	// Block until rendering has completed. This is inefficient, but Marathon is locked to 30fps,
@@ -712,7 +559,7 @@ API_AVAILABLE(macos(26.0))
 	}
 	
 	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
-	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu (final pass)", frameNumber];
+	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu (final pass)", _view.frameNumber];
 
 	if (POST_PROCESSING_TYPE == WaveletDenoise) {
 		[self encodeWaveletDenoiseUpdatingFence:postProcessingPassFence];
@@ -736,88 +583,17 @@ API_AVAILABLE(macos(26.0))
 	[pipeline.commandAllocator reset];
 }
 
-- (void) populateTextureArgumentBuffers {
-	[albedoTextureArgumentEncoder setArgumentBuffer:albedoTextureArgumentBuffer offset:0];
-	[normalMapArgumentEncoder setArgumentBuffer:normalMapArgumentBuffer offset:0];
-	[emissionMapArgumentEncoder setArgumentBuffer:emissionMapArgumentBuffer offset:0];
-
-	for (NSUInteger i = 0; i < textureManager.textureIDs.count; i++) {
-		NSString *textureID = textureManager.textureIDs[i];
-		id<MTLTexture> albedoTexture = textureManager.albedoTextures[textureID];
-		id<MTLTexture> normalMap = textureManager.normalMaps[textureID];
-		id<MTLTexture> emissionMap = textureManager.emissionMaps[textureID];
-
-		[albedoTextureArgumentEncoder setTexture:albedoTexture atIndex:i];
-		[normalMapArgumentEncoder setTexture:normalMap atIndex:i];
-		[emissionMapArgumentEncoder setTexture:emissionMap atIndex:i];
-
-		[rayTracingResidencySet addAllocation:albedoTexture];
-		[rayTracingResidencySet addAllocation:normalMap];
-		[rayTracingResidencySet addAllocation:emissionMap];
-	}
-
-	[rayTracingResidencySet commit];
-}
-
--(void) encodeRayTracingPassToOutputTexture:(id<MTLTexture>)outputTexture
-							  updatingFence:(id<MTLFence>)fence
-{
-	id<MTL4ComputeCommandEncoder> encoder = [pipeline.commandBuffer computeCommandEncoder];
-	if (!encoder) {
-		NSLog(@"Failed to create compute command encoder");
-		return;
-	}
-	encoder.label = @"Ray tracing";
-	
-	[encoder setComputePipelineState:rayTracingPipeline];
-	
-	[computeArgumentTable setResource:geometryManager.topLevelIAS.gpuResourceID atBufferIndex:RayTracingKernelAccelerationStructureIndex];
-	
-	[intersectionFunctionTable setBuffer:geometryManager.perInstanceDataBuffer offset:0 atIndex:AlphaTestPerInstanceDataIndex];
-	[intersectionFunctionTable setBuffer:albedoTextureArgumentBuffer offset:0 atIndex:AlphaTestAlbedoTexturesIndex];
-	[computeArgumentTable setResource:intersectionFunctionTable.gpuResourceID atBufferIndex:RayTracingKernelIntersectionFunctionTableIndex];
-
-	[computeArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:RayTracingKernelUniformsIndex];
-	[computeArgumentTable setAddress:geometryManager.perInstanceDataBuffer.gpuAddress atIndex:RayTracingKernelPerInstanceDataIndex];
-	[computeArgumentTable setAddress:albedoTextureArgumentBuffer.gpuAddress atIndex:RayTracingKernelAlbedoTexturesIndex];
-	[computeArgumentTable setAddress:normalMapArgumentBuffer.gpuAddress atIndex:RayTracingKernelNormalMapsIndex];
-	[computeArgumentTable setAddress:emissionMapArgumentBuffer.gpuAddress atIndex:RayTracingKernelEmissionMapsIndex];
-	[computeArgumentTable setAddress:lightSourcesBuffer.gpuAddress atIndex:RayTracingKernelLightSourcesIndex];
-
-	if (frameNumber % 2 == 0) {
-		[computeArgumentTable setAddress:reservoirBufferA.gpuAddress atIndex:RayTracingKernelPreviousReservoirIndex];
-		[computeArgumentTable setAddress:reservoirBufferB.gpuAddress atIndex:RayTracingKernelCurrentReservoirIndex];
-	} else {
-		[computeArgumentTable setAddress:reservoirBufferB.gpuAddress atIndex:RayTracingKernelPreviousReservoirIndex];
-		[computeArgumentTable setAddress:reservoirBufferA.gpuAddress atIndex:RayTracingKernelCurrentReservoirIndex];
-	}
-
-	[computeArgumentTable setTexture:initialRender.depthTexture.gpuResourceID atIndex:RayTracingKernelDepthTextureIndex];
-	[computeArgumentTable setTexture:initialRender.motionTexture.gpuResourceID atIndex:RayTracingKernelMotionTextureIndex];
-	[computeArgumentTable setTexture:outputTexture.gpuResourceID atIndex:RayTracingKernelOutImageIndex];
-	[encoder setArgumentTable:computeArgumentTable];
-	
-	NSUInteger w = rayTracingPipeline.threadExecutionWidth;
-	NSUInteger h = rayTracingPipeline.maxTotalThreadsPerThreadgroup / w;
-	MTLSize threadsPerThreadgroup = MTLSizeMake( w, h, 1 );
-	MTLSize threadsPerGrid = MTLSizeMake(outputTexture.width, outputTexture.height, 1);
-	[encoder dispatchThreads:threadsPerGrid threadsPerThreadgroup:threadsPerThreadgroup];
-	
-	[encoder updateFence:fence afterEncoderStages:MTLStageDispatch];
-	[encoder endEncoding];
-}
-
 -(void) encodeWaveletDenoiseUpdatingFence:(id<MTLFence>)fence {
 	id<MTL4ComputeCommandEncoder> encoder = [self createComputeCommandEncoderForPipeline:denoisePipeline label:@"Denoise"];
 
-	MTLSize threadsPerGrid = MTLSizeMake(rayTracingOutputTexture.width, rayTracingOutputTexture.height, 1);
+	MTLSize threadsPerGrid = MTLSizeMake(rayTracer.outputTexture.width, rayTracer.outputTexture.height, 1);
 	
 	DenoiseConfig *configs = (DenoiseConfig*)denoiseConfigBuffer.contents;
 	for (int i = 0; i < waveletDenoisePasses.count; i++) {
 		configs[i].step = waveletDenoisePasses[i].unsignedIntValue;
 	}
 	
-	id<MTLTexture> currentInput = rayTracingOutputTexture;
+	id<MTLTexture> currentInput = rayTracer.outputTexture;
 	id<MTLTexture> currentOutput = (waveletDenoisePasses.count % 2 == 1) ? postProcessingOutputTexture : postProcessingScratchTexture;
 
 	for (int i = 0; i < waveletDenoisePasses.count; i++) {
@@ -851,13 +627,13 @@ API_AVAILABLE(macos(26.0))
 -(void) encodeTAAUpdatingFence:(id<MTLFence>)fence {
 	id<MTL4ComputeCommandEncoder> encoder = [self createComputeCommandEncoderForPipeline:taaPipeline label:@"TAA"];
 	
-	MTLSize threadsPerGrid = MTLSizeMake(rayTracingOutputTexture.width, rayTracingOutputTexture.height, 1);
+	MTLSize threadsPerGrid = MTLSizeMake(rayTracer.outputTexture.width, rayTracer.outputTexture.height, 1);
 
-	id<MTLTexture> previousOutput = (frameNumber % 2 == 0) ? postProcessingScratchTexture : postProcessingOutputTexture;
-	id<MTLTexture> currentOutput  = (frameNumber % 2 == 0) ? postProcessingOutputTexture : postProcessingScratchTexture;
+	id<MTLTexture> previousOutput = (_view.frameNumber % 2 == 0) ? postProcessingScratchTexture : postProcessingOutputTexture;
+	id<MTLTexture> currentOutput  = (_view.frameNumber % 2 == 0) ? postProcessingOutputTexture : postProcessingScratchTexture;
 	
 	[computeArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:TAAKernelUniformsIndex];
-	[computeArgumentTable setTexture:rayTracingOutputTexture.gpuResourceID atIndex:TAAKernelInputTextureIndex];
+	[computeArgumentTable setTexture:rayTracer.outputTexture.gpuResourceID atIndex:TAAKernelInputTextureIndex];
 	[computeArgumentTable setTexture:initialRender.motionTexture.gpuResourceID atIndex:TAAKernelMotionTextureIndex];
 	[computeArgumentTable setTexture:previousOutput.gpuResourceID atIndex:TAAKernelPreviousOutputTextureIndex];
 	[computeArgumentTable setTexture:currentOutput.gpuResourceID atIndex:TAAKernelOutputTextureIndex];
@@ -891,9 +667,9 @@ API_AVAILABLE(macos(26.0))
 
 -(void) encodeTemporalUpscaleUpdatingFence:(id<MTLFence>)fence {
 	id<MTLCommandBuffer> mtl3buffer = [mtl3queue commandBuffer];
-	mtl3buffer.label = [NSString stringWithFormat:@"Frame %llu (denoise)", frameNumber];
+	mtl3buffer.label = [NSString stringWithFormat:@"Frame %llu (denoise)", _view.frameNumber];
 	
-	temporalScaler.colorTexture = rayTracingOutputTexture;
+	temporalScaler.colorTexture = rayTracer.outputTexture;
 	temporalScaler.depthTexture = initialRender.depthTexture;
 	temporalScaler.motionTexture = initialRender.motionTexture;
 	temporalScaler.motionVectorScaleX = 1.0;
@@ -909,9 +685,9 @@ API_AVAILABLE(macos(26.0))
 
 -(void) encodeTemporalDenoisedUpscaleUpdatingFence:(id<MTLFence>)fence {
 	id<MTLCommandBuffer> mtl3buffer = [mtl3queue commandBuffer];
-	mtl3buffer.label = [NSString stringWithFormat:@"Frame %llu (denoise)", frameNumber];
+	mtl3buffer.label = [NSString stringWithFormat:@"Frame %llu (denoise)", _view.frameNumber];
 	
-	temporalDenoisedScaler.colorTexture = rayTracingOutputTexture;
+	temporalDenoisedScaler.colorTexture = rayTracer.outputTexture;
 	temporalDenoisedScaler.diffuseAlbedoTexture = initialRender.diffuseAlbedoTexture;
 	temporalDenoisedScaler.specularAlbedoTexture = initialRender.specularAlbedoTexture;
 	temporalDenoisedScaler.roughnessTexture = initialRender.roughnessTexture;
@@ -952,7 +728,7 @@ API_AVAILABLE(macos(26.0))
 	[encoder setRenderPipelineState:finalRenderPipeline];
 	[encoder setViewport:[_view getViewportWithPixelScaling:YES]];
 
-	id<MTLTexture> processedOutput = (POST_PROCESSING_TYPE == NoPostProcessing) ? rayTracingOutputTexture : postProcessingOutputTexture;
+	id<MTLTexture> processedOutput = (POST_PROCESSING_TYPE == NoPostProcessing) ? rayTracer.outputTexture : postProcessingOutputTexture;
 
 	[fragmentArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:FinalRenderFragmentShaderUniformsIndex];
 	[fragmentArgumentTable setTexture:initialRender.diffuseAlbedoTexture.gpuResourceID atIndex:FinalRenderFragmentShaderAlbedoTextureIndex];

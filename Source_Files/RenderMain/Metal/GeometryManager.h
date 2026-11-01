@@ -10,11 +10,13 @@
 #import "MetalTypes.h"
 #import "MetalPipeline.h"
 #import "TextureManager.h"
+#import "View.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
 @interface GeometryManager : NSObject
 
+@property (nonatomic) View *view;
 @property (nonatomic) TextureManager *textureManager;
 
 // Triangle data for rasterizer
@@ -33,7 +35,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void) startUpdatingAllGeometry;
 - (void) finishUpdatingAllGeometry;
 - (void) startUpdatingDynamicGeometry;
-- (void) finishUpdatingDynamicGeometryForFrameNumber:(uint64_t)frameNumber;
+- (void) finishUpdatingDynamicGeometry;
 
 - (void) addStaticPolygon:(MetalPolygon*)polygon;
 - (void) addDynamicPolygon:(MetalPolygon*)polygon withID:(int)ID enabled:(BOOL)isEnabled;

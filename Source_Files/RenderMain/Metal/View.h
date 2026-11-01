@@ -22,6 +22,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) bool isInMedium;
 
 @property (nonatomic, assign) simd_uint2 viewportSize;
+@property (nonatomic, assign) uint64_t frameNumber;
 @property (nonatomic, assign) simd_float2 jitter;
 
 - (Camera) camera;

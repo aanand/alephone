@@ -123,13 +123,13 @@ uint getMask(bool isEnabled, bool isTransparent) {
 	[self clearTopLevelIAS];
 }
 
--(void)finishUpdatingDynamicGeometryForFrameNumber:(uint64_t)frameNumber {
+-(void)finishUpdatingDynamicGeometry {
 	[dynamicIASManager commitInstances];
 	[self initializeTopLevelIAS];
 
 	[self buildAccelerationStructureWithChangesTo:@[dynamicIASManager]
 						  primitiveDataHasChanged:NO
-											label:[NSString stringWithFormat:@"Dynamic IAS build (frame #%llu)", frameNumber]];
+											label:[NSString stringWithFormat:@"Dynamic IAS build (frame #%llu)", _view.frameNumber]];
 }
 
 - (void)addStaticPolygon:(MetalPolygon *)polygon {
