@@ -18,11 +18,14 @@
 #include "MetalRenderer.h"
 #include "Shaders/ShaderTypes.h"
 #include "MetalPipeline.h"
+
 #include "GeometryManager.h"
 #include "TextureManager.h"
 #include "InitialRender.h"
 #include "RayTracer.h"
 #include "PostProcessor.h"
+#include "FinalRender.h"
+
 #include "MetalTypes.h"
 #include "Utils.h"
 #include "Common.h"
@@ -48,17 +51,14 @@ API_AVAILABLE(macos(26.0))
 
 	GeometryManager *geometryManager;
 	TextureManager *textureManager;
+
 	InitialRender *initialRender;
 	RayTracer *rayTracer;
 	PostProcessor *postProcessor;
+	FinalRender *finalRender;
 	
-	id<MTLRenderPipelineState> finalRenderPipeline;
 	id<MTLDepthStencilState> depthState;
 
-	id<MTL4ArgumentTable> fragmentArgumentTable;
-
-	id<MTLResidencySet> finalRenderResidencySet;
-	
 	id<MTLFence> initialPassFence;
 	id<MTLFence> computePassFence;
 	id<MTLFence> postProcessingPassFence;
@@ -84,8 +84,11 @@ API_AVAILABLE(macos(26.0))
 	pipeline.defaultLibrary = [pipeline.device newDefaultLibrary];
 	pipeline.commandAllocator = [pipeline.device newCommandAllocator];
 	pipeline.sharedEvent = [pipeline.device newSharedEvent];
+	[pipeline.commandQueue addResidencySet:metalLayer.residencySet];
 
-	[self setupBuffers];
+	uniformsBuffer = [pipeline.device newBufferWithLength:sizeof(Uniforms) options:MTLResourceStorageModeShared];
+	uniformsBuffer.label = @"Uniforms";
+
 	depthState = [self configureDepth];
 	
 	textureManager = [[TextureManager alloc] init];
@@ -139,116 +142,26 @@ API_AVAILABLE(macos(26.0))
 	}
 	[pipeline.commandQueue addResidencySet:postProcessor.residencySet];
 	
-	if (![self setupResidencySets]) {
+	finalRender = [[FinalRender alloc] init];
+	finalRender.pipeline = pipeline;
+	finalRender.view = _view;
+	finalRender.postProcessingType = POST_PROCESSING_TYPE;
+	finalRender.diffuseAlbedoTexture = initialRender.diffuseAlbedoTexture;
+	finalRender.rayTracingOutputTexture = rayTracer.outputTexture;
+	finalRender.postProcessingScratchTexture = postProcessor.scratchTexture;
+	finalRender.postProcessingOutputTexture = postProcessor.outputTexture;
+	finalRender.uniformsBuffer = uniformsBuffer;
+	
+	if (![finalRender compileForPixelFormat:metalLayer.pixelFormat]) {
 		return nil;
 	}
-	[self addBuffersToResidencySets];
+	[pipeline.commandQueue addResidencySet:finalRender.residencySet];
 	
-	[self setupIntermediateTextures];
-	
-	finalRenderPipeline = [self compileFinalRenderPipeline:metalLayer.pixelFormat];
-	if (!finalRenderPipeline) {
-		return nil;
-	}
-	
-	if (![self setupArgumentTables]) {
-		return nil;
-	}
-
 	initialPassFence = [pipeline.device newFence];
 	computePassFence = [pipeline.device newFence];
 	postProcessingPassFence = [pipeline.device newFence];
 	
-	[finalRenderResidencySet commit];
-	
 	return self;
-}
-
-- (bool) setupArgumentTables {
-	NSError *error;
-	
-	MTL4ArgumentTableDescriptor *fragmentArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
-	fragmentArgumentTableDescriptor.maxTextureBindCount = FinalRenderFragmentShader_NumTextures;
-	fragmentArgumentTableDescriptor.maxBufferBindCount = FinalRenderFragmentShader_NumBuffers;
-	fragmentArgumentTableDescriptor.label = @"Fragment argument table";
-	fragmentArgumentTable = [pipeline.device newArgumentTableWithDescriptor:fragmentArgumentTableDescriptor error:&error];
-	if (error) {
-		NSLog(@"%@", error);
-		return false;
-	}
-	
-	return true;
-}
-
-- (bool) setupResidencySets {
-	NSError *error;
-
-	MTLResidencySetDescriptor *residencySetDescriptor = [MTLResidencySetDescriptor new];
-	residencySetDescriptor.label = @"finalRenderResidencySet";
-	finalRenderResidencySet = [pipeline.device newResidencySetWithDescriptor:residencySetDescriptor
-															  error:&error];
-	if (error) {
-		NSLog(@"%@", error);
-		return false;
-	}
-	
-	[pipeline.commandQueue addResidencySet:finalRenderResidencySet];
-	[pipeline.commandQueue addResidencySet:metalLayer.residencySet];
-
-	return true;
-}
-
-- (void) setupBuffers {
-	uniformsBuffer = [pipeline.device newBufferWithLength:sizeof(Uniforms) options:MTLResourceStorageModeShared];
-	uniformsBuffer.label = @"Uniforms";
-}
-
-- (void) addBuffersToResidencySets {
-	[finalRenderResidencySet addAllocation:uniformsBuffer];
-}
-
-- (void) setupIntermediateTextures {
-	[finalRenderResidencySet addAllocation:initialRender.diffuseAlbedoTexture];
-	[finalRenderResidencySet addAllocation:rayTracer.outputTexture];
-	[finalRenderResidencySet addAllocation:postProcessor.scratchTexture];
-	[finalRenderResidencySet addAllocation:postProcessor.outputTexture];
-}
-
-- (id<MTLRenderPipelineState>) compileFinalRenderPipeline:(MTLPixelFormat) colorPixelFormat {
-	NSError *error;
-	id<MTL4Compiler> compiler = [pipeline.device newCompilerWithDescriptor:[MTL4CompilerDescriptor new]
-															error:&error];
-	
-	if (error) {
-		NSLog(@"%@", error);
-		return nil;
-	}
-
-	MTL4LibraryFunctionDescriptor *vertexFunction = [MTL4LibraryFunctionDescriptor new];
-	vertexFunction.library = pipeline.defaultLibrary;
-	vertexFunction.name = @"finalRenderVertexShader";
-	
-	MTL4LibraryFunctionDescriptor *fragmentFunction = [MTL4LibraryFunctionDescriptor new];
-	fragmentFunction.library = pipeline.defaultLibrary;
-	fragmentFunction.name = @"finalRenderFragmentShader";
-	
-	MTL4RenderPipelineDescriptor *descriptor = [MTL4RenderPipelineDescriptor new];
-	descriptor.label = @"Final Render";
-	descriptor.vertexFunctionDescriptor = vertexFunction;
-	descriptor.fragmentFunctionDescriptor = fragmentFunction;
-	
-	MTL4RenderPipelineColorAttachmentDescriptor *colorAttachment = descriptor.colorAttachments[0];
-	colorAttachment.pixelFormat = colorPixelFormat;
-	
-	id<MTLRenderPipelineState> state = [compiler newRenderPipelineStateWithDescriptor:descriptor
-																  compilerTaskOptions:nil
-																				error:&error];
-	if (error) {
-		NSLog(@"%@", error);
-		return nil;
-	}
-	
-	return state;
 }
 
 - (id<MTLDepthStencilState>) configureDepth {
@@ -266,13 +179,14 @@ API_AVAILABLE(macos(26.0))
 	[pipeline.commandQueue removeResidencySet:rayTracer.residencySet];
 	[rayTracer shutdown];
 	rayTracer = nil;
+	
+	[pipeline.commandQueue removeResidencySet:finalRender.residencySet];
+	[finalRender shutdown];
+	finalRender = nil;
 
 	[geometryManager shutdown];
 	[textureManager shutdown];
 
-	[finalRenderResidencySet removeAllAllocations];
-	[pipeline.commandQueue removeResidencySet:finalRenderResidencySet];
-	
 	pipeline = nil;
 	
 	metalLayer = nil;
@@ -430,8 +344,7 @@ API_AVAILABLE(macos(26.0))
 		[postProcessor encodeTAAUpdatingFence:postProcessingPassFence];
 	}
 
-	[self encodeFinalRenderToOutputTexture:currentDrawable.texture
-							   afterFences:@[postProcessingPassFence]];
+	[finalRender encodeToOutputTexture:currentDrawable.texture afterFences:@[postProcessingPassFence]];
 	[commandBuffer endCommandBuffer];
 
 	renderSignalValue = pipeline.sharedEvent.signaledValue + 1;
@@ -442,40 +355,6 @@ API_AVAILABLE(macos(26.0))
 	[pipeline.commandQueue signalEvent:pipeline.sharedEvent value:renderSignalValue];
 	[pipeline.sharedEvent waitUntilSignaledValue:renderSignalValue timeoutMS:5000];
 	[pipeline.commandAllocator reset];
-}
-
--(void) encodeFinalRenderToOutputTexture:(id<MTLTexture>)outputTexture
-							 afterFences:(NSArray<id<MTLFence>>*)fences
-{
-	MTL4RenderPassDescriptor *configuration = [MTL4RenderPassDescriptor new];
-	configuration.colorAttachments[0].texture = outputTexture;
-	configuration.colorAttachments[0].loadAction = MTLLoadActionClear;
-	configuration.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1.0);
-	configuration.colorAttachments[0].storeAction = MTLStoreActionStore;
-
-	id<MTL4RenderCommandEncoder> encoder = [pipeline.commandBuffer renderCommandEncoderWithDescriptor:configuration];
-	if (!encoder) {
-		NSLog(@"Failed to create render command encoder");
-		return;
-	}
-	encoder.label = @"Final render";
-	
-	for (id<MTLFence> fence in fences) {
-		[encoder waitForFence:fence beforeEncoderStages:MTLStageVertex];
-	}
-	
-	[encoder setRenderPipelineState:finalRenderPipeline];
-	[encoder setViewport:[_view getViewportWithPixelScaling:YES]];
-
-	id<MTLTexture> processedOutput = (POST_PROCESSING_TYPE == NoPostProcessing) ? rayTracer.outputTexture : postProcessor.outputTexture;
-
-	[fragmentArgumentTable setAddress:uniformsBuffer.gpuAddress atIndex:FinalRenderFragmentShaderUniformsIndex];
-	[fragmentArgumentTable setTexture:initialRender.diffuseAlbedoTexture.gpuResourceID atIndex:FinalRenderFragmentShaderAlbedoTextureIndex];
-	[fragmentArgumentTable setTexture:processedOutput.gpuResourceID atIndex:FinalRenderFragmentShaderRayTracingTextureIndex];
-	[encoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
-	[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
-	
-	[encoder endEncoding];
 }
 
 @end
