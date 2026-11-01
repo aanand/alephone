@@ -25,6 +25,7 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 	id<MTLArgumentEncoder> albedoTextureArgumentEncoder;
 	id<MTLBuffer> albedoTextureArgumentBuffer;
 	id<MTLBuffer> triangleBuffer;
+	id<MTLDepthStencilState> depthStencilState;
 }
 
 -(instancetype)initWithPipeline:(MetalPipeline *)pipeline {
@@ -62,6 +63,8 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 
 	[_residencySet commit];
 	
+	depthStencilState = [self setupDepthStencilState];
+
 	return true;
 }
 
@@ -267,6 +270,13 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 	return true;
 }
 
+- (id<MTLDepthStencilState>) setupDepthStencilState {
+	MTLDepthStencilDescriptor *depthDescriptor = [MTLDepthStencilDescriptor new];
+	depthDescriptor.depthCompareFunction = MTLCompareFunctionLessEqual;
+	depthDescriptor.depthWriteEnabled = YES;
+	return [_pipeline.device newDepthStencilStateWithDescriptor:depthDescriptor];
+}
+
 - (void) encodeAndUpdateFence:(id<MTLFence>)fence
 {
 	for (NSUInteger i = 0; i < _textureManager.textureIDs.count; i++) {
@@ -336,8 +346,7 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 	
 	[renderPassEncoder setRenderPipelineState:pipelineState];
 
-	NSAssert(_depthState != nil, @"depthState is not set");
-	[renderPassEncoder setDepthStencilState:_depthState];
+	[renderPassEncoder setDepthStencilState:depthStencilState];
 	[renderPassEncoder setViewport:[_view getViewportWithPixelScaling:NO]];
 	
 	[vertexArgumentTable setAddress:_uniformsBuffer.gpuAddress atIndex:InitialRenderVertexShaderUniformsIndex];

@@ -25,7 +25,6 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) View *view;
 @property (nonatomic, assign) PostProcessingType postProcessingType;
 
-@property (nonatomic) id<MTLDepthStencilState> depthState;
 @property (nonatomic) id<MTLBuffer> uniformsBuffer;
 
 @property (nonatomic) GeometryManager *geometryManager;

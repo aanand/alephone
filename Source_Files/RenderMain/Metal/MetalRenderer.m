@@ -57,8 +57,6 @@ API_AVAILABLE(macos(26.0))
 	PostProcessor *postProcessor;
 	FinalRender *finalRender;
 	
-	id<MTLDepthStencilState> depthState;
-
 	id<MTLFence> initialPassFence;
 	id<MTLFence> computePassFence;
 	id<MTLFence> postProcessingPassFence;
@@ -89,8 +87,6 @@ API_AVAILABLE(macos(26.0))
 	uniformsBuffer = [pipeline.device newBufferWithLength:sizeof(Uniforms) options:MTLResourceStorageModeShared];
 	uniformsBuffer.label = @"Uniforms";
 
-	depthState = [self configureDepth];
-	
 	textureManager = [[TextureManager alloc] init];
 	textureManager.pipeline = pipeline;
 	
@@ -107,7 +103,6 @@ API_AVAILABLE(macos(26.0))
 	initialRender.view = _view;
 	initialRender.postProcessingType = POST_PROCESSING_TYPE;
 	initialRender.uniformsBuffer = uniformsBuffer;
-	initialRender.depthState = depthState;
 	initialRender.geometryManager = geometryManager;
 	initialRender.textureManager = textureManager;
 
@@ -162,13 +157,6 @@ API_AVAILABLE(macos(26.0))
 	postProcessingPassFence = [pipeline.device newFence];
 	
 	return self;
-}
-
-- (id<MTLDepthStencilState>) configureDepth {
-	MTLDepthStencilDescriptor *depthDescriptor = [MTLDepthStencilDescriptor new];
-	depthDescriptor.depthCompareFunction = MTLCompareFunctionLessEqual;
-	depthDescriptor.depthWriteEnabled = YES;
-	return [pipeline.device newDepthStencilStateWithDescriptor:depthDescriptor];
 }
 
 - (void) shutdown {
