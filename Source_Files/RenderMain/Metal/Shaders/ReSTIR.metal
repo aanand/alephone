@@ -168,18 +168,18 @@ float3 getEmission(RayTracingResult intersection, float3 direction, thread RayTr
 	
 	RayTracingData data = getData(intersection, rayTracer);
 	
-	if (data.material.isLandscape) {
+	if (data.surface.material.isLandscape) {
 		return sampleSky(uniforms.sky, direction);
 	}
 
-	if (data.textureIndex > 0) {
+	if (data.surface.textureIndex > 0) {
 		float2 uv = getUV(intersection, data);
-		texture2d<float> emissionMap = rayTracer.emissionMaps->textures[data.textureIndex];
+		texture2d<float> emissionMap = rayTracer.emissionMaps->textures[data.surface.textureIndex];
 		float4 emission = emissionMap.sample(sam, uv);
 
 		float lightSourceMultiplier = 1.0;
-		if (data.lightSourceIndex >= 0) {
-			lightSourceMultiplier = rayTracer.lightSources[data.lightSourceIndex].intensity;
+		if (data.surface.lightSourceIndex >= 0) {
+			lightSourceMultiplier = rayTracer.lightSources[data.surface.lightSourceIndex].intensity;
 		}
 
 		return emission.rgb * emission.a * lightSourceMultiplier * EMISSION_MULTIPLIER;
@@ -195,11 +195,11 @@ float3 getAlbedo(RayTracingResult intersection, thread RayTracer &rayTracer) {
 	
 	RayTracingData data = getData(intersection, rayTracer);
 	
-	if (data.material.isLandscape) {
+	if (data.surface.material.isLandscape) {
 		return float3(1.0);
 	}
 	
-	uint32_t textureIndex = data.textureIndex;
+	uint32_t textureIndex = data.surface.textureIndex;
 	if (textureIndex > 0) {
 		float2 uv = getUV(intersection, data);
 		texture2d<float> texture = rayTracer.textures->textures[textureIndex];
@@ -216,17 +216,17 @@ float3 getNormal(RayTracingResult intersection, thread RayTracer &rayTracer) {
 	
 	RayTracingData data = getData(intersection, rayTracer);
 
-	if (data.textureIndex == 0 || length(data.surfaceTangent) == 0.0) {
-		return data.surfaceNormal;
+	if (data.surface.textureIndex == 0 || length(data.surface.tangent) == 0.0) {
+		return data.surface.normal;
 	}
 
-	texture2d<float> normalMap = rayTracer.normalMaps->textures[data.textureIndex];
+	texture2d<float> normalMap = rayTracer.normalMaps->textures[data.surface.textureIndex];
 	float2 uv = getUV(intersection, data);
 	float3 texelNormal = normalMap.sample(sam, uv).xyz * 2.0 - 1.0;
 
-	float3 T = normalize(data.surfaceTangent.xyz);
-	float3 N = normalize(data.surfaceNormal);
-	float3 B = cross(T, N) * data.surfaceTangent.w;
+	float3 T = normalize(data.surface.tangent.xyz);
+	float3 N = normalize(data.surface.normal);
+	float3 B = cross(T, N) * data.surface.tangent.w;
 	float3x3 TBN = float3x3(T, B, N);
 
 	return normalize(TBN * texelNormal);
@@ -247,7 +247,7 @@ bool collectDiffuseSample(thread Sample &sample, thread RayTracer &rayTracer, co
 	}
 
 	sample.xS = sample.xV + newDirection * firstBounceResult.distance;
-	sample.nS = getData(firstBounceResult, rayTracer).surfaceNormal;
+	sample.nS = getData(firstBounceResult, rayTracer).surface.normal;
 
 	float3 Lo = getEmission(firstBounceResult, newDirection, rayTracer, uniforms);
 	
@@ -367,11 +367,11 @@ SpecularSample collectSpecularSample(float3 xV, float3 nV,
 									 thread RayTracer &rayTracer,
 									 constant Uniforms &uniforms)
 {
-	float contribution = getSpecularContribution(incomingDirection, nV, hitData.material);
+	float contribution = getSpecularContribution(incomingDirection, nV, hitData.surface.material);
 
 	if (contribution > 0.0) {
 		float3 outgoingDirection = reflect(incomingDirection, nV);
-		if (dot(outgoingDirection, hitData.surfaceNormal) > 0.0) {
+		if (dot(outgoingDirection, hitData.surface.normal) > 0.0) {
 			RayTracingResult firstBounceResult = castRay(xV, outgoingDirection, rayTracer);
 			if (firstBounceResult.type != intersection_type::none) {
 				float3 color = getEmission(firstBounceResult, outgoingDirection, rayTracer, uniforms);
@@ -412,11 +412,11 @@ float3 collectRefractedSample(float3 xV, float3 nV,
 			fcol *= absorb(defaultAbsorption, currentResult.distance);
 		}
 
-		if (currentData.material.isTransparent) {
+		if (currentData.surface.material.isTransparent) {
 			isInMedium = !isInMedium;
 
-			bool isEntering = dot(currentDirection, currentData.surfaceNormal) < 0.0;
-			float refractiveIndex = currentData.material.refractiveIndex;
+			bool isEntering = dot(currentDirection, currentData.surface.normal) < 0.0;
+			float refractiveIndex = currentData.surface.material.refractiveIndex;
 			
 			float3 refractedDirection = refract(currentDirection,
 												isEntering ? currentNormal : -currentNormal,
@@ -427,7 +427,7 @@ float3 collectRefractedSample(float3 xV, float3 nV,
 			float3 emission = getEmission(currentResult, currentDirection, rayTracer, uniforms);
 			tcol += fcol * emission;
 
-			if (currentData.material.isLandscape) break;
+			if (currentData.surface.material.isLandscape) break;
 
 			float3 albedo = getAlbedo(currentResult, rayTracer);
 			fcol *= albedo;
@@ -517,7 +517,7 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 	RayTracingData initialHitData = getData(initialRayResult, rayTracer);
 	float3 directEmission = getEmission(initialRayResult, direction, rayTracer, uniforms);
 
-	if (initialHitData.material.isLandscape) {
+	if (initialHitData.surface.material.isLandscape) {
 		return directEmission;
 	}
 	
@@ -526,7 +526,7 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 
 	SpecularSample specular = collectSpecularSample(xV, nV, direction, initialHitData, rayTracer, uniforms);
 
-	if (initialHitData.material.isTransparent) {
+	if (initialHitData.surface.material.isTransparent) {
 		float3 refractedComponent = collectRefractedSample(xV, nV, direction, initialRayResult, initialHitData, rayTracer, uniforms, seed);
 		return mix(refractedComponent, specular.color, specular.contribution);
 	}

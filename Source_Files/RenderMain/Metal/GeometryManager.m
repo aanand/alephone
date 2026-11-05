@@ -167,16 +167,9 @@ uint getMask(bool isEnabled, bool isTransparent) {
 		[dynamicPolygonPrimitives setObject:primitive forKey:[NSNumber numberWithInt:ID]];
 	}
 	
-	NSUInteger textureIndex = [_textureManager.textureIDs indexOfObject:polygon.surface.textureID];
-	NSAssert(textureIndex != NSNotFound, @"Missing dynamic polygon texture ID");
-
 	RayTracingData instanceData = {
-		.surfaceNormal = polygon.surface.normal,
-		.surfaceTangent = polygon.tangent,
-		.material = polygon.surface.material,
 		.numVertices = polygon.vertexCount,
-		.textureIndex = (uint32_t)textureIndex,
-		.lightSourceIndex = polygon.surface.lightSourceIndex,
+		.surface = polygon.surface,
 	};
 	for (int i = 0; i < polygon.vertexCount; i++) {
 		instanceData.uv[i] = polygon.uv[i];
@@ -196,16 +189,9 @@ uint getMask(bool isEnabled, bool isTransparent) {
 	}];
 	assert(_dynamicTriangles.count < MAX_TRIANGLES);
 	
-	NSUInteger textureIndex = [_textureManager.textureIDs indexOfObject:wall.surface.textureID];
-	NSAssert(textureIndex != NSNotFound, @"Missing dynamic wall texture ID");
-
 	RayTracingData instanceData = {
-		.surfaceNormal = wall.surface.normal,
-		.surfaceTangent = wall.tangent,
-		.material = wall.surface.material,
 		.numVertices = 4,
-		.textureIndex = (uint32_t)textureIndex,
-		.lightSourceIndex = wall.surface.lightSourceIndex,
+		.surface = wall.surface,
 	};
 	instanceData.uv[0] = wall.uv.columns[0];
 	instanceData.uv[1] = wall.uv.columns[1];
@@ -226,16 +212,9 @@ uint getMask(bool isEnabled, bool isTransparent) {
 	} forRotation:theta];
 	assert(_dynamicTriangles.count < MAX_TRIANGLES);
 
-	NSUInteger textureIndex = [_textureManager.textureIDs indexOfObject:sprite.surface.textureID];
-	NSAssert(textureIndex != NSNotFound, @"Missing sprite texture ID");
-
 	RayTracingData instanceData = {
-		.surfaceNormal = simd_make_float3(-cos(theta), -sin(theta), 0.0),
-		// surfaceTangent is unnecessary as long as sprites don't have normal maps
-		.material = sprite.surface.material,
 		.numVertices = 4,
-		.textureIndex = (uint32_t)textureIndex,
-		.lightSourceIndex = -1,
+		.surface = sprite.surface,
 	};
 	instanceData.uv[0] = sprite.uv.columns[0];
 	instanceData.uv[1] = sprite.uv.columns[1];

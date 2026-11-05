@@ -56,14 +56,14 @@ API_AVAILABLE(macos(26.0))
  Textures
  */
 
-- (bool) hasTextureWithID:(NSString*)textureID;
+- (NSUInteger) indexOfTextureWithID:(NSString*)textureID;
 
-- (void) addTextureWithID:(NSString*)textureID
-				   albedo:(MetalImage*)albedo
-				   normal:(MetalImage*)normal
-				 emission:(MetalImage*)emission;
+- (NSUInteger) addTextureWithID:(NSString*)textureID
+						 albedo:(MetalImage*)albedo
+						 normal:(MetalImage*)normal
+					   emission:(MetalImage*)emission;
 
-- (void) addPlaceholderTextureWithID:(NSString *)textureID;
+- (NSUInteger) addPlaceholderTextureWithID:(NSString*)textureID;
 
 @end
 

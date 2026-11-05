@@ -180,36 +180,35 @@ typedef struct {
 	float refractiveIndex;
 } Material;
 
+typedef struct {
+	uint32_t textureIndex;
+	int32_t lightSourceIndex;
+
+	// The fourth component of a tangent vector is the handedness (+1 or -1),
+	// which lets us calculate the bitangent from the normal and tangent.
+	vector_float3 normal;
+	vector_float4 tangent;
+
+	Material material;
+} Surface;
+
 // A vertex in Marathon world-space: X = east, Y = north, Z = up
 typedef struct {
 	vector_int3 position;
-	uint32_t textureIndex;
 	vector_float2 textureCoordinate;
-	vector_float3 surfaceNormal;
-	vector_float4 surfaceTangent;
-	Material material;
+	Surface surface;
 } WorldVertex;
 
 typedef struct {
 	float intensity;
 } LightSource;
 
-// The fourth component of a tangent vector is the handedness (+1 or -1),
-// which lets us calculate the bitangent from the normal and tangent.
-
 typedef struct {
-	vector_float3 surfaceNormal;
-	vector_float4 surfaceTangent;
-
-	Material material;
-
 	// Per-primitive data only uses 3 of the floats in this array, because it's always a triangle.
 	// Per-instance data can use more (up to MAXIMUM_VERTICES_PER_POLYGON).
 	uint8_t numVertices;
 	simd_float2 uv[MAXIMUM_VERTICES_PER_POLYGON];
-	uint32_t textureIndex;
-
-	int32_t lightSourceIndex;
+	Surface surface;
 } RayTracingData;
 
 typedef struct {

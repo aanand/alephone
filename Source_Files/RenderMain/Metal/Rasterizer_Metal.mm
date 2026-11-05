@@ -47,6 +47,7 @@ std::unordered_map<short, std::unordered_set<short>> overlaps;
 
 @interface PolygonTexture : NSObject
 @property (nonatomic) NSString *textureID;
+@property (nonatomic) uint32_t index;
 @property (nonatomic) int scale;
 @property (nonatomic) simd_float2x2 transform;
 @property (nonatomic) bool hasNormalMap;
@@ -56,6 +57,7 @@ std::unordered_map<short, std::unordered_set<short>> overlaps;
 
 @interface SpriteTexture : NSObject
 @property (nonatomic) NSString *textureID;
+@property (nonatomic) uint32_t index;
 @property (nonatomic) simd_float4x2 uv;
 @end
 @implementation SpriteTexture
@@ -320,28 +322,28 @@ MetalImage* LoadTextureImage(const ImageDescriptor *image) {
 									  pixels:pixels.data()];
 }
 
-NSString* LoadTextureIntoRenderer(TextureManager *TMgr, bool didSetupSucceed) {
-	NSString *textureID = [NSString stringWithFormat:@"[ShapeDesc=%u/Collection=%d/CTable=%d/Frame=%d/Bitmap=%d]", TMgr->ShapeDesc, TMgr->GetCollection(), TMgr->GetCTable(), TMgr->GetFrame(), TMgr->GetBitmap()];
-	
-	if (@available(macOS 26.0, *)) {
-		if (![renderer hasTextureWithID:textureID]) {
-			if (!didSetupSucceed) {
-				logWarning("Failed to set up texture %d - substituting placeholder", textureID.intValue);
-				[renderer addPlaceholderTextureWithID:textureID];
-				return textureID;
-			}
-			
-			// In Aleph One, the colour texture is referred to as the "normal" texture,
-			// and the normal map is referred to as the "bump" texture.
-			MetalImage *albedo = LoadTextureImage(TMgr->GetNormal());
-			MetalImage *normal = LoadTextureImage(TMgr->GetBump());
-			MetalImage *emission = LoadTextureImage(TMgr->GetGlowing());
+NSString* getTextureID(TextureManager *TMgr) {
+	return [NSString stringWithFormat:@"[ShapeDesc=%u/Collection=%d/CTable=%d/Frame=%d/Bitmap=%d]", TMgr->ShapeDesc, TMgr->GetCollection(), TMgr->GetCTable(), TMgr->GetFrame(), TMgr->GetBitmap()];
+}
 
-			[renderer addTextureWithID:textureID albedo:albedo normal:normal emission:emission];
-		}
+uint32_t LoadTextureIntoRenderer(TextureManager *TMgr, NSString *textureID, bool didSetupSucceed) {
+	NSUInteger textureIndex = [renderer indexOfTextureWithID:textureID];
+	if (textureIndex != NSNotFound) {
+		return (uint32_t)textureIndex;
 	}
 	
-	return textureID;
+	if (!didSetupSucceed) {
+		logWarning("Failed to set up texture %d - substituting placeholder", textureID.intValue);
+		return (uint32_t)[renderer addPlaceholderTextureWithID:textureID];
+	}
+	
+	// In Aleph One, the colour texture is referred to as the "normal" texture,
+	// and the normal map is referred to as the "bump" texture.
+	MetalImage *albedo = LoadTextureImage(TMgr->GetNormal());
+	MetalImage *normal = LoadTextureImage(TMgr->GetBump());
+	MetalImage *emission = LoadTextureImage(TMgr->GetGlowing());
+
+	return (uint32_t)[renderer addTextureWithID:textureID albedo:albedo normal:normal emission:emission];
 }
 
 PolygonTexture *LoadPolygonTexture(shape_descriptor ShapeDesc, short TransferMode) {
@@ -354,11 +356,13 @@ PolygonTexture *LoadPolygonTexture(shape_descriptor ShapeDesc, short TransferMod
 	
 	auto TMgr = std::make_unique<TextureManager>();
 	bool didSetup = SetupPolygonTexture(TMgr.get(), ShapeDesc);
-	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), didSetup);
+	NSString *textureID = getTextureID(TMgr.get());
+	uint32_t textureIndex = LoadTextureIntoRenderer(TMgr.get(), textureID, didSetup);
 	int scale = GetTextureScale(TMgr.get(), TransferMode, didSetup);
 
 	PolygonTexture *result = [[PolygonTexture alloc] init];
 	result.textureID = textureID;
+	result.index = textureIndex;
 	result.scale = scale;
 	result.hasNormalMap = (TMgr->GetBump() && TMgr->GetBump()->IsPresent());
 	
@@ -393,10 +397,13 @@ SpriteTexture *LoadSpriteTexture(short collection_code, short low_level_shape_in
 	}
 
 	auto TMgr = std::make_unique<TextureManager>();
-	NSString *textureID = LoadTextureIntoRenderer(TMgr.get(), SetupSpriteTexture(TMgr.get(), collection_code, low_level_shape_index));
+	bool didSetup = SetupSpriteTexture(TMgr.get(), collection_code, low_level_shape_index);
+	NSString *textureID = getTextureID(TMgr.get());
+	uint32_t textureIndex = LoadTextureIntoRenderer(TMgr.get(), textureID, didSetup);
 
 	SpriteTexture *result = [[SpriteTexture alloc] init];
 	result.textureID = textureID;
+	result.index = textureIndex;
 	
 	simd_float2 offset, scale;
 	if (TMgr->HasSubstitution()) {
@@ -550,7 +557,6 @@ void AddWall(short polygonIdx,
 	if (surface->h1 <= surface->h0 || surface->texture_definition->texture == UNONE) return;
 	
 	PolygonTexture *texture = LoadPolygonTexture(surface->texture_definition->texture, surface->transfer_mode);
-	NSString *textureID = texture.textureID;
 	int div = texture.scale;
 
 	world_distance x0 = surface->texture_definition->x0 % div;
@@ -569,12 +575,14 @@ void AddWall(short polygonIdx,
 	uv.columns[2] = simd_mul(texture.transform, uv.columns[2]);
 	uv.columns[3] = simd_mul(texture.transform, uv.columns[3]);
 	
-	Material material = getMaterial(textureID, surface->transfer_mode == _xfer_landscape, texture.hasNormalMap);
+	Material material = getMaterial(texture.textureID, surface->transfer_mode == _xfer_landscape, texture.hasNormalMap);
 	
-	MetalSurface *mSurface = [[MetalSurface alloc] initWithTextureID:textureID
-															material:material
-															 normal:normal
-												   lightSourceIndex:surface->lightsource_index];
+	Surface mSurface = {
+		.textureIndex = texture.index,
+		.lightSourceIndex = surface->lightsource_index,
+		.normal = normal,
+		.material = material,
+	};
 
 	MetalWall *wall = [[MetalWall alloc] initWithV0:v0
 												 v1:v1
@@ -616,10 +624,12 @@ void AddHorizontalSurface(short polygonIdx, polygon_data *polygon, horizontal_su
 	
 	Material material = getMaterial(textureID, surface->transfer_mode == _xfer_landscape, texture.hasNormalMap);
 
-	MetalSurface *mSurface = [[MetalSurface alloc] initWithTextureID:textureID
-														   material:material
-															 normal:simd_make_float3(0.0, 0.0, isCeiling ? -1.0 : 1.0)
-												   lightSourceIndex:surface->lightsource_index];
+	Surface mSurface = {
+		.textureIndex = texture.index,
+		.lightSourceIndex = surface->lightsource_index,
+		.normal = simd_make_float3(0.0, 0.0, isCeiling ? -1.0 : 1.0),
+		.material = material,
+	};
 
 	MetalPolygon *mPolygon = [[MetalPolygon alloc] initWithVertexCount:polygon->vertex_count
 															  vertices:vertices.data()
@@ -769,10 +779,12 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 	Material material = getMaterial(texture.textureID, false, false);
 	
 	// Normal is ignored here and set based on the sprite's rotation
-	MetalSurface *surface = [[MetalSurface alloc] initWithTextureID:texture.textureID
-														   material:material
-															 normal:simd_make_float3(1.0, 0.0, 0.0)
-												   lightSourceIndex:NONE];
+	Surface surface = {
+		.textureIndex = texture.index,
+		.lightSourceIndex = NONE,
+		.normal = simd_make_float3(1.0, 0.0, 0.0),
+		.material = material,
+	};
 	
 	return [[MetalSprite alloc] initWithIndex:objectIdx
 										   uv:texture.uv

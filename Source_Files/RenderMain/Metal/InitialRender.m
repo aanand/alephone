@@ -361,18 +361,9 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 	void (^drawTriangle)(Triangle*) = ^(Triangle *triangle){
 		NSAssert(numVertices/3 < MAX_TRIANGLES, @"Exceeded triangle buffer size");
 
-		NSUInteger textureIndex = [self->_textureManager.textureIDs indexOfObject:triangle.surface.textureID];
-		NSAssert(textureIndex != NSNotFound, @"Missing triangle texture ID");
-
 		target[numVertices] = triangle.v0;
-		target[numVertices].textureIndex = (uint32_t)textureIndex;
-		target[numVertices].material = triangle.surface.material;
 		target[numVertices+1] = triangle.v1;
-		target[numVertices+1].textureIndex = (uint32_t)textureIndex;
-		target[numVertices+1].material = triangle.surface.material;
 		target[numVertices+2] = triangle.v2;
-		target[numVertices+2].textureIndex = (uint32_t)textureIndex;
-		target[numVertices+2].material = triangle.surface.material;
 
 		numVertices += 3;
 	};

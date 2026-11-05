@@ -55,11 +55,11 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 	
 	out.position = position;
 	out.previousPosition = previousPosition;
-	out.surfaceNormal = v.surfaceNormal;
-	out.surfaceTangent = v.surfaceTangent;
-	out.textureIndex = v.textureIndex;
+	out.surfaceNormal = v.surface.normal;
+	out.surfaceTangent = v.surface.tangent;
+	out.textureIndex = v.surface.textureIndex;
 	out.textureCoordinate = v.textureCoordinate;
-	out.isLandscape = v.material.isLandscape;
+	out.isLandscape = v.surface.material.isLandscape;
 	
 	return out;
 }

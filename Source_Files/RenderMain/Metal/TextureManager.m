@@ -39,11 +39,11 @@
 	_emissionMaps = nil;
 }
 
-- (bool) hasTextureWithID:(NSString*)textureID {
-	return [_textureIDs containsObject:textureID];
+- (NSUInteger) indexOfTextureWithID:(NSString *)textureID {
+	return [_textureIDs indexOfObject:textureID];
 }
 
--(void)addTextureWithID:(NSString *)textureID albedo:(MetalImage *)albedo normal:(MetalImage *)normal emission:(MetalImage *)emission {
+- (NSUInteger) addTextureWithID:(NSString *)textureID albedo:(MetalImage *)albedo normal:(MetalImage *)normal emission:(MetalImage *)emission {
 	NSAssert(_textureIDs.count < MAX_TEXTURES, @"Exceeded texture limit");
 
 	id<MTLTexture> albedoTexture = [self makeTextureFromImage:(albedo ? albedo : [self defaultAlbedoImage])];
@@ -59,10 +59,11 @@
 	[_emissionMaps setObject:emissionMap forKey:textureID];
 
 	[_textureIDs addObject:textureID];
+	return [_textureIDs indexOfObject:textureID];
 }
 
-- (void) addPlaceholderTextureWithID:(NSString *)textureID {
-	[self addTextureWithID:textureID albedo:nil normal:nil emission:nil];
+- (NSUInteger) addPlaceholderTextureWithID:(NSString *)textureID {
+	return [self addTextureWithID:textureID albedo:nil normal:nil emission:nil];
 }
 
 - (MetalImage*) defaultAlbedoImage {

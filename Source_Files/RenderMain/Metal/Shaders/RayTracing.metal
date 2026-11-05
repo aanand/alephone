@@ -62,9 +62,9 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 		}
 		uv = getUV(intersection, data);
 		
-		float3 surfaceNormal = data.surfaceNormal;
-		float4 surfaceTangent = data.surfaceTangent;
-		uint32_t textureIndex = data.textureIndex;
+		float3 surfaceNormal = data.surface.normal;
+		float4 surfaceTangent = data.surface.tangent;
+		uint32_t textureIndex = data.surface.textureIndex;
 		
 		float4 albedo = float4(defaultAttenuation, defaultAttenuation, defaultAttenuation, 1.0);
 		float4 emission = float4(0.0);
@@ -99,7 +99,7 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 		
 		// We hit something transparent, so continue the ray... unless what we hit was a landscape,
 		// which apparently CAN happen, and if not checked for, causes weird zebra stripes in the skies of M2 maps.
-		if (albedo.a < 0.5 && !data.material.isLandscape) {
+		if (albedo.a < 0.5 && !data.surface.material.isLandscape) {
 			ray.origin = hitPoint + ray.direction * rayEpsilon;
 			ray.max_distance -= (intersection.distance + rayEpsilon);
 		} else {
@@ -110,8 +110,8 @@ Hit castRay(thread RayTracer &rayTracer, ray ray)
 				.normal = normal,
 				.diffuse = albedo.rgb,
 				.emission = emission,
-				.material = data.material,
-				.lightSourceIndex = data.lightSourceIndex,
+				.material = data.surface.material,
+				.lightSourceIndex = data.surface.lightSourceIndex,
 			};
 		}
 	}

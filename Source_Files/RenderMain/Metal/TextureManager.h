@@ -27,14 +27,14 @@ NS_ASSUME_NONNULL_BEGIN
 - (void) finishUpdatingDynamicGeometry;
 - (void) shutdown;
 
-- (bool) hasTextureWithID:(NSString*)textureID;
+- (NSUInteger) indexOfTextureWithID:(NSString*)textureID;
 
-- (void) addTextureWithID:(NSString*)textureID
-				   albedo:(MetalImage *_Nullable)albedo
-				   normal:(MetalImage *_Nullable)normal
-				 emission:(MetalImage *_Nullable)emission;
+- (NSUInteger) addTextureWithID:(NSString*)textureID
+						 albedo:(MetalImage*_Nullable)albedo
+						 normal:(MetalImage*_Nullable)normal
+					   emission:(MetalImage*_Nullable)emission;
 
-- (void) addPlaceholderTextureWithID:(NSString *)textureID;
+- (NSUInteger) addPlaceholderTextureWithID:(NSString*)textureID;
 
 @end
 

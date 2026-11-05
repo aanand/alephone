@@ -251,16 +251,16 @@ API_AVAILABLE(macos(26.0))
 	[rayTracer addGeometryAllocations];
 }
 
-- (bool) hasTextureWithID:(NSString*)textureID {
-	return [textureManager hasTextureWithID:textureID];
+-(NSUInteger)indexOfTextureWithID:(NSString *)textureID {
+	return [textureManager indexOfTextureWithID:textureID];
 }
 
--(void)addTextureWithID:(NSString *)textureID albedo:(MetalImage *)albedo normal:(MetalImage *)normal emission:(MetalImage *)emission {
-	[textureManager addTextureWithID:textureID albedo:albedo normal:normal emission:emission];
+-(NSUInteger)addTextureWithID:(NSString *)textureID albedo:(MetalImage *)albedo normal:(MetalImage *)normal emission:(MetalImage *)emission {
+	return [textureManager addTextureWithID:textureID albedo:albedo normal:normal emission:emission];
 }
 
-- (void) addPlaceholderTextureWithID:(NSString *)textureID {
-	[textureManager addPlaceholderTextureWithID:textureID];
+-(NSUInteger)addPlaceholderTextureWithID:(NSString *)textureID {
+	return [textureManager addPlaceholderTextureWithID:textureID];
 }
 
 - (void) begin {

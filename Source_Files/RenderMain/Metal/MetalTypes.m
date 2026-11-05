@@ -44,7 +44,7 @@ bool isValidTangent(simd_float4 t) {
 
 @implementation Triangle
 
--(Triangle *)initWithV0:(WorldVertex)v0 v1:(WorldVertex)v1 v2:(WorldVertex)v2 surface:(MetalSurface *)surface
+-(Triangle *)initWithV0:(WorldVertex)v0 v1:(WorldVertex)v1 v2:(WorldVertex)v2 surface:(Surface)surface
 {
 	if (self = [super init]) {
 		_v0 = v0;
@@ -100,21 +100,6 @@ bool isValidTangent(simd_float4 t) {
 
 @end
 
-@implementation MetalSurface
-
--(MetalSurface *)initWithTextureID:(NSString *)textureID material:(Material)material normal:(simd_float3)normal lightSourceIndex:(int32_t)lightSourceIndex
-{
-	if (self = [super init]) {
-		_textureID = textureID;
-		_material = material;
-		_normal = normal;
-		_lightSourceIndex = lightSourceIndex;
-	}
-	return self;
-}
-
-@end
-
 @implementation MetalPolygonPrimitive
 {
 	NSUInteger numTriangles;
@@ -125,8 +110,7 @@ bool isValidTangent(simd_float4 t) {
 -(MetalPolygonPrimitive *)initWithVertexCount:(NSUInteger)vertexCount
 									 vertices:(simd_int2 *)vs
 										   uv:(simd_float2*)uv
-									  surface:(MetalSurface *)surface
-								   textureIDs:(NSOrderedSet*)textureIDs
+									  surface:(Surface)surface
 {
 	if (self = [super init]) {
 		numTriangles = vertexCount - 2;
@@ -141,14 +125,9 @@ bool isValidTangent(simd_float4 t) {
 			vertices[i*3+2] = (simd_float3){ vs[i+2].x, vs[i+2].y, 0.0 };
 
 			primitiveData[i] = (RayTracingData){
-				.surfaceNormal = surface.normal,
-				.material = surface.material,
-				.lightSourceIndex = surface.lightSourceIndex,
+				.numVertices = vertexCount,
+				.surface = surface,
 			};
-
-			NSUInteger textureIndex = [textureIDs indexOfObject:surface.textureID];
-			NSAssert(textureIndex != NSNotFound, @"Missing dynamic polygon texture ID");
-			primitiveData[i].textureIndex = (uint32_t)textureIndex;
 			primitiveData[i].uv[0] = uv[0];
 			primitiveData[i].uv[1] = uv[i+1];
 			primitiveData[i].uv[2] = uv[i+2];
@@ -170,7 +149,7 @@ bool isValidTangent(simd_float4 t) {
 
 @implementation MetalPolygon
 
--(MetalPolygon *)initWithVertexCount:(NSUInteger)vertexCount vertices:(simd_int2 *)vertices uv:(simd_float2 *)uv height:(int)height surface:(MetalSurface *)surface
+-(MetalPolygon *)initWithVertexCount:(NSUInteger)vertexCount vertices:(simd_int2 *)vertices uv:(simd_float2 *)uv height:(int)height surface:(Surface)surface
 {
 	if (self = [super init]) {
 		_vertexCount = vertexCount;
@@ -178,6 +157,7 @@ bool isValidTangent(simd_float4 t) {
 		_uv = malloc(sizeof(simd_float2)*vertexCount); memcpy(_uv, uv, sizeof(simd_float2)*vertexCount);
 		_height = height;
 		_surface = surface;
+		_surface.tangent = [self tangent];
 	}
 	return self;
 }
@@ -191,8 +171,7 @@ bool isValidTangent(simd_float4 t) {
 	return [[MetalPolygonPrimitive alloc] initWithVertexCount:_vertexCount
 													 vertices:_vertices
 														   uv:_uv
-													  surface:_surface
-												   textureIDs:textureIDs];
+													  surface:_surface];
 }
 
 - (simd_float4x3) instanceTransform {
@@ -206,25 +185,22 @@ bool isValidTangent(simd_float4 t) {
 	};
 }
 
-- (WorldVertex) getWorldVertexAtIndex:(NSUInteger)vertexIdx surfaceTangent:(simd_float4)surfaceTangent {
+- (WorldVertex) getWorldVertexAtIndex:(NSUInteger)vertexIdx {
 	simd_int2 pos = _vertices[vertexIdx];
 	return (WorldVertex){
 		.position = simd_make_int3(pos.x, pos.y, _height),
 		.textureCoordinate = _uv[vertexIdx],
-		.surfaceNormal = _surface.normal,
-		.surfaceTangent = surfaceTangent,
+		.surface = _surface,
 	};
 }
 
 - (void) eachTriangle:(void (^)(Triangle *))callback
 {
-	simd_float4 surfaceTangent = [self tangent];
-
 	// Triangle fan: draw 0-1-2, 0-2-3, 0-3-4, etc
 	for (int j = 0; j < _vertexCount - 2; j++) {
-		callback([[Triangle alloc] initWithV0:[self getWorldVertexAtIndex:0 surfaceTangent:surfaceTangent]
-										   v1:[self getWorldVertexAtIndex:j+1 surfaceTangent:surfaceTangent]
-										   v2:[self getWorldVertexAtIndex:j+2 surfaceTangent:surfaceTangent]
+		callback([[Triangle alloc] initWithV0:[self getWorldVertexAtIndex:0]
+										   v1:[self getWorldVertexAtIndex:j+1]
+										   v2:[self getWorldVertexAtIndex:j+2]
 									  surface:_surface]);
 	}
 }
@@ -252,7 +228,7 @@ bool isValidTangent(simd_float4 t) {
 
 @implementation MetalWall
 
--(MetalWall *)initWithV0:(simd_int2)v0 v1:(simd_int2)v1 bottom:(int)bottom top:(int)top uv:(simd_float4x2)uv surface:(MetalSurface *)surface
+-(MetalWall *)initWithV0:(simd_int2)v0 v1:(simd_int2)v1 bottom:(int)bottom top:(int)top uv:(simd_float4x2)uv surface:(Surface)surface
 {
 	if (self = [super init]) {
 		_v0 = v0;
@@ -261,37 +237,32 @@ bool isValidTangent(simd_float4 t) {
 		_top = top;
 		_uv = uv;
 		_surface = surface;
+		_surface.tangent = [self tangent];
 	}
 	return self;
 }
 
 - (void) eachTriangle:(void (^)(Triangle *))callback
 {
-	simd_float4 surfaceTangent = [self tangent];
-
 	WorldVertex v0 = {
 		.position = { _v0.x, _v0.y, _bottom },
 		.textureCoordinate = _uv.columns[0],
-		.surfaceNormal = _surface.normal,
-		.surfaceTangent = surfaceTangent,
+		.surface = _surface,
 	};
 	WorldVertex v1 = {
 		.position = { _v0.x, _v0.y, _top },
 		.textureCoordinate = _uv.columns[1],
-		.surfaceNormal = _surface.normal,
-		.surfaceTangent = surfaceTangent,
+		.surface = _surface,
 	};
 	WorldVertex v2 = {
 		.position = { _v1.x, _v1.y, _top },
 		.textureCoordinate = _uv.columns[2],
-		.surfaceNormal = _surface.normal,
-		.surfaceTangent = surfaceTangent,
+		.surface = _surface,
 	};
 	WorldVertex v3 = {
 		.position = { _v1.x, _v1.y, _bottom },
 		.textureCoordinate = _uv.columns[3],
-		.surfaceNormal = _surface.normal,
-		.surfaceTangent = surfaceTangent,
+		.surface = _surface,
 	};
 	
 	Triangle *t0 = [[Triangle alloc] initWithV0:v0 v1:v1 v2:v2 surface:_surface];
@@ -336,7 +307,7 @@ bool isValidTangent(simd_float4 t) {
 
 @implementation MetalSprite
 
--(MetalSprite *)initWithIndex:(NSInteger)index uv:(simd_float4x2)uv rect:(Rect)rect position:(simd_int3)position surface:(MetalSurface *)surface
+-(MetalSprite *)initWithIndex:(NSInteger)index uv:(simd_float4x2)uv rect:(Rect)rect position:(simd_int3)position surface:(Surface)surface
 {
 	if (self = [super init]) {
 		_index = index;
@@ -351,14 +322,15 @@ bool isValidTangent(simd_float4 t) {
 - (void) eachTriangle:(void (^)(Triangle *))callback forRotation:(float)theta {
 	simd_float4x3 transform = [self instanceTransformForRotation:theta];
 
+	_surface.normal = simd_make_float3(-cos(theta), -sin(theta), 0.0);
+	
 	WorldVertex v[4];
 	for (int i=0; i<4; i++) {
 		simd_float3 position = simd_mul(transform, simd_make_float4(VERTICAL_QUAD_VERTICES[i], 1.0)).xyz;
-		simd_float3 normal = simd_make_float3(-cos(theta), -sin(theta), 0.0);
 		v[i] = (WorldVertex){
 			.position = simd_make_int3(position.x, position.y, position.z),
 			.textureCoordinate = _uv.columns[i],
-			.surfaceNormal = normal,
+			.surface = _surface,
 		};
 	}
 	
@@ -409,19 +381,10 @@ bool isValidTangent(simd_float4 t) {
 			vertices[i*3+1] = triangle.p1;
 			vertices[i*3+2] = triangle.p2;
 
-			primitiveData[i].surfaceNormal = triangle.surface.normal;
-			primitiveData[i].surfaceTangent = triangle.tangent;
-			primitiveData[i].material = triangle.surface.material;
-
-			NSUInteger textureIndex = [textureIDs indexOfObject:triangle.surface.textureID];
-			NSAssert(textureIndex != NSNotFound, @"Missing static triangle texture ID");
-			primitiveData[i].textureIndex = (uint32_t)textureIndex;
-
+			primitiveData[i].surface = triangle.surface;
 			primitiveData[i].uv[0] = triangle.uv0;
 			primitiveData[i].uv[1] = triangle.uv1;
 			primitiveData[i].uv[2] = triangle.uv2;
-
-			primitiveData[i].lightSourceIndex = triangle.surface.lightSourceIndex;
 		}
 	}
 	return self;

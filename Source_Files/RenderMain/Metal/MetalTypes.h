@@ -25,20 +25,6 @@
 
 @end
 
-@interface MetalSurface : NSObject
-
-@property (nonatomic, readonly) NSString* textureID;
-@property (nonatomic, readonly) Material material;
-@property (nonatomic, readonly) simd_float3 normal;
-@property (nonatomic, readonly) int32_t lightSourceIndex;
-
-- (MetalSurface*) initWithTextureID:(NSString*)textureID
-						   material:(Material)material
-							 normal:(simd_float3)normal
-				   lightSourceIndex:(int32_t)lightSourceIndex;
-
-@end
-
 #pragma mark - Geometry utilities
 
 /**
@@ -49,12 +35,12 @@
 @property (nonatomic, readonly) WorldVertex v0;
 @property (nonatomic, readonly) WorldVertex v1;
 @property (nonatomic, readonly) WorldVertex v2;
-@property (nonatomic, readonly) MetalSurface *surface;
+@property (nonatomic, readonly) Surface surface;
 
 - (Triangle *) initWithV0:(WorldVertex)v0
 					   v1:(WorldVertex)v1
 					   v2:(WorldVertex)v2
-				  surface:(MetalSurface*)surface;
+				  surface:(Surface)surface;
 
 /**
  World-space tangent vector, for use when applying a normal map.
@@ -101,8 +87,7 @@
 -(MetalPolygonPrimitive *)initWithVertexCount:(NSUInteger)vertexCount
 									 vertices:(simd_int2 *)vs
 										   uv:(simd_float2*)uv
-									  surface:(MetalSurface *)surface
-								   textureIDs:(NSOrderedSet*)textureIDs;
+									  surface:(Surface)surface;
 
 @end
 
@@ -118,13 +103,13 @@
 @property (nonatomic, readonly) simd_int2* vertices;
 @property (nonatomic, readonly) simd_float2* uv;
 @property (nonatomic, readonly) int height;
-@property (nonatomic, readonly) MetalSurface *surface;
+@property (nonatomic, readonly) Surface surface;
 
 - (MetalPolygon*) initWithVertexCount:(NSUInteger)vertexCount
 							 vertices:(simd_int2*)vertices
 								   uv:(simd_float2*)uv
 							   height:(int)height
-							  surface:(MetalSurface*)surface;
+							  surface:(Surface)surface;
 
 - (void) eachTriangle:(void (^)(Triangle *triangle))callback;
 - (id<ASTrianglePrimitive>) primitiveForTextureIDs:(NSOrderedSet<NSString*>*)textureIDs;
@@ -145,14 +130,14 @@
 @property (nonatomic, readonly) int bottom;
 @property (nonatomic, readonly) int top;
 @property (nonatomic, readonly) simd_float4x2 uv;
-@property (nonatomic, readonly) MetalSurface *surface;
+@property (nonatomic, readonly) Surface surface;
 
 - (MetalWall*) initWithV0:(simd_int2)v0
 					   v1:(simd_int2)v1
 				   bottom:(int)bottom
 					  top:(int)top
 					   uv:(simd_float4x2)uv
-				  surface:(MetalSurface*)surface;
+				  surface:(Surface)surface;
 
 - (void) eachTriangle:(void (^)(Triangle *triangle))callback;
 - (simd_float4x3) instanceTransform;
@@ -169,13 +154,13 @@
 @property (nonatomic, readonly) simd_float4x2 uv;
 @property (nonatomic, readonly) Rect rect;
 @property (nonatomic, readonly) simd_int3 position;
-@property (nonatomic, readonly) MetalSurface *surface;
+@property (nonatomic, readonly) Surface surface;
 
 - (MetalSprite*) initWithIndex:(NSInteger)index
 							uv:(simd_float4x2)uv
 						  rect:(Rect)rect
 					  position:(simd_int3)position
-					   surface:(MetalSurface*)surface;
+					   surface:(Surface)surface;
 
 - (void) eachTriangle:(void (^)(Triangle *triangle))callback forRotation:(float)theta;
 - (simd_float4x3) instanceTransformForRotation:(float)theta;
