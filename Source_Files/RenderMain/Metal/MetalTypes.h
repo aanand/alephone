@@ -154,16 +154,18 @@
 @property (nonatomic, readonly) simd_float4x2 uv;
 @property (nonatomic, readonly) Rect rect;
 @property (nonatomic, readonly) simd_int3 position;
+@property (nonatomic, readonly) float rotation;
 @property (nonatomic, readonly) Surface surface;
 
 - (MetalSprite*) initWithIndex:(NSInteger)index
 							uv:(simd_float4x2)uv
 						  rect:(Rect)rect
 					  position:(simd_int3)position
+					  rotation:(float)rotation
 					   surface:(Surface)surface;
 
-- (void) eachTriangle:(void (^)(Triangle *triangle))callback forRotation:(float)theta;
-- (simd_float4x3) instanceTransformForRotation:(float)theta;
+- (void) eachTriangle:(void (^)(Triangle *triangle))callback;
+- (simd_float4x3) instanceTransform;
 
 @end
 

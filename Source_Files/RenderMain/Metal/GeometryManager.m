@@ -206,10 +206,10 @@ uint getMask(bool isEnabled, bool isTransparent) {
 										 mask:getMask(isEnabled, wall.surface.material.isTransparent)];
 }
 
-- (void) updateSprite:(MetalSprite *)sprite yawRadians:(float)theta {
+- (void) updateSprite:(MetalSprite *)sprite {
 	[sprite eachTriangle:^(Triangle *triangle) {
 		[self->_dynamicTriangles addObject:triangle];
-	} forRotation:theta];
+	}];
 	assert(_dynamicTriangles.count < MAX_TRIANGLES);
 
 	RayTracingData instanceData = {
@@ -224,7 +224,7 @@ uint getMask(bool isEnabled, bool isTransparent) {
 	uint32_t instanceID = [self addInstanceData:instanceData];
 
 	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
-								withTransform:[sprite instanceTransformForRotation:theta]
+								withTransform:sprite.instanceTransform
 								   instanceID:instanceID
 										 mask:getMask(true, sprite.surface.material.isTransparent)];
 }

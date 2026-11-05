@@ -208,7 +208,7 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (void) updateSprite:(MetalSprite *)sprite {
-	[geometryManager updateSprite:sprite yawRadians:radians(_view.yaw)];
+	[geometryManager updateSprite:sprite];
 }
 
 -(void)updateLightSourceIntensities:(NSArray<NSNumber *> *)intensities {

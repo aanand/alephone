@@ -768,6 +768,7 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 	SpriteTexture *texture = LoadSpriteTexture(data.collection_code, data.low_level_shape_index, shape_information);
 
 	simd_int3 position = { object->location.x, object->location.y, object->location.z };
+	float rotation = radians(view->virtual_yaw * FixedAngleToDegrees);
 
 	Rect rect = {
 		.top = shape_information->world_top,
@@ -778,11 +779,11 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 	
 	Material material = getMaterial(texture.textureID, false, false);
 	
-	// Normal is ignored here and set based on the sprite's rotation
 	Surface surface = {
 		.textureIndex = texture.index,
 		.lightSourceIndex = NONE,
-		.normal = simd_make_float3(1.0, 0.0, 0.0),
+		.normal = simd_make_float3(-cos(rotation), -sin(rotation), 0.0),
+		// No need for tangent, as long as sprites don't have normal maps
 		.material = material,
 	};
 	
@@ -790,6 +791,7 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 										   uv:texture.uv
 										 rect:rect
 									 position:position
+									 rotation:rotation
 									  surface:surface];
 }
 

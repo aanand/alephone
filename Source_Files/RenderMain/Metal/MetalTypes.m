@@ -307,23 +307,22 @@ bool isValidTangent(simd_float4 t) {
 
 @implementation MetalSprite
 
--(MetalSprite *)initWithIndex:(NSInteger)index uv:(simd_float4x2)uv rect:(Rect)rect position:(simd_int3)position surface:(Surface)surface
+-(MetalSprite *)initWithIndex:(NSInteger)index uv:(simd_float4x2)uv rect:(Rect)rect position:(simd_int3)position rotation:(float)rotation surface:(Surface)surface
 {
 	if (self = [super init]) {
 		_index = index;
 		_uv = uv;
 		_rect = rect;
 		_position = position;
+		_rotation = rotation;
 		_surface = surface;
 	}
 	return self;
 }
 
-- (void) eachTriangle:(void (^)(Triangle *))callback forRotation:(float)theta {
-	simd_float4x3 transform = [self instanceTransformForRotation:theta];
+- (void) eachTriangle:(void (^)(Triangle *))callback {
+	simd_float4x3 transform = [self instanceTransform];
 
-	_surface.normal = simd_make_float3(-cos(theta), -sin(theta), 0.0);
-	
 	WorldVertex v[4];
 	for (int i=0; i<4; i++) {
 		simd_float3 position = simd_mul(transform, simd_make_float4(VERTICAL_QUAD_VERTICES[i], 1.0)).xyz;
@@ -341,17 +340,20 @@ bool isValidTangent(simd_float4 t) {
 	callback(t1);
 }
 
-- (simd_float4x3)instanceTransformForRotation:(float)theta {
+- (simd_float4x3)instanceTransform {
 	float x = _position.x, y = _position.y, z = _position.z;
 	float w = _rect.right - _rect.left;
 	float h = _rect.top - _rect.bottom;
+	
+	float cosTheta = cos(_rotation);
+	float sinTheta = sin(_rotation);
 
 	return (simd_float4x3){
 		.columns = {
-			{  w*cos(theta), w*sin(theta), 0.0 },
-			{ -w*sin(theta), w*cos(theta), 0.0 },
-			{          0.0,           0.0,   h },
-			{            x,             y,   z + _rect.bottom },
+			{  w*cosTheta, w*sinTheta, 0.0                },
+			{ -w*sinTheta, w*cosTheta, 0.0                },
+			{         0.0,        0.0,   h                },
+			{           x,          y,   z + _rect.bottom },
 		}
 	};
 }

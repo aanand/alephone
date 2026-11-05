@@ -41,7 +41,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void) addDynamicPolygon:(MetalPolygon*)polygon withID:(int)ID enabled:(BOOL)isEnabled;
 - (void) addStaticWall:(MetalWall*)wall;
 - (void) addDynamicWall:(MetalWall*)wall enabled:(BOOL)isEnabled;
-- (void) updateSprite:(MetalSprite*)sprite yawRadians:(float)theta;
+- (void) updateSprite:(MetalSprite*)sprite;
 
 - (void) shutdown;
 
