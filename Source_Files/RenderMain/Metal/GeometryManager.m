@@ -86,6 +86,10 @@ uint getMask(bool isEnabled, bool isTransparent) {
 	_perInstanceDataBuffer = [_pipeline.device newBufferWithLength:(sizeof(RayTracingData) * MAX_INSTANCES) options:MTLResourceStorageModeShared];
 	_perInstanceDataBuffer.label = @"Per-instance data";
 	
+	[self initializeTopLevelIAS];
+	
+	[_residencySet commit];
+
 	return true;
 }
 
@@ -104,8 +108,6 @@ uint getMask(bool isEnabled, bool isTransparent) {
 	[staticIASManager clearGeometry];
 	[dynamicIASManager clearGeometry];
 	[dynamicIASManager addPrimitive:verticalQuadPrimitive];
-
-	[self clearTopLevelIAS];
 }
 
 -(void)finishUpdatingAllGeometry {
@@ -128,7 +130,6 @@ uint getMask(bool isEnabled, bool isTransparent) {
 	numInstances = 0;
 
 	[dynamicIASManager clearInstances];
-	[self clearTopLevelIAS];
 }
 
 -(void)finishUpdatingDynamicGeometry {
@@ -322,14 +323,6 @@ uint getMask(bool isEnabled, bool isTransparent) {
 	
 	[_residencySet addAllocation:topLevelIASInstanceBuffer];
 	[_residencySet addAllocation:_topLevelIAS];
-	[_residencySet commit];
-}
-
-- (void) clearTopLevelIAS {
-	if (topLevelIASInstanceBuffer) [_residencySet removeAllocation:topLevelIASInstanceBuffer];
-	if (_topLevelIAS) [_residencySet removeAllocation:_topLevelIAS];
-	topLevelIASInstanceBuffer = nil;
-	_topLevelIAS = nil;
 }
 
 - (void) buildAccelerationStructureWithChangesTo:(NSArray<IASManager*>*)iasManagers
