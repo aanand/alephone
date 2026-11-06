@@ -67,6 +67,15 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 														 options:MTLResourceStorageModeShared];
 		IASInstanceBuffer.label = [NSString stringWithFormat:@"[%@] IASInstanceBuffer", _label];
 		[residencySet addAllocation:IASInstanceBuffer];
+
+		// IASDescriptor's attributes are overwritten on each frame
+		IASDescriptor = [[MTL4InstanceAccelerationStructureDescriptor alloc] init];
+		IASDescriptor.instanceCount = MAX_INSTANCES;
+		IASDescriptor.instanceDescriptorBuffer = MTL4BufferRangeMake(IASInstanceBuffer.gpuAddress, IASInstanceBuffer.length);
+		
+		IAS = [pipeline.device newAccelerationStructureWithDescriptor:IASDescriptor];
+		IAS.label = [NSString stringWithFormat:@"[%@] IAS", _label];
+		[residencySet addAllocation:IAS];
 	}
 	return self;
 }
@@ -143,37 +152,30 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 	numInstances++;
 }
 
-- (void) createInstanceAccelerationStructure {
-	IASDescriptor = [[MTL4InstanceAccelerationStructureDescriptor alloc] init];
+- (void) updateIASDescriptor {
 	IASDescriptor.instanceCount = numInstances;
-	IASDescriptor.instanceDescriptorBuffer = MTL4BufferRangeMake(IASInstanceBuffer.gpuAddress, IASInstanceBuffer.length);
-	
-	IAS = [pipeline.device newAccelerationStructureWithDescriptor:IASDescriptor];
-	IAS.label = [NSString stringWithFormat:@"[%@] IAS", _label];
+	IASDescriptor.instanceDescriptorBuffer = MTL4BufferRangeMake(IASInstanceBuffer.gpuAddress, sizeof(MTLIndirectAccelerationStructureInstanceDescriptor) * numInstances);
 }
 
 - (void) commitGeometry
 {
-	[self createInstanceAccelerationStructure];
-		
+	[self updateIASDescriptor];
+
 	for (id<MTLAccelerationStructure> staticPAS in PASes) {
 		[residencySet addAllocation:staticPAS];
 	}
-
-	[residencySet addAllocation:IAS];
 	[residencySet commit];
 }
 
 - (void) commitInstances {
-	[self createInstanceAccelerationStructure];
-	[residencySet addAllocation:IAS];
-	[residencySet commit];
+	[self updateIASDescriptor];
 }
 
 - (void) clearGeometry {
 	for (id<MTLAllocation> PAS in PASes) {
 		[residencySet removeAllocation:PAS];
 	}
+	[residencySet commit];
 	
 	PASes = [NSMutableArray array];
 	PASDescriptors = [NSMutableArray array];
@@ -185,11 +187,6 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 }
 
 - (void) clearInstances {
-	if (IAS) [residencySet removeAllocation:IAS];
-
-	IAS = nil;
-	IASDescriptor = nil;
-
 	numInstances = 0;
 }
 
