@@ -269,7 +269,6 @@ uint getMask(bool isEnabled, bool isTransparent) {
 }
 
 
-// FIXME: the staticTriangles list powers both the initial render and the static IAS, but is owned by initial render.
 - (void) writeStaticTrianglesToIAS {
 	NSUInteger trianglesPerBatch = 100;
 	
