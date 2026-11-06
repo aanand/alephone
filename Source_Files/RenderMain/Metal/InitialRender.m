@@ -24,7 +24,6 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 	id<MTL4ArgumentTable> fragmentArgumentTable;
 	id<MTLArgumentEncoder> albedoTextureArgumentEncoder;
 	id<MTLBuffer> albedoTextureArgumentBuffer;
-	id<MTLBuffer> triangleBuffer;
 	id<MTLDepthStencilState> depthStencilState;
 }
 
@@ -56,11 +55,7 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 
 	NSAssert(_uniformsBuffer != nil, @"uniformsBuffer is not set");
 	[_residencySet addAllocation:_uniformsBuffer];
-	
-	triangleBuffer = [_pipeline.device newBufferWithLength:(sizeof(WorldVertex) * MAX_TRIANGLES * 3) options:MTLResourceStorageModeShared];
-	triangleBuffer.label = @"Triangle vertices";
-	[_residencySet addAllocation:triangleBuffer];
-
+	[_residencySet addAllocation:_geometryManager.rasterizerVertexBuffer];
 	[_residencySet commit];
 	
 	depthStencilState = [self setupDepthStencilState];
@@ -350,30 +345,14 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 	[renderPassEncoder setViewport:[_view getViewportWithPixelScaling:NO]];
 	
 	[vertexArgumentTable setAddress:_uniformsBuffer.gpuAddress atIndex:InitialRenderVertexShaderUniformsIndex];
-	[vertexArgumentTable setAddress:triangleBuffer.gpuAddress atIndex:InitialRenderVertexShaderVertexDataIndex];
+	[vertexArgumentTable setAddress:_geometryManager.rasterizerVertexBuffer.gpuAddress atIndex:InitialRenderVertexShaderVertexDataIndex];
 
 	[fragmentArgumentTable setAddress:_uniformsBuffer.gpuAddress atIndex:InitialRenderFragmentShaderUniformsIndex];
 	[fragmentArgumentTable setAddress:albedoTextureArgumentBuffer.gpuAddress atIndex:InitialRenderFragmentShaderAlbedoTexturesIndex];
 
-	WorldVertex *target = (WorldVertex*)triangleBuffer.contents;
-	NSUInteger __block numVertices = 0;
-
-	void (^drawTriangle)(Triangle*) = ^(Triangle *triangle){
-		NSAssert(numVertices/3 < MAX_TRIANGLES, @"Exceeded triangle buffer size");
-
-		target[numVertices] = triangle.v0;
-		target[numVertices+1] = triangle.v1;
-		target[numVertices+2] = triangle.v2;
-
-		numVertices += 3;
-	};
-	
-	for (Triangle *triangle in _geometryManager.staticTriangles) drawTriangle(triangle);
-	for (Triangle *triangle in _geometryManager.dynamicTriangles) drawTriangle(triangle);
-
 	[renderPassEncoder setArgumentTable:vertexArgumentTable atStages:MTLRenderStageVertex];
 	[renderPassEncoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
-	[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:numVertices];
+	[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:(_geometryManager.numRasterizerTriangles * 3)];
 
 	[renderPassEncoder updateFence:fence afterEncoderStages:MTLStageFragment];
 	[renderPassEncoder endEncoding];

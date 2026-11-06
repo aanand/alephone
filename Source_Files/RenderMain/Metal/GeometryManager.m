@@ -22,6 +22,9 @@ uint getMask(bool isEnabled, bool isTransparent) {
 	MetalPipeline *_pipeline;
 
 	uint32_t numInstances;
+
+	Triangle staticTriangles[MAX_TRIANGLES], dynamicTriangles[MAX_TRIANGLES];
+	uint32_t numStaticTriangles, numDynamicTriangles;
 	
 	// Geometry primitives that get reused across levels
 	VerticalQuad *verticalQuadPrimitive;
@@ -77,6 +80,9 @@ uint getMask(bool isEnabled, bool isTransparent) {
 	}
 	dynamicIASManager.label = @"dynamicIASManager";
 	
+	_rasterizerVertexBuffer = [_pipeline.device newBufferWithLength:(sizeof(WorldVertex) * MAX_TRIANGLES * 3) options:MTLResourceStorageModeShared];
+	_rasterizerVertexBuffer.label = @"Triangle vertices";
+
 	_perInstanceDataBuffer = [_pipeline.device newBufferWithLength:(sizeof(RayTracingData) * MAX_INSTANCES) options:MTLResourceStorageModeShared];
 	_perInstanceDataBuffer.label = @"Per-instance data";
 	
@@ -84,8 +90,8 @@ uint getMask(bool isEnabled, bool isTransparent) {
 }
 
 -(void)startUpdatingAllGeometry {
-	_staticTriangles = [NSMutableArray array];
-	_dynamicTriangles = [NSMutableArray array];
+	numStaticTriangles = 0;
+	numDynamicTriangles = 0;
 
 	dynamicPolygonPrimitives = [NSMutableDictionary dictionary];
 	numInstances = 0;
@@ -103,6 +109,8 @@ uint getMask(bool isEnabled, bool isTransparent) {
 }
 
 -(void)finishUpdatingAllGeometry {
+	[self writeStaticTrianglesToVertexBuffer];
+	[self writeDynamicTrianglesToVertexBuffer];
 	[self writeStaticTrianglesToIAS];
 
 	[staticIASManager commitGeometry];
@@ -116,7 +124,7 @@ uint getMask(bool isEnabled, bool isTransparent) {
 }
 
 -(void)startUpdatingDynamicGeometry {
-	_dynamicTriangles = [NSMutableArray array];
+	numDynamicTriangles = 0;
 	numInstances = 0;
 
 	[dynamicIASManager clearInstances];
@@ -124,6 +132,7 @@ uint getMask(bool isEnabled, bool isTransparent) {
 }
 
 -(void)finishUpdatingDynamicGeometry {
+	[self writeDynamicTrianglesToVertexBuffer];
 	[dynamicIASManager commitInstances];
 	[self initializeTopLevelIAS];
 
@@ -132,18 +141,50 @@ uint getMask(bool isEnabled, bool isTransparent) {
 											label:[NSString stringWithFormat:@"Dynamic IAS build (frame #%llu)", _view.frameNumber]];
 }
 
+- (NSUInteger) numRasterizerTriangles {
+	return numStaticTriangles + numDynamicTriangles;
+}
+
+- (void)addStaticTriangle:(Triangle)triangle {
+	staticTriangles[numStaticTriangles] = triangle;
+	numStaticTriangles++;
+	assert(self.numRasterizerTriangles < MAX_TRIANGLES);
+}
+
+- (void)addDynamicTriangle:(Triangle)triangle {
+	dynamicTriangles[numDynamicTriangles] = triangle;
+	numDynamicTriangles++;
+	assert(self.numRasterizerTriangles < MAX_TRIANGLES);
+}
+
+- (void)writeStaticTrianglesToVertexBuffer {
+	WorldVertex *target = _rasterizerVertexBuffer.contents;
+	for (int i=0; i<numStaticTriangles; i++) {
+		target[i*3+0] = staticTriangles[i].v0;
+		target[i*3+1] = staticTriangles[i].v1;
+		target[i*3+2] = staticTriangles[i].v2;
+	}
+}
+
+- (void)writeDynamicTrianglesToVertexBuffer {
+	WorldVertex *target = _rasterizerVertexBuffer.contents;
+	for (int i=0; i<numDynamicTriangles; i++) {
+		target[(numStaticTriangles+i)*3+0] = dynamicTriangles[i].v0;
+		target[(numStaticTriangles+i)*3+1] = dynamicTriangles[i].v1;
+		target[(numStaticTriangles+i)*3+2] = dynamicTriangles[i].v2;
+	}
+}
+
 - (void)addStaticPolygon:(MetalPolygon *)polygon {
-	[polygon eachTriangle:^(Triangle *triangle) {
-		[self->_staticTriangles addObject:triangle];
+	[polygon eachTriangle:^(Triangle triangle) {
+		[self addStaticTriangle:triangle];
 	}];
-	assert(_staticTriangles.count < MAX_TRIANGLES);
 }
 
 - (void)addStaticWall:(MetalWall *)wall {
-	[wall eachTriangle:^(Triangle *triangle) {
-		[self->_staticTriangles addObject:triangle];
+	[wall eachTriangle:^(Triangle triangle) {
+		[self addStaticTriangle:triangle];
 	}];
-	assert(_staticTriangles.count < MAX_TRIANGLES);
 }
 
 - (uint32_t)addInstanceData:(RayTracingData)instanceData {
@@ -155,10 +196,9 @@ uint getMask(bool isEnabled, bool isTransparent) {
 }
 
 -(void)addDynamicPolygon:(MetalPolygon *)polygon withID:(int)ID enabled:(BOOL)isEnabled {
-	[polygon eachTriangle:^(Triangle *triangle) {
-		[self->_dynamicTriangles addObject:triangle];
+	[polygon eachTriangle:^(Triangle triangle) {
+		[self addDynamicTriangle:triangle];
 	}];
-	assert(_dynamicTriangles.count < MAX_TRIANGLES);
 
 	id<ASTrianglePrimitive> primitive = [dynamicPolygonPrimitives objectForKey:[NSNumber numberWithInt:ID]];
 	if (primitive == nil) {
@@ -184,11 +224,10 @@ uint getMask(bool isEnabled, bool isTransparent) {
 }
 
 -(void)addDynamicWall:(MetalWall *)wall enabled:(BOOL)isEnabled {
-	[wall eachTriangle:^(Triangle *triangle) {
-		[self->_dynamicTriangles addObject:triangle];
+	[wall eachTriangle:^(Triangle triangle) {
+		[self addDynamicTriangle:triangle];
 	}];
-	assert(_dynamicTriangles.count < MAX_TRIANGLES);
-	
+
 	RayTracingData instanceData = {
 		.numVertices = 4,
 		.surface = wall.surface,
@@ -207,10 +246,9 @@ uint getMask(bool isEnabled, bool isTransparent) {
 }
 
 - (void) updateSprite:(MetalSprite *)sprite {
-	[sprite eachTriangle:^(Triangle *triangle) {
-		[self->_dynamicTriangles addObject:triangle];
+	[sprite eachTriangle:^(Triangle triangle) {
+		[self addDynamicTriangle:triangle];
 	}];
-	assert(_dynamicTriangles.count < MAX_TRIANGLES);
 
 	RayTracingData instanceData = {
 		.numVertices = 4,
@@ -232,13 +270,12 @@ uint getMask(bool isEnabled, bool isTransparent) {
 
 // FIXME: the staticTriangles list powers both the initial render and the static IAS, but is owned by initial render.
 - (void) writeStaticTrianglesToIAS {
-	NSUInteger numTriangles = _staticTriangles.count;
 	NSUInteger trianglesPerBatch = 100;
 	
-	for (int b = 0; b < numTriangles; b += trianglesPerBatch) {
-		NSArray *triangles = [_staticTriangles subarrayWithRange:NSMakeRange(b, MIN(trianglesPerBatch, numTriangles - b))];
-		TriangleBatch *batch = [[TriangleBatch alloc] initWithTriangles:triangles
-															 textureIDs:_textureManager.textureIDs];
+	for (int b = 0; b < numStaticTriangles; b += trianglesPerBatch) {
+		NSUInteger trianglesInBatch = MIN(trianglesPerBatch, numStaticTriangles - b);
+		TriangleBatch *batch = [[TriangleBatch alloc] initWithTriangles:(staticTriangles + b)
+														  triangleCount:trianglesInBatch];
 		[staticIASManager addPrimitive:batch];
 		simd_float4x3 transform = {
 			.columns = {
@@ -361,9 +398,6 @@ uint getMask(bool isEnabled, bool isTransparent) {
 }
 
 -(void)shutdown {
-	_staticTriangles = nil;
-	_dynamicTriangles = nil;
-
 	staticIASManager = nil;
 	dynamicIASManager = nil;
 	dynamicPolygonPrimitives = nil;

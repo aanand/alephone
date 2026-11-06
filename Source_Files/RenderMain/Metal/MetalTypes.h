@@ -30,25 +30,12 @@
 /**
  A triangle, used by the rasterizer pipeline and when building batches of static geometry.
  */
-@interface Triangle : NSObject
-
-@property (nonatomic, readonly) WorldVertex v0;
-@property (nonatomic, readonly) WorldVertex v1;
-@property (nonatomic, readonly) WorldVertex v2;
-@property (nonatomic, readonly) Surface surface;
-
-- (Triangle *) initWithV0:(WorldVertex)v0
-					   v1:(WorldVertex)v1
-					   v2:(WorldVertex)v2
-				  surface:(Surface)surface;
-
-/**
- World-space tangent vector, for use when applying a normal map.
- The tangent components are in XYZ and the handedness for calculating the bitangent (+1 or -1) is in W.
- */
-- (simd_float4) tangent;
-
-@end
+typedef struct {
+	WorldVertex v0;
+	WorldVertex v1;
+	WorldVertex v2;
+	Surface surface;
+} Triangle;
 
 #pragma mark - Raytracing primitives
 
@@ -67,8 +54,8 @@
  A raytracing primitive that's just an arbitrary batch of wall/floor/ceiling triangles, instanced once.
  */
 @interface TriangleBatch : NSObject <ASTrianglePrimitive>
-- (TriangleBatch*) initWithTriangles:(NSArray<Triangle*>*)triangles
-						  textureIDs:(NSOrderedSet<NSString*>*)textureIDs;
+- (TriangleBatch*) initWithTriangles:(Triangle*)triangles
+					   triangleCount:(NSUInteger)triangleCount;
 @end
 
 /**
@@ -111,7 +98,7 @@
 							   height:(int)height
 							  surface:(Surface)surface;
 
-- (void) eachTriangle:(void (^)(Triangle *triangle))callback;
+- (void) eachTriangle:(void (^)(Triangle triangle))callback;
 - (id<ASTrianglePrimitive>) primitiveForTextureIDs:(NSOrderedSet<NSString*>*)textureIDs;
 - (simd_float4x3) instanceTransform;
 - (simd_float4) tangent;
@@ -139,7 +126,7 @@
 					   uv:(simd_float4x2)uv
 				  surface:(Surface)surface;
 
-- (void) eachTriangle:(void (^)(Triangle *triangle))callback;
+- (void) eachTriangle:(void (^)(Triangle triangle))callback;
 - (simd_float4x3) instanceTransform;
 - (simd_float4) tangent;
 
@@ -164,7 +151,7 @@
 					  rotation:(float)rotation
 					   surface:(Surface)surface;
 
-- (void) eachTriangle:(void (^)(Triangle *triangle))callback;
+- (void) eachTriangle:(void (^)(Triangle triangle))callback;
 - (simd_float4x3) instanceTransform;
 
 @end

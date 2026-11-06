@@ -20,8 +20,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) TextureManager *textureManager;
 
 // Triangle data for rasterizer
-@property (nonatomic, readonly) NSMutableArray<Triangle*> *staticTriangles;
-@property (nonatomic, readonly) NSMutableArray<Triangle*> *dynamicTriangles;
+@property (nonatomic, readonly) id<MTLBuffer> rasterizerVertexBuffer;
+- (NSUInteger) numRasterizerTriangles;
 
 // Acceleration structure for raytracer
 @property (nonatomic, readonly) id<MTLBuffer> perInstanceDataBuffer;

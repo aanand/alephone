@@ -12,8 +12,8 @@
 #import <Cocoa/Cocoa.h>
 #import <Metal/Metal.h>
 
-uint MAX_TRIANGLES = 10000;
-uint MAX_INSTANCES = 1000;
+#define MAX_TRIANGLES 10000
+#define MAX_INSTANCES 1000
 
 NSString* const PLACEHOLDER_TEXTURE_ID = @"PLACEHOLDER";
 
