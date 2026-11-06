@@ -50,7 +50,8 @@ API_AVAILABLE(macos(26.0))
 - (void) addStaticWall:(MetalWall*)wall;
 - (void) addDynamicWall:(MetalWall*)wall enabled:(BOOL)isEnabled;
 - (void) updateSprite:(MetalSprite*)sprite;
-- (void) updateLightSourceIntensities:(NSArray<NSNumber*>*)intensities;
+- (void) updateLightSourceCount:(NSUInteger)count;
+- (void) updateLightSourceIntensities:(float*)intensities;
 
 /**
  Textures

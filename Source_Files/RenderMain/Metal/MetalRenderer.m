@@ -211,7 +211,11 @@ API_AVAILABLE(macos(26.0))
 	[geometryManager updateSprite:sprite];
 }
 
--(void)updateLightSourceIntensities:(NSArray<NSNumber *> *)intensities {
+-(void)updateLightSourceCount:(NSUInteger)count {
+	[rayTracer updateLightSourceCount:count];
+}
+
+-(void)updateLightSourceIntensities:(float *)intensities {
 	[rayTracer updateLightSourceIntensities:intensities];
 }
 
@@ -222,15 +226,12 @@ API_AVAILABLE(macos(26.0))
 
 	[textureManager startUpdatingAllGeometry];
 	[textureManager addPlaceholderTextureWithID:PLACEHOLDER_TEXTURE_ID];
-
-	[rayTracer clearLightSources];
 }
 
 - (void) finishUpdatingAllGeometry {
 	[geometryManager finishUpdatingAllGeometry];
 	[textureManager finishUpdatingAllGeometry];
 
-	[rayTracer writeLightSources];
 	[rayTracer addGeometryAllocations];
 }
 
@@ -239,15 +240,12 @@ API_AVAILABLE(macos(26.0))
 
 	[geometryManager startUpdatingDynamicGeometry];
 	[textureManager startUpdatingDynamicGeometry];
-
-	[rayTracer clearLightSources];
 }
 
 - (void) finishUpdatingDynamicGeometry {
 	[geometryManager finishUpdatingDynamicGeometry];
 	[textureManager finishUpdatingDynamicGeometry];
 
-	[rayTracer writeLightSources];
 	[rayTracer addGeometryAllocations];
 }
 

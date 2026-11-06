@@ -41,9 +41,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (bool) compile;
 - (void) shutdown;
 
-- (void) clearLightSources;
-- (void) updateLightSourceIntensities:(NSArray<NSNumber *> *)intensities;
-- (void) writeLightSources;
+- (void) updateLightSourceCount:(NSUInteger)count;
+- (void) updateLightSourceIntensities:(float*)intensities;
 
 - (void) clearGeometryAllocations;
 - (void) addGeometryAllocations;

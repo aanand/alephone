@@ -38,6 +38,8 @@ MetalRenderer *renderer;
 view_data *view;
 int16 lastLoadedLevelNumber = -1;
 
+float *lightSourceIntensities;
+
 bool isFlashlightOn = false;
 uint framesSinceFlashlightToggled = 0;
 
@@ -830,12 +832,10 @@ void UpdateDynamicGeometry() {
 		AddWalls(polyIdx, polygon, true);
 	}
 	
-	NSMutableArray<NSNumber*> *intensities = [NSMutableArray array];
 	for (int32_t lightSourceIndex = 0; lightSourceIndex < MAXIMUM_LIGHTS_PER_MAP; lightSourceIndex++) {
-		float intensity = get_light_intensity(lightSourceIndex) / float(FIXED_ONE - 1);
-		[intensities addObject:@(intensity)];
+		lightSourceIntensities[lightSourceIndex] = get_light_intensity(lightSourceIndex) / float(FIXED_ONE - 1);
 	}
-	[renderer updateLightSourceIntensities:intensities];
+	[renderer updateLightSourceIntensities:lightSourceIntensities];
 }
 
 void UpdateWorld() {
@@ -863,10 +863,12 @@ void UpdateWorld() {
 		
 		polygonTextureCache = [NSMutableDictionary dictionary];
 		spriteTextureCache = [NSMutableDictionary dictionary];
+		lightSourceIntensities = (float*)malloc(sizeof(float) * MAXIMUM_LIGHTS_PER_MAP);
 
 		findOverlaps();
 
 		[renderer startUpdatingAllGeometry];
+		[renderer updateLightSourceCount:MAXIMUM_LIGHTS_PER_MAP];
 		LoadStaticGeometry();
 		UpdateDynamicGeometry();
 		[renderer finishUpdatingAllGeometry];

@@ -25,8 +25,8 @@
 	id<MTLBuffer> reservoirBufferA;
 	id<MTLBuffer> reservoirBufferB;
 
-	NSArray<NSNumber*> *lightSourceIntensities;
 	id<MTLBuffer> lightSourcesBuffer;
+	NSUInteger lightSourceCount;
 }
 
 -(void)shutdown {
@@ -162,35 +162,27 @@
 	return true;
 }
 
-- (void) updateLightSourceIntensities:(NSArray<NSNumber *> *)intensities {
-	lightSourceIntensities = intensities;
-}
+-(void)updateLightSourceCount:(NSUInteger)count {
+	lightSourceCount = count;
 
-- (void) clearLightSources {
-	lightSourceIntensities = nil;
 	if (lightSourcesBuffer) {
 		[_residencySet removeAllocation:lightSourcesBuffer];
-		lightSourcesBuffer = nil;
 	}
-}
-
-- (void) writeLightSources {
-	if (lightSourceIntensities.count == 0) {
-		return;
-	}
-
-	// FIXME: create once and reuse across frames
-	lightSourcesBuffer = [_pipeline.device newBufferWithLength:sizeof(LightSource) * lightSourceIntensities.count
+	
+	lightSourcesBuffer = [_pipeline.device newBufferWithLength:sizeof(LightSource) * lightSourceCount
 													   options:MTLResourceStorageModeShared];
 	lightSourcesBuffer.label = @"lightSourcesBuffer";
 	
-	LightSource *lightSources = (LightSource*)lightSourcesBuffer.contents;
-	
-	for (NSUInteger i = 0; i < lightSourceIntensities.count; i++) {
-		lightSources[i].intensity = lightSourceIntensities[i].floatValue;
-	}
-	
 	[_residencySet addAllocation:lightSourcesBuffer];
+	[_residencySet commit];
+}
+
+- (void)updateLightSourceIntensities:(float *)intensities {
+	LightSource *target = (LightSource*)lightSourcesBuffer.contents;
+	
+	for (NSUInteger i = 0; i < lightSourceCount; i++) {
+		target[i].intensity = intensities[i];
+	}
 }
 
 -(void)clearGeometryAllocations {
