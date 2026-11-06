@@ -11,16 +11,10 @@
 #import "IASManager.h"
 #import "MetalPipeline.h"
 
-static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
+#define MAX_TRIANGLES 10000
+#define MAX_INSTANCES 1000
 
-@interface Instance : NSObject
-@property (nonatomic, assign) NSUInteger primitiveIdx;
-@property (nonatomic, assign) MTLPackedFloat4x3 transform;
-@property (nonatomic, assign) uint32_t instanceID;
-@property (nonatomic, assign) uint mask;
-@end
-@implementation Instance
-@end
+static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 
 @implementation IASManager
 {
@@ -36,8 +30,9 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 	id<MTLAccelerationStructure> IAS;
 	MTL4InstanceAccelerationStructureDescriptor *IASDescriptor;
 	
-	NSMutableArray<id<ASTrianglePrimitive>> *primitives;
-	NSMutableArray<Instance*> *instances;
+	NSUInteger numPrimitives;
+	NSUInteger numTriangles;
+	NSUInteger numInstances;
 }
 
 - (IASManager*) initWithPipeline:(MetalPipeline *)p
@@ -57,25 +52,77 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 			return nil;
 		}
 		[pipeline.commandQueue addResidencySet:residencySet];
+
+		PASVertexBuffer = [pipeline.device newBufferWithLength:verticesElementSize * MAX_TRIANGLES
+													   options:MTLResourceStorageModeShared];
+		PASVertexBuffer.label = [NSString stringWithFormat:@"[%@] PASVertexBuffer", _label];
+		[residencySet addAllocation:PASVertexBuffer];
+		
+		PASPrimitiveDataBuffer = [pipeline.device newBufferWithLength:primitiveDataElementSize * MAX_TRIANGLES
+															  options:MTLResourceStorageModeShared];
+		PASPrimitiveDataBuffer.label = [NSString stringWithFormat:@"[%@] PASPrimitiveDataBuffer", _label];
+		[residencySet addAllocation:PASPrimitiveDataBuffer];
+
+		IASInstanceBuffer = [pipeline.device newBufferWithLength:sizeof(MTLIndirectAccelerationStructureInstanceDescriptor) * MAX_INSTANCES
+														 options:MTLResourceStorageModeShared];
+		IASInstanceBuffer.label = [NSString stringWithFormat:@"[%@] IASInstanceBuffer", _label];
+		[residencySet addAllocation:IASInstanceBuffer];
 	}
 	return self;
 }
 
-- (void) addPrimitive:(id<ASTrianglePrimitive>)primitive {
-	[primitives addObject:primitive];
+- (NSUInteger) addPrimitive:(id<ASTrianglePrimitive>)primitive {
+	assert(numTriangles + primitive.numTriangles < MAX_TRIANGLES);
+
+	size_t vertexDataOffset = numTriangles * verticesElementSize;
+	size_t vertexDataSize = primitive.numTriangles * verticesElementSize;
+	
+	size_t primitiveDataOffset = numTriangles * primitiveDataElementSize;
+	size_t primitiveDataSize = primitive.numTriangles * primitiveDataElementSize;
+	
+	memcpy(PASVertexBuffer.contents        + vertexDataOffset,    primitive.vertices,      vertexDataSize);
+	memcpy(PASPrimitiveDataBuffer.contents + primitiveDataOffset, primitive.primitiveData, primitiveDataSize);
+
+	MTL4AccelerationStructureTriangleGeometryDescriptor *geometryDescriptor = [[MTL4AccelerationStructureTriangleGeometryDescriptor alloc] init];
+	geometryDescriptor.triangleCount = primitive.numTriangles;
+	geometryDescriptor.vertexBuffer = MTL4BufferRangeMake(PASVertexBuffer.gpuAddress + vertexDataOffset, vertexDataSize);
+	geometryDescriptor.vertexFormat = MTLAttributeFormatFloat3;
+	geometryDescriptor.vertexStride = sizeof(simd_float3);
+	geometryDescriptor.primitiveDataBuffer = MTL4BufferRangeMake(PASPrimitiveDataBuffer.gpuAddress + primitiveDataOffset, primitiveDataSize);
+	geometryDescriptor.primitiveDataElementSize = primitiveDataElementSize;
+	geometryDescriptor.primitiveDataStride = primitiveDataElementSize;
+	
+	// TODO: only set this for triangles that actually have any transparency (which is the minority)
+	geometryDescriptor.intersectionFunctionTableOffset = 0;
+	geometryDescriptor.opaque = NO;
+	
+	MTL4PrimitiveAccelerationStructureDescriptor *primitiveASDescriptor = [[MTL4PrimitiveAccelerationStructureDescriptor alloc] init];
+	primitiveASDescriptor.geometryDescriptors = @[ geometryDescriptor ];
+	
+	id<MTLAccelerationStructure> primitiveAS = [pipeline.device newAccelerationStructureWithDescriptor:primitiveASDescriptor];
+	primitiveAS.label = [NSString stringWithFormat:@"[%@] PAS %lu (%lu triangles)", _label, numPrimitives+1, primitive.numTriangles];
+	
+	[PASes addObject:primitiveAS];
+	[PASDescriptors addObject:primitiveASDescriptor];
+
+	numTriangles += primitive.numTriangles;
+	
+	NSUInteger primitiveIdx = numPrimitives;
+	numPrimitives++;
+	return primitiveIdx;
 }
 
-- (void) addInstanceOfPrimitive:(id<ASTrianglePrimitive>)primitive
+- (void) addInstanceOfPrimitive:(NSUInteger)primitiveIdx
 				  withTransform:(simd_float4x3)transform
 					 instanceID:(uint32_t)instanceID
 						   mask:(uint)mask
 {
-	NSUInteger primitiveIdx = [primitives indexOfObject:primitive];
-	assert(primitiveIdx != NSNotFound);
-	
-	Instance *instance = [[Instance alloc] init];
-	instance.primitiveIdx = primitiveIdx;
-	instance.transform = (MTLPackedFloat4x3){
+	assert(numInstances + 1 < MAX_INSTANCES);
+	assert(primitiveIdx < PASes.count);
+
+	id<MTLAccelerationStructure> primitiveAS = [PASes objectAtIndex:primitiveIdx];
+
+	MTLPackedFloat4x3 packedTransform = {
 		.columns = {
 			MTLPackedFloat3Make(transform.columns[0][0], transform.columns[0][1], transform.columns[0][2]),
 			MTLPackedFloat3Make(transform.columns[1][0], transform.columns[1][1], transform.columns[1][2]),
@@ -83,98 +130,22 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 			MTLPackedFloat3Make(transform.columns[3][0], transform.columns[3][1], transform.columns[3][2]),
 		}
 	};
-	instance.instanceID = instanceID;
-	instance.mask = mask;
 	
-	[instances addObject:instance];
-}
+	MTLIndirectAccelerationStructureInstanceDescriptor desc = {};
+	desc.accelerationStructureID = primitiveAS.gpuResourceID;
+	desc.intersectionFunctionTableOffset = 0;
+	desc.mask = mask;
+	desc.transformationMatrix = packedTransform;
+	desc.userID = instanceID;
 
-- (void) copyPrimitiveDataToBuffers
-{
-	NSUInteger numTriangles = 0;
-	for (id<ASTrianglePrimitive> primitive in primitives) {
-		numTriangles += primitive.numTriangles;
-	}
-	
-	PASVertexBuffer = [pipeline.device newBufferWithLength:verticesElementSize * numTriangles
-												   options:MTLResourceStorageModeShared];
-	PASVertexBuffer.label = [NSString stringWithFormat:@"[%@] PASVertexBuffer", _label];
-	
-	PASPrimitiveDataBuffer = [pipeline.device newBufferWithLength:primitiveDataElementSize * numTriangles
-														  options:MTLResourceStorageModeShared];
-	PASPrimitiveDataBuffer.label = [NSString stringWithFormat:@"[%@] PASPrimitiveDataBuffer", _label];
-
-	NSUInteger triangleIndex = 0;
-	for (id<ASTrianglePrimitive> primitive in primitives) {
-		memcpy(PASVertexBuffer.contents + triangleIndex * verticesElementSize,
-			   primitive.vertices,
-			   primitive.numTriangles * verticesElementSize);
-
-		memcpy(PASPrimitiveDataBuffer.contents + triangleIndex * primitiveDataElementSize,
-			   primitive.primitiveData,
-			   primitive.numTriangles * primitiveDataElementSize);
-
-		triangleIndex += primitive.numTriangles;
-	}
-}
-
-- (void) createPrimitiveAccelerationStructures {
-	PASes = [NSMutableArray array];
-	PASDescriptors = [NSMutableArray array];
-
-	NSUInteger triangleIndex = 0;
-	for (int i = 0; i < primitives.count; i++) {
-		NSUInteger trianglesInPrimitive = [primitives objectAtIndex:i].numTriangles;
-
-		MTL4AccelerationStructureTriangleGeometryDescriptor *geometryDescriptor = [[MTL4AccelerationStructureTriangleGeometryDescriptor alloc] init];
-		geometryDescriptor.triangleCount = trianglesInPrimitive;
-		geometryDescriptor.vertexBuffer = MTL4BufferRangeMake(PASVertexBuffer.gpuAddress + verticesElementSize * triangleIndex,
-															  verticesElementSize * trianglesInPrimitive);
-		geometryDescriptor.vertexFormat = MTLAttributeFormatFloat3;
-		geometryDescriptor.vertexStride = sizeof(simd_float3);
-		geometryDescriptor.primitiveDataBuffer = MTL4BufferRangeMake(PASPrimitiveDataBuffer.gpuAddress + primitiveDataElementSize * triangleIndex,
-																	 primitiveDataElementSize * trianglesInPrimitive);
-		geometryDescriptor.primitiveDataElementSize = primitiveDataElementSize;
-		geometryDescriptor.primitiveDataStride = primitiveDataElementSize;
-		
-		// TODO: only set this for triangles that actually have any transparency (which is the minority)
-		geometryDescriptor.intersectionFunctionTableOffset = 0;
-		geometryDescriptor.opaque = NO;
-		
-		MTL4PrimitiveAccelerationStructureDescriptor *primitiveASDescriptor = [[MTL4PrimitiveAccelerationStructureDescriptor alloc] init];
-		primitiveASDescriptor.geometryDescriptors = @[ geometryDescriptor ];
-		
-		id<MTLAccelerationStructure> primitiveAS = [pipeline.device newAccelerationStructureWithDescriptor:primitiveASDescriptor];
-		primitiveAS.label = [NSString stringWithFormat:@"[%@] PAS %d of %lu (%lu triangles)", _label, i+1, primitives.count, trianglesInPrimitive];
-		
-		[PASes addObject:primitiveAS];
-		[PASDescriptors addObject:primitiveASDescriptor];
-		
-		triangleIndex += trianglesInPrimitive;
-	}
+	MTLIndirectAccelerationStructureInstanceDescriptor *target = IASInstanceBuffer.contents;
+	target[numInstances] = desc;
+	numInstances++;
 }
 
 - (void) createInstanceAccelerationStructure {
-	MTLIndirectAccelerationStructureInstanceDescriptor instanceDescriptors[instances.count];
-	
-	for (int i = 0; i < instances.count; i++) {
-		Instance *instance = [instances objectAtIndex:i];
-		MTLIndirectAccelerationStructureInstanceDescriptor desc = {};
-		desc.accelerationStructureID = [PASes objectAtIndex:instance.primitiveIdx].gpuResourceID;
-		desc.intersectionFunctionTableOffset = 0;
-		desc.mask = instance.mask;
-		desc.transformationMatrix = instance.transform;
-		desc.userID = instance.instanceID;
-		instanceDescriptors[i] = desc;
-	}
-
-	IASInstanceBuffer = [pipeline.device newBufferWithBytes:&instanceDescriptors
-												  length:sizeof(MTLIndirectAccelerationStructureInstanceDescriptor) * instances.count
-												 options:MTLResourceStorageModeShared];
-	IASInstanceBuffer.label = [NSString stringWithFormat:@"[%@] IASInstanceBuffer", _label];
-
 	IASDescriptor = [[MTL4InstanceAccelerationStructureDescriptor alloc] init];
-	IASDescriptor.instanceCount = instances.count;
+	IASDescriptor.instanceCount = numInstances;
 	IASDescriptor.instanceDescriptorBuffer = MTL4BufferRangeMake(IASInstanceBuffer.gpuAddress, IASInstanceBuffer.length);
 	
 	IAS = [pipeline.device newAccelerationStructureWithDescriptor:IASDescriptor];
@@ -183,54 +154,43 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 
 - (void) commitGeometry
 {
-	[self copyPrimitiveDataToBuffers];
-	[self createPrimitiveAccelerationStructures];
 	[self createInstanceAccelerationStructure];
 		
-	[residencySet addAllocation:PASVertexBuffer];
-	[residencySet addAllocation:PASPrimitiveDataBuffer];
 	for (id<MTLAccelerationStructure> staticPAS in PASes) {
 		[residencySet addAllocation:staticPAS];
 	}
 
-	[residencySet addAllocation:IASInstanceBuffer];
 	[residencySet addAllocation:IAS];
 	[residencySet commit];
 }
 
 - (void) commitInstances {
 	[self createInstanceAccelerationStructure];
-	[residencySet addAllocation:IASInstanceBuffer];
 	[residencySet addAllocation:IAS];
 	[residencySet commit];
 }
 
 - (void) clearGeometry {
-	if (PASVertexBuffer) [residencySet removeAllocation:PASVertexBuffer];
-	if (PASPrimitiveDataBuffer) [residencySet removeAllocation:PASPrimitiveDataBuffer];
 	for (id<MTLAllocation> PAS in PASes) {
 		[residencySet removeAllocation:PAS];
 	}
 	
-	PASVertexBuffer = nil;
-	PASPrimitiveDataBuffer = nil;
 	PASes = [NSMutableArray array];
 	PASDescriptors = [NSMutableArray array];
 	
-	primitives = [NSMutableArray array];
+	numTriangles = 0;
+	numPrimitives = 0;
 	
 	[self clearInstances];
 }
 
 - (void) clearInstances {
-	if (IASInstanceBuffer) [residencySet removeAllocation:IASInstanceBuffer];
 	if (IAS) [residencySet removeAllocation:IAS];
 
-	IASInstanceBuffer = nil;
 	IAS = nil;
 	IASDescriptor = nil;
 
-	instances = [NSMutableArray array];
+	numInstances = 0;
 }
 
 - (MTLResourceID) IASResourceID {

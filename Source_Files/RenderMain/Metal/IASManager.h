@@ -36,13 +36,14 @@
 
 /**
  Must be called between clearGeometry and commitGeometry.
+ Returns the index of the primitive, for passing into addInstanceOfPrimitive.
  */
-- (void) addPrimitive:(id<ASTrianglePrimitive>)primitive;
+- (NSUInteger) addPrimitive:(id<ASTrianglePrimitive>)primitive;
 
 /**
  Can be called either between clearGeometry/commitGeometry or clearInstances/commitInstances.
  */
-- (void) addInstanceOfPrimitive:(id<ASTrianglePrimitive>)primitive
+- (void) addInstanceOfPrimitive:(NSUInteger)primitiveIdx
 				  withTransform:(simd_float4x3)transform
 					 instanceID:(uint32_t)instanceID
 						   mask:(uint)mask;

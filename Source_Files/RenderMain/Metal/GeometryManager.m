@@ -34,7 +34,7 @@ uint getMask(bool isEnabled, bool isTransparent) {
 
 	// Dynamic geometry (sprites, doors, platforms)
 	IASManager *dynamicIASManager;
-	NSMutableDictionary<NSNumber*, id<ASTrianglePrimitive>> *dynamicPolygonPrimitives;
+	NSMutableDictionary<NSNumber*, NSNumber*> *dynamicPolygonPrimitiveIndices;
 		
 	id<MTLBuffer> topLevelIASInstanceBuffer;
 	MTL4InstanceAccelerationStructureDescriptor *topLevelIASDescriptor;
@@ -93,7 +93,7 @@ uint getMask(bool isEnabled, bool isTransparent) {
 	numStaticTriangles = 0;
 	numDynamicTriangles = 0;
 
-	dynamicPolygonPrimitives = [NSMutableDictionary dictionary];
+	dynamicPolygonPrimitiveIndices = [NSMutableDictionary dictionary];
 	numInstances = 0;
 	
 	if (!verticalQuadPrimitive) {
@@ -200,11 +200,11 @@ uint getMask(bool isEnabled, bool isTransparent) {
 		[self addDynamicTriangle:triangle];
 	}];
 
-	id<ASTrianglePrimitive> primitive = [dynamicPolygonPrimitives objectForKey:[NSNumber numberWithInt:ID]];
-	if (primitive == nil) {
-		primitive = [polygon primitiveForTextureIDs:_textureManager.textureIDs];
-		[dynamicIASManager addPrimitive:primitive];
-		[dynamicPolygonPrimitives setObject:primitive forKey:[NSNumber numberWithInt:ID]];
+	NSNumber *primitiveIdx = [dynamicPolygonPrimitiveIndices objectForKey:[NSNumber numberWithInt:ID]];
+	if (primitiveIdx == nil) {
+		id<ASTrianglePrimitive> primitive = [polygon primitiveForTextureIDs:_textureManager.textureIDs];
+		primitiveIdx = [NSNumber numberWithUnsignedLong:[dynamicIASManager addPrimitive:primitive]];
+		[dynamicPolygonPrimitiveIndices setObject:primitiveIdx forKey:[NSNumber numberWithInt:ID]];
 	}
 	
 	RayTracingData instanceData = {
@@ -217,7 +217,7 @@ uint getMask(bool isEnabled, bool isTransparent) {
 	
 	uint32_t instanceID = [self addInstanceData:instanceData];
 
-	[dynamicIASManager addInstanceOfPrimitive:primitive
+	[dynamicIASManager addInstanceOfPrimitive:primitiveIdx.unsignedLongValue
 								withTransform:polygon.instanceTransform
 								   instanceID:instanceID
 										 mask:getMask(isEnabled, polygon.surface.material.isTransparent)];
@@ -239,7 +239,7 @@ uint getMask(bool isEnabled, bool isTransparent) {
 
 	uint32_t instanceID = [self addInstanceData:instanceData];
 
-	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
+	[dynamicIASManager addInstanceOfPrimitive:0 // verticalQuadPrimitive
 								withTransform:wall.instanceTransform
 								   instanceID:instanceID
 										 mask:getMask(isEnabled, wall.surface.material.isTransparent)];
@@ -261,7 +261,7 @@ uint getMask(bool isEnabled, bool isTransparent) {
 
 	uint32_t instanceID = [self addInstanceData:instanceData];
 
-	[dynamicIASManager addInstanceOfPrimitive:verticalQuadPrimitive
+	[dynamicIASManager addInstanceOfPrimitive:0 // verticalQuadPrimitive
 								withTransform:sprite.instanceTransform
 								   instanceID:instanceID
 										 mask:getMask(true, sprite.surface.material.isTransparent)];
@@ -276,7 +276,7 @@ uint getMask(bool isEnabled, bool isTransparent) {
 		NSUInteger trianglesInBatch = MIN(trianglesPerBatch, numStaticTriangles - b);
 		TriangleBatch *batch = [[TriangleBatch alloc] initWithTriangles:(staticTriangles + b)
 														  triangleCount:trianglesInBatch];
-		[staticIASManager addPrimitive:batch];
+		NSUInteger primitiveIdx = [staticIASManager addPrimitive:batch];
 		simd_float4x3 transform = {
 			.columns = {
 				{ 1.0, 0.0, 0.0 },
@@ -285,7 +285,7 @@ uint getMask(bool isEnabled, bool isTransparent) {
 				{ 0.0, 0.0, 0.0 },
 			}
 		};
-		[staticIASManager addInstanceOfPrimitive:batch
+		[staticIASManager addInstanceOfPrimitive:primitiveIdx
 								   withTransform:transform
 									  instanceID:0
 											mask:getMask(true, false)];
@@ -400,7 +400,6 @@ uint getMask(bool isEnabled, bool isTransparent) {
 -(void)shutdown {
 	staticIASManager = nil;
 	dynamicIASManager = nil;
-	dynamicPolygonPrimitives = nil;
 	
 	[_residencySet removeAllAllocations];
 }
