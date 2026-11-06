@@ -10,9 +10,7 @@
 
 #import "IASManager.h"
 #import "MetalPipeline.h"
-
-#define MAX_TRIANGLES 10000
-#define MAX_INSTANCES 1000
+#import "Common.h"
 
 static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 
