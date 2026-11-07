@@ -859,6 +859,7 @@ void UpdateWorld() {
 			if (is_collection_present(collection)) {
 				OGL_LoadTextures(collection);
 			}
+			logWarning("%d/%d texture collections loaded", collection+1, MAXIMUM_COLLECTIONS);
 		}
 		
 		polygonTextureCache = [NSMutableDictionary dictionary];

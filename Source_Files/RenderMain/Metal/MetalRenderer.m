@@ -33,6 +33,13 @@
 const bool FULL_PATH_TRACING = true;
 const PostProcessingType POST_PROCESSING_TYPE = NoPostProcessing;
 
+typedef struct {
+	double ASRebuild;
+	double FirstPass;
+	double Denoise;
+	double FinalPass;
+} Timing;
+
 API_AVAILABLE(macos(26.0))
 @implementation MetalRenderer
 {
@@ -44,6 +51,7 @@ API_AVAILABLE(macos(26.0))
 
 	Sky sky;
 	Camera camera;
+	Timing timing;
 	
 	// Metal pipeline internals
 	
@@ -244,6 +252,8 @@ API_AVAILABLE(macos(26.0))
 
 - (void) finishUpdatingDynamicGeometry {
 	[geometryManager finishUpdatingDynamicGeometry];
+	timing.ASRebuild = geometryManager.lastRebuildTimeMs;
+
 	[textureManager finishUpdatingDynamicGeometry];
 
 	[rayTracer addGeometryAllocations];
@@ -294,6 +304,7 @@ API_AVAILABLE(macos(26.0))
 		
 	id<CAMetalDrawable> currentDrawable = [metalLayer nextDrawable];
 
+	NSDate *firstPassStart = [NSDate date];
 	id<MTL4CommandBuffer> commandBuffer = pipeline.commandBuffer;
 	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
 	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu (initial + raytracing)", _view.frameNumber];
@@ -309,16 +320,21 @@ API_AVAILABLE(macos(26.0))
 	[pipeline.commandQueue commit:&commandBuffer count:1];
 	[pipeline.commandQueue signalEvent:pipeline.sharedEvent value:renderSignalValue];
 	[pipeline.sharedEvent waitUntilSignaledValue:renderSignalValue timeoutMS:5000];
+	timing.FirstPass = [firstPassStart timeIntervalSinceNow] * -1000.0;
 	[pipeline.commandAllocator reset];
 	
+	NSDate *denoiseStart = [NSDate date];
 	if (POST_PROCESSING_TYPE == TemporalUpscale) {
 		[postProcessor encodeTemporalUpscaleUpdatingFence:postProcessingPassFence];
+		timing.Denoise = [denoiseStart timeIntervalSinceNow] * -1000.0;
+	} else if (POST_PROCESSING_TYPE == TemporalDenoisedUpscale) {
+		[postProcessor encodeTemporalDenoisedUpscaleUpdatingFence:postProcessingPassFence];
+		timing.Denoise = [denoiseStart timeIntervalSinceNow] * -1000.0;
+	} else {
+		timing.Denoise = 0.0;
 	}
 
-	if (POST_PROCESSING_TYPE == TemporalDenoisedUpscale) {
-		[postProcessor encodeTemporalDenoisedUpscaleUpdatingFence:postProcessingPassFence];
-	}
-	
+	NSDate *finalPassStart = [NSDate date];
 	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
 	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu (final pass)", _view.frameNumber];
 
@@ -340,7 +356,14 @@ API_AVAILABLE(macos(26.0))
 	[currentDrawable present];
 	[pipeline.commandQueue signalEvent:pipeline.sharedEvent value:renderSignalValue];
 	[pipeline.sharedEvent waitUntilSignaledValue:renderSignalValue timeoutMS:5000];
+	timing.FinalPass = [finalPassStart timeIntervalSinceNow] * -1000.0;
 	[pipeline.commandAllocator reset];
+	
+//	NSLog(@"-----------------------------");
+//	NSLog(@"AS rebuild : %.2f", timing.ASRebuild);
+//	NSLog(@"First pass : %.2f", timing.FirstPass);
+//	NSLog(@"Denoise    : %.2f", timing.Denoise);
+//	NSLog(@"Final pass : %.2f", timing.FinalPass);
 }
 
 @end

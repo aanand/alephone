@@ -28,6 +28,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) id<MTLAccelerationStructure> topLevelIAS;
 
 @property (nonatomic, readonly) id<MTLResidencySet> residencySet;
+@property (nonatomic, readonly) double lastRebuildTimeMs;
 
 - (instancetype) initWithPipeline:(MetalPipeline*)pipeline;
 - (bool) compile;

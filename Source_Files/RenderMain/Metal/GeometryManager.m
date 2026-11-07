@@ -326,7 +326,10 @@ uint getMask(bool isEnabled, bool isTransparent) {
 
 - (void) buildAccelerationStructureWithChangesTo:(NSArray<IASManager*>*)iasManagers
 						 primitiveDataHasChanged:(BOOL)primitiveDataHasChanged
-										   label:(NSString*)label {
+										   label:(NSString*)label
+{
+	NSDate *startTime = [NSDate date];
+
 	// Calculate largest scratch size needed
 	NSMutableArray<MTL4AccelerationStructureDescriptor*> *allDescriptors = [NSMutableArray array];
 	[allDescriptors addObject:topLevelIASDescriptor];
@@ -387,6 +390,8 @@ uint getMask(bool isEnabled, bool isTransparent) {
 
 	[_residencySet removeAllocation:scratchBuffer];
 	[_residencySet commit];
+	
+	_lastRebuildTimeMs = [startTime timeIntervalSinceNow] * -1000.0;
 }
 
 -(void)shutdown {
