@@ -849,11 +849,15 @@ void Metal_StartRun() {
 	if (lastLoadedLevelNumber >= 0) { OGL_StopTextures(); }
 	OGL_StartTextures();
 	
+	auto collectionsToLoad = std::vector<short>();
 	for (short collection = 0; collection < MAXIMUM_COLLECTIONS; collection++) {
 		if (is_collection_present(collection)) {
-			OGL_LoadTextures(collection);
+			collectionsToLoad.push_back(collection);
 		}
-		logWarning("%d/%d texture collections loaded", collection+1, MAXIMUM_COLLECTIONS);
+	}
+	for (std::size_t i = 0; i < collectionsToLoad.size(); i++) {
+		OGL_LoadTextures(collectionsToLoad[i]);
+		logWarning("%d/%d texture collections loaded", i+1, collectionsToLoad.size());
 	}
 	
 	polygonTextureCache = [NSMutableDictionary dictionary];
