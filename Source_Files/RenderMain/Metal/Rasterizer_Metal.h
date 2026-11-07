@@ -16,6 +16,7 @@
 #include "RenderRasterize.h"
 
 extern bool Metal_InitializeForWindow(SDL_Window* window, int width, int height);
+extern void Metal_StartRun();
 
 class Rasterizer_Metal_Class : public RasterizerClass {
 	void SetView(view_data &View);
@@ -23,16 +24,6 @@ class Rasterizer_Metal_Class : public RasterizerClass {
 	void End();
 };
 
-class RenderRasterize_Metal : public RenderRasterizerClass {
-protected:
-//	void render_node_floor_or_ceiling(clipping_window_data *window, polygon_data *polygon, horizontal_surface_data *surface,
-//									  bool void_present, bool ceil, RenderStep renderStep) override;
-//	
-//	void render_node_side(clipping_window_data *window, vertical_surface_data *surface,
-//						  bool void_present, RenderStep renderStep) override;
-//	
-//	virtual void render_node_object(render_object_data *object, bool other_side_of_media, RenderStep renderStep) override;
-
-};
+class RenderRasterize_Metal : public RenderRasterizerClass {};
 
 #endif /* Rasterizer_Metal_h */

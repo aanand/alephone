@@ -669,7 +669,9 @@ static void reallocate_map_pixels(int width, int height)
 void ReloadViewContext(void)
 {
 #ifdef HAVE_OPENGL
-	if (in_game && screen_mode.acceleration != _no_acceleration)
+	if (prefer_metal)
+		Metal_StartRun();
+	else if (in_game && screen_mode.acceleration != _no_acceleration)
 		OGL_StartRun();
 #endif
 }

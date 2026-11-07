@@ -808,16 +808,16 @@ void UpdateObject(short objectIdx, object_data *object) {
 	}
 }
 
-void LoadStaticGeometry() {
+void LoadGeometry(bool isDynamicPass) {
 	for (short polyIdx = 0; polyIdx < dynamic_world->polygon_count; polyIdx++) {
 		polygon_data *polygon = get_polygon_data(polyIdx);
 		
-		AddHorizontalSurfaces(polyIdx, polygon, false);
-		AddWalls(polyIdx, polygon, false);
+		AddHorizontalSurfaces(polyIdx, polygon, isDynamicPass);
+		AddWalls(polyIdx, polygon, isDynamicPass);
 	}
 }
 
-void UpdateDynamicGeometry() {
+void LoadObjects() {
 	for (short polyIdx = 0; polyIdx < dynamic_world->polygon_count; polyIdx++) {
 		polygon_data *polygon = get_polygon_data(polyIdx);
 		short objectIdx = polygon->first_object;
@@ -827,15 +827,48 @@ void UpdateDynamicGeometry() {
 			UpdateObject(objectIdx, object);
 			objectIdx = object->next_object;
 		}
-		
-		AddHorizontalSurfaces(polyIdx, polygon, true);
-		AddWalls(polyIdx, polygon, true);
 	}
-	
+}
+
+void LoadLightSources() {
 	for (int32_t lightSourceIndex = 0; lightSourceIndex < MAXIMUM_LIGHTS_PER_MAP; lightSourceIndex++) {
 		lightSourceIntensities[lightSourceIndex] = get_light_intensity(lightSourceIndex) / float(FIXED_ONE - 1);
 	}
 	[renderer updateLightSourceIntensities:lightSourceIntensities];
+}
+
+void Metal_StartRun() {
+	if (!dynamic_world) return;
+
+	assert(lastLoadedLevelNumber != dynamic_world->current_level_number);
+
+	logWarning("Loading level number %d", dynamic_world->current_level_number);
+	
+	// This is unfortunately necessary while we're using TextureManager,
+	// which is heavily coupled to OpenGL but too complex to recreate from scratch
+	if (lastLoadedLevelNumber >= 0) { OGL_StopTextures(); }
+	OGL_StartTextures();
+	
+	for (short collection = 0; collection < MAXIMUM_COLLECTIONS; collection++) {
+		if (is_collection_present(collection)) {
+			OGL_LoadTextures(collection);
+		}
+		logWarning("%d/%d texture collections loaded", collection+1, MAXIMUM_COLLECTIONS);
+	}
+	
+	polygonTextureCache = [NSMutableDictionary dictionary];
+	spriteTextureCache = [NSMutableDictionary dictionary];
+	lightSourceIntensities = (float*)malloc(sizeof(float) * MAXIMUM_LIGHTS_PER_MAP);
+
+	findOverlaps();
+
+	[renderer startUpdatingAllGeometry];
+	[renderer updateLightSourceCount:MAXIMUM_LIGHTS_PER_MAP];
+	LoadGeometry(false);
+	LoadGeometry(true);
+	[renderer finishUpdatingAllGeometry];
+
+	lastLoadedLevelNumber = dynamic_world->current_level_number;
 }
 
 void UpdateWorld() {
@@ -847,37 +880,12 @@ void UpdateWorld() {
 	}
 	[renderer updateSky:sky];
 
-	if (lastLoadedLevelNumber != dynamic_world->current_level_number) {
-		logWarning("Loading level number %d", dynamic_world->current_level_number);
-		
-		// This is unfortunately necessary while we're using TextureManager,
-		// which is heavily coupled to OpenGL but too complex to recreate from scratch
-		if (lastLoadedLevelNumber >= 0) { OGL_StopTextures(); }
-		OGL_StartTextures();
-		
-		for (short collection = 0; collection < MAXIMUM_COLLECTIONS; collection++) {
-			if (is_collection_present(collection)) {
-				OGL_LoadTextures(collection);
-			}
-			logWarning("%d/%d texture collections loaded", collection+1, MAXIMUM_COLLECTIONS);
-		}
-		
-		polygonTextureCache = [NSMutableDictionary dictionary];
-		spriteTextureCache = [NSMutableDictionary dictionary];
-		lightSourceIntensities = (float*)malloc(sizeof(float) * MAXIMUM_LIGHTS_PER_MAP);
+	// Metal_StartRun() should have updated lastLoadedLevelNumber
+	assert(lastLoadedLevelNumber == dynamic_world->current_level_number);
 
-		findOverlaps();
-
-		[renderer startUpdatingAllGeometry];
-		[renderer updateLightSourceCount:MAXIMUM_LIGHTS_PER_MAP];
-		LoadStaticGeometry();
-		UpdateDynamicGeometry();
-		[renderer finishUpdatingAllGeometry];
-
-		lastLoadedLevelNumber = dynamic_world->current_level_number;
-	} else {
-		[renderer startUpdatingDynamicGeometry];
-		UpdateDynamicGeometry();
-		[renderer finishUpdatingDynamicGeometry];
-	}
+	[renderer startUpdatingDynamicGeometry];
+	LoadGeometry(true);
+	LoadObjects();
+	LoadLightSources();
+	[renderer finishUpdatingDynamicGeometry];
 }
