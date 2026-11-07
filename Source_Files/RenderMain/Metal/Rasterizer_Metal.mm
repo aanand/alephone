@@ -838,10 +838,6 @@ void LoadLightSources() {
 }
 
 void Metal_StartRun() {
-	if (!dynamic_world) return;
-
-	assert(lastLoadedLevelNumber != dynamic_world->current_level_number);
-
 	logWarning("Loading level number %d", dynamic_world->current_level_number);
 	
 	// This is unfortunately necessary while we're using TextureManager,
