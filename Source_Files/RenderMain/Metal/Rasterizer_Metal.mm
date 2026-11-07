@@ -840,6 +840,9 @@ void LoadLightSources() {
 void Metal_StartRun() {
 	logWarning("Loading level number %d", dynamic_world->current_level_number);
 	
+	[renderer renderLoadingScreenWithProgress:0.0];
+	SDL_PumpEvents();
+
 	// This is unfortunately necessary while we're using TextureManager,
 	// which is heavily coupled to OpenGL but too complex to recreate from scratch
 	if (lastLoadedLevelNumber >= 0) { OGL_StopTextures(); }
@@ -853,7 +856,9 @@ void Metal_StartRun() {
 	}
 	for (std::size_t i = 0; i < collectionsToLoad.size(); i++) {
 		OGL_LoadTextures(collectionsToLoad[i]);
-		logWarning("%d/%d texture collections loaded", i+1, collectionsToLoad.size());
+		float progress = ((float)(i+1)) / ((float)collectionsToLoad.size());
+		[renderer renderLoadingScreenWithProgress:progress];
+		SDL_PumpEvents();
 	}
 	
 	polygonTextureCache = [NSMutableDictionary dictionary];

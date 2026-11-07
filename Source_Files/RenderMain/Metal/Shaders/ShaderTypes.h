@@ -225,4 +225,8 @@ typedef struct {
 	float W;
 } Reservoir;
 
+typedef struct {
+	float progress;
+} LoadingScreenState;
+
 #endif /* VertexTypes_h */

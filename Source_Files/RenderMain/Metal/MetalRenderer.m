@@ -25,6 +25,7 @@
 #include "RayTracer.h"
 #include "PostProcessor.h"
 #include "FinalRender.h"
+#include "LoadingScreen.h"
 
 #include "MetalTypes.h"
 #include "Utils.h"
@@ -64,6 +65,7 @@ API_AVAILABLE(macos(26.0))
 	RayTracer *rayTracer;
 	PostProcessor *postProcessor;
 	FinalRender *finalRender;
+	LoadingScreen *loadingScreen;
 	
 	id<MTLFence> initialPassFence;
 	id<MTLFence> computePassFence;
@@ -159,6 +161,12 @@ API_AVAILABLE(macos(26.0))
 		return nil;
 	}
 	[pipeline.commandQueue addResidencySet:finalRender.residencySet];
+	
+	loadingScreen = [[LoadingScreen alloc] initWithPipeline:pipeline];
+	loadingScreen.view = _view;
+	if (![loadingScreen compileForPixelFormat:metalLayer.pixelFormat]) {
+		return nil;
+	}
 	
 	initialPassFence = [pipeline.device newFence];
 	computePassFence = [pipeline.device newFence];
@@ -271,6 +279,10 @@ API_AVAILABLE(macos(26.0))
 	return [textureManager addPlaceholderTextureWithID:textureID];
 }
 
+- (void)renderLoadingScreenWithProgress:(float)progress {
+	[loadingScreen renderToDrawable:[metalLayer nextDrawable] progress:progress];
+}
+
 - (void) begin {
 	_view.frameNumber += 1;
 
@@ -307,7 +319,6 @@ API_AVAILABLE(macos(26.0))
 	NSDate *firstPassStart = [NSDate date];
 	id<MTL4CommandBuffer> commandBuffer = pipeline.commandBuffer;
 	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
-	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu (initial + raytracing)", _view.frameNumber];
 	[initialRender encodeAndUpdateFence:initialPassFence];
 	[rayTracer encodeAndUpdateFence:computePassFence];
 	[commandBuffer endCommandBuffer];
@@ -336,7 +347,6 @@ API_AVAILABLE(macos(26.0))
 
 	NSDate *finalPassStart = [NSDate date];
 	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
-	commandBuffer.label = [NSString stringWithFormat:@"Frame %llu (final pass)", _view.frameNumber];
 
 	if (POST_PROCESSING_TYPE == WaveletDenoise) {
 		[postProcessor encodeWaveletDenoiseUpdatingFence:postProcessingPassFence];

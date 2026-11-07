@@ -14,8 +14,14 @@
 }
 
 -(bool)compileForPixelFormat:(MTLPixelFormat)pixelFormat {
-	pipelineState = [self compilePipelineState:pixelFormat];
-	
+	pipelineState = [_pipeline renderPipelineStateWithVertexFunction:@"finalRenderVertexShader"
+													fragmentFunction:@"finalRenderFragmentShader"
+															   label:@"Final render"
+														 pixelFormat:pixelFormat];
+	if (!pipelineState) {
+		return false;
+	}
+
 	NSError *error;
 	
 	MTL4ArgumentTableDescriptor *fragmentArgumentTableDescriptor = [MTL4ArgumentTableDescriptor new];
@@ -52,44 +58,6 @@
 -(void)shutdown {
 	[_residencySet removeAllAllocations];
 }
-
-- (id<MTLRenderPipelineState>) compilePipelineState:(MTLPixelFormat) colorPixelFormat {
-	NSError *error;
-	id<MTL4Compiler> compiler = [_pipeline.device newCompilerWithDescriptor:[MTL4CompilerDescriptor new]
-															error:&error];
-	
-	if (error) {
-		NSLog(@"%@", error);
-		return nil;
-	}
-
-	MTL4LibraryFunctionDescriptor *vertexFunction = [MTL4LibraryFunctionDescriptor new];
-	vertexFunction.library = _pipeline.defaultLibrary;
-	vertexFunction.name = @"finalRenderVertexShader";
-	
-	MTL4LibraryFunctionDescriptor *fragmentFunction = [MTL4LibraryFunctionDescriptor new];
-	fragmentFunction.library = _pipeline.defaultLibrary;
-	fragmentFunction.name = @"finalRenderFragmentShader";
-	
-	MTL4RenderPipelineDescriptor *descriptor = [MTL4RenderPipelineDescriptor new];
-	descriptor.label = @"Final Render";
-	descriptor.vertexFunctionDescriptor = vertexFunction;
-	descriptor.fragmentFunctionDescriptor = fragmentFunction;
-	
-	MTL4RenderPipelineColorAttachmentDescriptor *colorAttachment = descriptor.colorAttachments[0];
-	colorAttachment.pixelFormat = colorPixelFormat;
-	
-	id<MTLRenderPipelineState> state = [compiler newRenderPipelineStateWithDescriptor:descriptor
-																  compilerTaskOptions:nil
-																				error:&error];
-	if (error) {
-		NSLog(@"%@", error);
-		return nil;
-	}
-	
-	return state;
-}
-
 
 -(void) encodeToOutputTexture:(id<MTLTexture>)outputTexture afterFences:(NSArray<id<MTLFence>>*)fences
 {

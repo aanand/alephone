@@ -31,6 +31,8 @@ API_AVAILABLE(macos(26.0))
 
 @property (readonly) View *view;
 
+- (void) renderLoadingScreenWithProgress:(float)progress;
+
 - (void) updateSky:(Sky)sky;
 
 - (void) begin;

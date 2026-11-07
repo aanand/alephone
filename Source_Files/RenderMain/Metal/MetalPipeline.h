@@ -20,6 +20,11 @@
 @property (nonatomic, strong) id<MTL4CommandAllocator> commandAllocator;
 @property (nonatomic, strong) id<MTLSharedEvent> sharedEvent;
 
+- (id<MTLRenderPipelineState>) renderPipelineStateWithVertexFunction:(NSString*)vertexFunctionName
+													fragmentFunction:(NSString*)fragmentFunctionName
+															   label:(NSString*)label
+														 pixelFormat:(MTLPixelFormat)pixelFormat;
+
 @end
 
 #endif /* MetalPipeline_h */

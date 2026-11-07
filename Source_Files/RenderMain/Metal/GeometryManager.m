@@ -353,10 +353,9 @@ uint getMask(bool isEnabled, bool isTransparent) {
 	
 	id<MTL4CommandBuffer> commandBuffer = _pipeline.commandBuffer;
 	[commandBuffer beginCommandBufferWithAllocator:_pipeline.commandAllocator];
-	commandBuffer.label = label;
 
 	id<MTL4ComputeCommandEncoder> encoder = [_pipeline.commandBuffer computeCommandEncoder];
-	encoder.label = @"Build acceleration structures";
+	encoder.label = label;
 	
 	if (primitiveDataHasChanged) {
 		for (IASManager *iasm in iasManagers) {
