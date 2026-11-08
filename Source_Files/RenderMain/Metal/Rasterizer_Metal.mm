@@ -53,6 +53,7 @@ std::unordered_map<short, std::unordered_set<short>> overlaps;
 @property (nonatomic) int scale;
 @property (nonatomic) simd_float2x2 transform;
 @property (nonatomic) bool hasNormalMap;
+@property (nonatomic) bool hasSubstitution;
 @end
 @implementation PolygonTexture
 @end
@@ -61,6 +62,7 @@ std::unordered_map<short, std::unordered_set<short>> overlaps;
 @property (nonatomic) NSString *textureID;
 @property (nonatomic) uint32_t index;
 @property (nonatomic) simd_float4x2 uv;
+@property (nonatomic) bool hasSubstitution;
 @end
 @implementation SpriteTexture
 @end
@@ -367,6 +369,7 @@ PolygonTexture *LoadPolygonTexture(shape_descriptor ShapeDesc, short TransferMod
 	result.index = textureIndex;
 	result.scale = scale;
 	result.hasNormalMap = (TMgr->GetBump() && TMgr->GetBump()->IsPresent());
+	result.hasSubstitution = TMgr->HasSubstitution();
 	
 	if (TMgr->HasSubstitution()) {
 		result.transform = (simd_float2x2){
@@ -406,6 +409,7 @@ SpriteTexture *LoadSpriteTexture(short collection_code, short low_level_shape_in
 	SpriteTexture *result = [[SpriteTexture alloc] init];
 	result.textureID = textureID;
 	result.index = textureIndex;
+	result.hasSubstitution = TMgr->HasSubstitution();
 	
 	simd_float2 offset, scale;
 	if (TMgr->HasSubstitution()) {
@@ -525,7 +529,7 @@ Sky defaultSky = {
 //	.sunRadius = 10.0 * M_PI / 180.0,
 //};
 
-Material getMaterial(NSString *textureID, bool isLandscape, bool hasNormalMap) {
+Material getMaterial(NSString *textureID, bool isLandscape, bool hasNormalMap, bool hasSubstitution) {
 	Material material = {};
 
 	std::string key = textureID.UTF8String;
@@ -535,6 +539,7 @@ Material getMaterial(NSString *textureID, bool isLandscape, bool hasNormalMap) {
 	}
 
 	material.isLandscape = isLandscape;
+	material.isSubstituteTexture = hasSubstitution;
 	material.roughness = hasNormalMap ? 0.0 : 0.75;
 	
 	return material;
@@ -577,7 +582,10 @@ void AddWall(short polygonIdx,
 	uv.columns[2] = simd_mul(texture.transform, uv.columns[2]);
 	uv.columns[3] = simd_mul(texture.transform, uv.columns[3]);
 	
-	Material material = getMaterial(texture.textureID, surface->transfer_mode == _xfer_landscape, texture.hasNormalMap);
+	Material material = getMaterial(texture.textureID,
+									surface->transfer_mode == _xfer_landscape,
+									texture.hasNormalMap,
+									texture.hasSubstitution);
 	
 	Surface mSurface = {
 		.textureIndex = texture.index,
@@ -624,7 +632,10 @@ void AddHorizontalSurface(short polygonIdx, polygon_data *polygon, horizontal_su
 		uv[i] = simd_mul(texture.transform, baseUV);
 	}
 	
-	Material material = getMaterial(textureID, surface->transfer_mode == _xfer_landscape, texture.hasNormalMap);
+	Material material = getMaterial(textureID,
+									surface->transfer_mode == _xfer_landscape,
+									texture.hasNormalMap,
+									texture.hasSubstitution);
 
 	Surface mSurface = {
 		.textureIndex = texture.index,
@@ -779,7 +790,10 @@ MetalSprite* GetSprite(short objectIdx, object_data *object) {
 		.right = shape_information->world_right,
 	};
 	
-	Material material = getMaterial(texture.textureID, false, false);
+	Material material = getMaterial(texture.textureID,
+									false,
+									false,
+									texture.hasSubstitution);
 	
 	Surface surface = {
 		.textureIndex = texture.index,

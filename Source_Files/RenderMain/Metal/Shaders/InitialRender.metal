@@ -20,6 +20,7 @@ struct RasterizerData {
 	uint32_t textureIndex;
 	float2 textureCoordinate;
 	bool isLandscape [[flat]];
+	bool isSubstituteTexture [[flat]];
 };
 
 // Reorient a world-space position to view-space.
@@ -60,6 +61,7 @@ initialRenderVertexShader(uint vertexID [[vertex_id]],
 	out.textureIndex = v.surface.textureIndex;
 	out.textureCoordinate = v.textureCoordinate;
 	out.isLandscape = v.surface.material.isLandscape;
+	out.isSubstituteTexture = v.surface.material.isSubstituteTexture;
 	
 	return out;
 }
@@ -78,10 +80,9 @@ initialRenderFragmentShader(RasterizerData in [[stage_in]],
 							constant Uniforms &uniforms [[ buffer(InitialRenderFragmentShaderUniformsIndex) ]],
 							constant TextureArgs &textures [[ buffer(InitialRenderFragmentShaderAlbedoTexturesIndex) ]])
 {
-	constexpr sampler textureSampler (mag_filter::linear, min_filter::linear, address::repeat);
 	texture2d<float> colorTexture = textures.textures[in.textureIndex];
 
-	float4 colorSample = colorTexture.sample(textureSampler, in.textureCoordinate);
+	float4 colorSample = colorTexture.sample(getSampler(in.isSubstituteTexture), in.textureCoordinate);
 	if (colorSample.a < 0.5) {
 		discard_fragment();
 	}

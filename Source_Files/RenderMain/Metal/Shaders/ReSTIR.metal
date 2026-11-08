@@ -159,8 +159,6 @@ bool isVisible(float3 from, float3 to, thread RayTracer &rayTracer) {
 	return result.type == intersection_type::none;
 }
 
-constexpr sampler sam(mag_filter::linear, min_filter::linear, address::repeat);
-
 float3 getEmission(RayTracingResult intersection, float3 direction, thread RayTracer &rayTracer, constant Uniforms &uniforms) {
 	if (intersection.type == intersection_type::none) {
 		return float3(0.0);
@@ -175,7 +173,7 @@ float3 getEmission(RayTracingResult intersection, float3 direction, thread RayTr
 	if (data.surface.textureIndex > 0) {
 		float2 uv = getUV(intersection, data);
 		texture2d<float> emissionMap = rayTracer.emissionMaps->textures[data.surface.textureIndex];
-		float4 emission = emissionMap.sample(sam, uv);
+		float4 emission = emissionMap.sample(getSampler(data), uv);
 
 		float lightSourceMultiplier = 1.0;
 		if (data.surface.lightSourceIndex >= 0) {
@@ -203,7 +201,7 @@ float3 getAlbedo(RayTracingResult intersection, thread RayTracer &rayTracer) {
 	if (textureIndex > 0) {
 		float2 uv = getUV(intersection, data);
 		texture2d<float> texture = rayTracer.textures->textures[textureIndex];
-		return texture.sample(sam, uv).rgb;
+		return texture.sample(getSampler(data), uv).rgb;
 	}
 	
 	return float3(0.0);
@@ -222,7 +220,7 @@ float3 getNormal(RayTracingResult intersection, thread RayTracer &rayTracer) {
 
 	texture2d<float> normalMap = rayTracer.normalMaps->textures[data.surface.textureIndex];
 	float2 uv = getUV(intersection, data);
-	float3 texelNormal = normalMap.sample(sam, uv).xyz * 2.0 - 1.0;
+	float3 texelNormal = normalMap.sample(getSampler(data), uv).xyz * 2.0 - 1.0;
 
 	float3 T = normalize(data.surface.tangent.xyz);
 	float3 N = normalize(data.surface.normal);

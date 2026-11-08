@@ -93,4 +93,14 @@ inline float getPlayerLightIntensity(constant Uniforms &uniforms, float3 forward
 	return weaponFlare + flashlight;
 }
 
+inline sampler getSampler(bool isSubstituteTexture) {
+	return isSubstituteTexture ?
+		sampler(mag_filter::linear, min_filter::linear, address::repeat) :
+		sampler(mag_filter::nearest, min_filter::linear, address::repeat);
+}
+
+inline sampler getSampler(RayTracingData data) {
+	return getSampler(data.surface.material.isSubstituteTexture);
+}
+
 #endif /* Utils_h */

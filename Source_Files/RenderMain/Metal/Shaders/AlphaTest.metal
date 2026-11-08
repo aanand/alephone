@@ -29,8 +29,7 @@ bool alphaTestIntersection(             float2          coordinates     [[ baryc
 
 	float2 uv = getUV(coordinates, primitiveIndex, instanceIndex, data);
 	texture2d<float> texture = albedoTextures->textures[data.surface.textureIndex];
-	constexpr sampler sam(mag_filter::linear, min_filter::linear, address::repeat);
-	float4 albedo = texture.sample(sam, uv);
+	float4 albedo = texture.sample(getSampler(data), uv);
 
 	return albedo.a >= 0.5;
 }
