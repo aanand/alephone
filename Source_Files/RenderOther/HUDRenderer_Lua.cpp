@@ -50,8 +50,9 @@ HUD_Lua_Class *Lua_HUDInstance()
 	return &HUD_Lua;
 }
 
-void Lua_DrawHUD(short time_elapsed)
+void Lua_DrawHUD(short time_elapsed, bool use_metal)
 {
+	HUD_Lua.use_metal = use_metal;
 	HUD_Lua.update_motion_sensor(time_elapsed);
 	HUD_Lua.start_draw();
 	L_Call_HUDDraw();
@@ -103,7 +104,7 @@ void HUD_Lua_Class::start_draw(void)
 	alephone::Screen *scr = alephone::Screen::instance();
 	scr->bound_screen();
     m_wr = scr->window_rect();
-	m_opengl = (get_screen_mode()->acceleration != _no_acceleration);
+	m_opengl = !use_metal && (get_screen_mode()->acceleration != _no_acceleration);
 	m_masking_mode = _mask_disabled;
 	
 #ifdef HAVE_OPENGL

@@ -57,7 +57,8 @@ fragment float4
 finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
 						  constant Uniforms &uniforms [[ buffer(FinalRenderFragmentShaderUniformsIndex) ]],
 						  texture2d<float> albedoTex [[ texture(FinalRenderFragmentShaderAlbedoTextureIndex) ]],
-						  texture2d<float> rayTracingTex [[ texture(FinalRenderFragmentShaderRayTracingTextureIndex) ]])
+						  texture2d<float> rayTracingTex [[ texture(FinalRenderFragmentShaderRayTracingTextureIndex) ]],
+						  texture2d<float> hudTex [[ texture(FinalRenderFragmentShaderHUDTextureIndex) ]])
 {
 	constexpr sampler sam(min_filter::nearest, mag_filter::nearest, mip_filter::none);
 	
@@ -72,6 +73,9 @@ finalRenderFragmentShader(CopyVertexOut in [[stage_in]],
 	if (toneMap) {
 		color = float4(ToneMapACES(color.rgb), 1.0);
 	}
+	
+	float4 hudColor = hudTex.sample(sam, in.uv);
+	color.rgb = color.rgb * (1.0 - hudColor.a) + hudColor.rgb;
 	
 	return color;
 }

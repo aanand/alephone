@@ -51,6 +51,8 @@ class HUD_Lua_Class : public HUD_Class
 public:
 	HUD_Lua_Class() : m_drawing(false) {}
 	~HUD_Lua_Class() {}
+	
+	bool use_metal;
 
 	void update_motion_sensor(short time_elapsed);
 	void clear_entity_blips(void);
@@ -114,6 +116,6 @@ protected:
 };
 
 HUD_Lua_Class *Lua_HUDInstance();
-void Lua_DrawHUD(short time_elapsed);
+void Lua_DrawHUD(short time_elapsed, bool use_metal);
 
 #endif

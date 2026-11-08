@@ -411,13 +411,13 @@ int Lua_Images_New(lua_State *L)
         int resource_id = lua_tointeger(L, -1);
 
 		// blitter from image
-#ifdef HAVE_OPENGL
-		Image_Blitter *blitter = (get_screen_mode()->acceleration != _no_acceleration)
-			? new OGL_Blitter(TxtrTypeInfoList[OGL_Txtr_HUD].NearFilter)
-			: new Image_Blitter();
-#else
+//#ifdef HAVE_OPENGL
+//		Image_Blitter *blitter = (get_screen_mode()->acceleration != _no_acceleration)
+//			? new OGL_Blitter(TxtrTypeInfoList[OGL_Txtr_HUD].NearFilter)
+//			: new Image_Blitter();
+//#else
 		Image_Blitter *blitter = new Image_Blitter();
-#endif
+//#endif
 
         if (!blitter->Load(resource_id))
         {
@@ -506,13 +506,13 @@ int Lua_Images_New(lua_State *L)
 	}
 	
 	// blitter from image
-#ifdef HAVE_OPENGL
-	Image_Blitter *blitter = (get_screen_mode()->acceleration != _no_acceleration)
-		? new OGL_Blitter()
-		: new Image_Blitter();
-#else
+//#ifdef HAVE_OPENGL
+//	Image_Blitter *blitter = (get_screen_mode()->acceleration != _no_acceleration)
+//		? new OGL_Blitter()
+//		: new Image_Blitter();
+//#else
 	Image_Blitter *blitter = new Image_Blitter();
-#endif
+//#endif
 	if (!blitter->Load(image))
 	{
 		lua_pushnil(L);

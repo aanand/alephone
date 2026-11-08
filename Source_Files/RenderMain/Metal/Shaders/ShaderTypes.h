@@ -100,6 +100,7 @@ enum {
 enum {
 	FinalRenderFragmentShaderAlbedoTextureIndex,
 	FinalRenderFragmentShaderRayTracingTextureIndex,
+	FinalRenderFragmentShaderHUDTextureIndex,
 	FinalRenderFragmentShader_NumTextures,
 };
 

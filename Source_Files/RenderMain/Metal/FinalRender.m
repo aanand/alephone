@@ -11,6 +11,7 @@
 {
 	id<MTLRenderPipelineState> pipelineState;
 	id<MTL4ArgumentTable> fragmentArgumentTable;
+	id<MTLTexture> hudTexture;
 }
 
 -(bool)compileForPixelFormat:(MTLPixelFormat)pixelFormat {
@@ -59,6 +60,17 @@
 	[_residencySet removeAllAllocations];
 }
 
+-(id<MTLTexture>)HUDTexture {
+	return hudTexture;
+}
+
+-(void)setHUDTexture:(id<MTLTexture>)texture {
+	if (hudTexture) [_residencySet removeAllocation:hudTexture];
+	hudTexture = texture;
+	[_residencySet addAllocation:hudTexture];
+	[_residencySet commit];
+}
+
 -(void) encodeToOutputTexture:(id<MTLTexture>)outputTexture afterFences:(NSArray<id<MTLFence>>*)fences
 {
 	MTL4RenderPassDescriptor *configuration = [MTL4RenderPassDescriptor new];
@@ -86,6 +98,7 @@
 	[fragmentArgumentTable setAddress:_uniformsBuffer.gpuAddress atIndex:FinalRenderFragmentShaderUniformsIndex];
 	[fragmentArgumentTable setTexture:_diffuseAlbedoTexture.gpuResourceID atIndex:FinalRenderFragmentShaderAlbedoTextureIndex];
 	[fragmentArgumentTable setTexture:processedOutput.gpuResourceID atIndex:FinalRenderFragmentShaderRayTracingTextureIndex];
+	[fragmentArgumentTable setTexture:hudTexture.gpuResourceID atIndex:FinalRenderFragmentShaderHUDTextureIndex];
 	[encoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
 	[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
 	

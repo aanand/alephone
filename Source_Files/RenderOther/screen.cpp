@@ -83,9 +83,13 @@
 
 // Global variables
 static SDL_Surface *main_surface;	// Main (display) surface
+static SDL_Surface *hud_surface;
 static SDL_Window *main_screen;
 static SDL_Renderer *main_render;
 static SDL_Texture *main_texture;
+
+// HUDRenderer_Lua draws to MainScreenSurface(), so this is used to switch the output of that function over to hud_surface
+static bool is_drawing_hud = false;
 
 #ifdef PREFER_METAL
 static bool prefer_metal = true;
@@ -1114,6 +1118,14 @@ static void change_screen_mode(int width, int height, int depth, short screentyp
 	if (!main_surface) {
 		main_surface = SDL_CreateRGBSurface(SDL_SWSURFACE, vmode_width, vmode_height, 32, pixel_format_32.Rmask, pixel_format_32.Gmask, pixel_format_32.Bmask, 0);
 	}
+	if (hud_surface != NULL && (hud_surface->w != vmode_width || hud_surface->h != vmode_height)) {
+		SDL_FreeSurface(hud_surface);
+		hud_surface = NULL;
+	}
+	if (!hud_surface) {
+		hud_surface = SDL_CreateRGBSurfaceWithFormat(SDL_SWSURFACE, vmode_width, vmode_height, 32, SDL_PIXELFORMAT_ARGB8888);
+		Metal_SetHUDSurface(hud_surface);
+	}
 #ifdef MUST_RELOAD_VIEW_CONTEXT
 	if (!nogl && screen_mode.acceleration != _no_acceleration) 
 		ReloadViewContext();
@@ -1548,9 +1560,13 @@ void render_screen(short ticks_elapsed)
 	if (screen_mode.acceleration != _no_acceleration) {
 #ifdef HAVE_OPENGL
 		if (Screen::instance()->hud()) {
-			if (Screen::instance()->lua_hud())
-				Lua_DrawHUD(ticks_elapsed);
-			else {
+			if (Screen::instance()->lua_hud()) {
+				is_drawing_hud = true;
+				SDL_FillRect(hud_surface, NULL, 0);
+				Lua_DrawHUD(ticks_elapsed, use_metal_for(current_screentype));
+				is_drawing_hud = false;
+				Metal_BlitHUD();
+			} else {
 				Rect dr = MakeRect(HUD_DestRect);
 				OGL_DrawHUD(dr, ticks_elapsed);
 			}
@@ -1584,7 +1600,11 @@ void render_screen(short ticks_elapsed)
 		// Update HUD
 		if (Screen::instance()->lua_hud())
 		{
-			Lua_DrawHUD(ticks_elapsed);
+			is_drawing_hud = true;
+			SDL_FillRect(hud_surface, NULL, 0);
+			Lua_DrawHUD(ticks_elapsed, use_metal_for(current_screentype));
+			is_drawing_hud = false;
+			Metal_BlitHUD();
 		}
 		else if (HUD_RenderRequest) {
 			SDL_Rect src_rect = { 0, 320, 640, 160 };
@@ -2315,6 +2335,9 @@ void MainScreenCenterMouse()
 }
 SDL_Surface *MainScreenSurface()
 {
+	if (is_drawing_hud) {
+		return hud_surface;
+	}
 	return main_surface;
 }
 SDL_Window* MainScreenWindow()

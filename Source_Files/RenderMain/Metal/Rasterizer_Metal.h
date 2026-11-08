@@ -17,6 +17,8 @@
 
 extern bool Metal_InitializeForWindow(SDL_Window* window, int width, int height);
 extern void Metal_StartRun();
+extern void Metal_SetHUDSurface(SDL_Surface *surface);
+extern void Metal_BlitHUD();
 extern void Metal_PresentFrame();
 
 class Rasterizer_Metal_Class : public RasterizerClass {

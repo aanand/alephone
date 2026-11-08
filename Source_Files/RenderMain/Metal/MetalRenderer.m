@@ -50,6 +50,8 @@ API_AVAILABLE(macos(26.0))
 	SDL_Renderer *renderer;
 	CAMetalLayer *metalLayer;
 	id<CAMetalDrawable> metalDrawable;
+	
+	SDL_Surface *hudSurface;
 
 	Sky sky;
 	Camera camera;
@@ -374,6 +376,26 @@ API_AVAILABLE(macos(26.0))
 //	NSLog(@"First pass : %.2f", timing.FirstPass);
 //	NSLog(@"Denoise    : %.2f", timing.Denoise);
 //	NSLog(@"Final pass : %.2f", timing.FinalPass);
+}
+
+-(void)setHUDSurface:(SDL_Surface *)surface {
+	hudSurface = surface;
+
+	MTLTextureDescriptor *hudTextureDesc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+																							  width:hudSurface->w
+																							 height:hudSurface->h
+																						  mipmapped:NO];
+
+	id<MTLTexture> hudTexture = [pipeline.device newTextureWithDescriptor:hudTextureDesc];
+
+	[finalRender setHUDTexture:hudTexture];
+}
+
+-(void)blitHUD {
+	[finalRender.HUDTexture replaceRegion:MTLRegionMake2D(0, 0, hudSurface->w, hudSurface->h)
+							  mipmapLevel:0
+								withBytes:hudSurface->pixels
+							  bytesPerRow:hudSurface->pitch];
 }
 
 - (void)presentFrame {
