@@ -1619,7 +1619,7 @@ void render_screen(short ticks_elapsed)
 
 #ifdef HAVE_OPENGL
 	// Swap OpenGL double-buffers
-	if (screen_mode.acceleration != _no_acceleration)
+	if (screen_mode.acceleration != _no_acceleration && !use_metal_for(current_screentype))
 	{
 		if (!get_keyboard_controller_status())
 		{
@@ -1629,6 +1629,10 @@ void render_screen(short ticks_elapsed)
 		OGL_SwapBuffers();
 	}
 #endif
+
+	if (use_metal_for(current_screentype)) {
+		Metal_PresentFrame();
+	}
 	
 	Movie::instance()->AddFrame(Movie::FRAME_NORMAL);
 }

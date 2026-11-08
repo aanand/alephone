@@ -49,6 +49,7 @@ API_AVAILABLE(macos(26.0))
 	SDL_Window *window;
 	SDL_Renderer *renderer;
 	CAMetalLayer *metalLayer;
+	id<CAMetalDrawable> metalDrawable;
 
 	Sky sky;
 	Camera camera;
@@ -314,7 +315,7 @@ API_AVAILABLE(macos(26.0))
 	uniforms.isInMedium = _view.isInMedium;
 	memcpy(uniformsBuffer.contents, &uniforms, sizeof(Uniforms));
 		
-	id<CAMetalDrawable> currentDrawable = [metalLayer nextDrawable];
+	metalDrawable = [metalLayer nextDrawable];
 
 	NSDate *firstPassStart = [NSDate date];
 	id<MTL4CommandBuffer> commandBuffer = pipeline.commandBuffer;
@@ -356,14 +357,13 @@ API_AVAILABLE(macos(26.0))
 		[postProcessor encodeTAAUpdatingFence:postProcessingPassFence];
 	}
 
-	[finalRender encodeToOutputTexture:currentDrawable.texture afterFences:@[postProcessingPassFence]];
+	[finalRender encodeToOutputTexture:metalDrawable.texture afterFences:@[postProcessingPassFence]];
 	[commandBuffer endCommandBuffer];
 
 	renderSignalValue = pipeline.sharedEvent.signaledValue + 1;
-	[pipeline.commandQueue waitForDrawable:currentDrawable];
+	[pipeline.commandQueue waitForDrawable:metalDrawable];
 	[pipeline.commandQueue commit:&commandBuffer count:1];
-	[pipeline.commandQueue signalDrawable:currentDrawable];
-	[currentDrawable present];
+	[pipeline.commandQueue signalDrawable:metalDrawable];
 	[pipeline.commandQueue signalEvent:pipeline.sharedEvent value:renderSignalValue];
 	[pipeline.sharedEvent waitUntilSignaledValue:renderSignalValue timeoutMS:5000];
 	timing.FinalPass = [finalPassStart timeIntervalSinceNow] * -1000.0;
@@ -374,6 +374,13 @@ API_AVAILABLE(macos(26.0))
 //	NSLog(@"First pass : %.2f", timing.FirstPass);
 //	NSLog(@"Denoise    : %.2f", timing.Denoise);
 //	NSLog(@"Final pass : %.2f", timing.FinalPass);
+}
+
+- (void)presentFrame {
+	if (metalDrawable) {
+		[metalDrawable present];
+		metalDrawable = nil;
+	}
 }
 
 @end

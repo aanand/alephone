@@ -37,6 +37,7 @@ API_AVAILABLE(macos(26.0))
 
 - (void) begin;
 - (void) end;
+- (void) presentFrame;
 
 /**
  Geometry

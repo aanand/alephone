@@ -99,6 +99,10 @@ bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
 	return false;
 }
 
+void Metal_PresentFrame() {
+	[renderer presentFrame];
+}
+
 // Copied from RenderRasterize_Shader.cpp
 const float FixedAngleToDegrees = 360.0/(float(FIXED_ONE)*float(FULL_CIRCLE));
 
