@@ -16,6 +16,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface Terminal : NSObject
 
 @property (nonatomic) View *view;
+@property (nonatomic) id<MTLBuffer> uniformsBuffer;
 
 - (instancetype) initWithPipeline:(MetalPipeline*)pipeline;
 - (bool) compileForPixelFormat:(MTLPixelFormat)pixelFormat;

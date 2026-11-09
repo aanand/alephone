@@ -170,6 +170,7 @@ API_AVAILABLE(macos(26.0))
 	
 	terminal = [[Terminal alloc] initWithPipeline:pipeline];
 	terminal.view = _view;
+	terminal.uniformsBuffer = uniformsBuffer;
 	if (![terminal compileForPixelFormat:metalLayer.pixelFormat]) {
 		return nil;
 	}

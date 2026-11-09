@@ -41,6 +41,7 @@
 	NSError *error;
 	
 	MTL4ArgumentTableDescriptor *argDesc = [MTL4ArgumentTableDescriptor new];
+	argDesc.maxBufferBindCount = 1;
 	argDesc.maxTextureBindCount = 1;
 	
 	_fragmentArgumentTable = [_pipeline.device newArgumentTableWithDescriptor:argDesc error:&error];
@@ -92,9 +93,11 @@
 	
 	[encoder setRenderPipelineState:_pipelineState];
 	[encoder setViewport:[_view getViewportWithPixelScaling:YES]];
-
+	
+	[_fragmentArgumentTable setAddress:_uniformsBuffer.gpuAddress atIndex:0];
 	[_fragmentArgumentTable setTexture:_texture.gpuResourceID atIndex:0];
 	[encoder setArgumentTable:_fragmentArgumentTable atStages:MTLRenderStageFragment];
+
 	[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
 	
 	[encoder endEncoding];
