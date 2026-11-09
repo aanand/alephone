@@ -1146,6 +1146,7 @@ static void change_screen_mode(int width, int height, int depth, short screentyp
 
     screen_rectangle *term_rect = get_interface_rectangle(_terminal_screen_rect);
 	Term_Buffer = SDL_CreateRGBSurface(SDL_SWSURFACE, RECTANGLE_WIDTH(term_rect), RECTANGLE_HEIGHT(term_rect), 32, pixel_format_32.Rmask, pixel_format_32.Gmask, pixel_format_32.Bmask, pixel_format_32.Amask);
+	Metal_SetTermSurface(Term_Buffer);
 
 #ifdef HAVE_OPENGL
 	if (!nogl && screen_mode.acceleration != _no_acceleration) {
@@ -1582,6 +1583,10 @@ void render_screen(short ticks_elapsed)
 			}
 			Term_Blitter.nearFilter = TxtrTypeInfoList[OGL_Txtr_HUD].NearFilter;
 			Term_Blitter.Draw(TermRect);
+			
+			if (use_metal_for(current_screentype)) {
+				Metal_RenderTerminal();
+			}
 		}
 
 #endif

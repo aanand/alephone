@@ -111,6 +111,14 @@ void Metal_BlitHUD() {
 	[renderer blitHUD];
 }
 
+void Metal_SetTermSurface(SDL_Surface *surface) {
+	[renderer setTerminalSurface:surface];
+}
+
+extern void Metal_RenderTerminal() {
+	[renderer renderTerminal];
+}
+
 // Copied from RenderRasterize_Shader.cpp
 const float FixedAngleToDegrees = 360.0/(float(FIXED_ONE)*float(FULL_CIRCLE));
 

@@ -41,6 +41,9 @@ API_AVAILABLE(macos(26.0))
 - (void) setHUDSurface:(SDL_Surface*)surface;
 - (void) blitHUD;
 
+- (void) setTerminalSurface:(SDL_Surface*)surface;
+- (void) renderTerminal;
+
 - (void) presentFrame;
 
 /**

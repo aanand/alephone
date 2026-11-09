@@ -26,6 +26,7 @@
 #include "PostProcessor.h"
 #include "FinalRender.h"
 #include "LoadingScreen.h"
+#include "Terminal.h"
 
 #include "MetalTypes.h"
 #include "Utils.h"
@@ -52,6 +53,7 @@ API_AVAILABLE(macos(26.0))
 	id<CAMetalDrawable> metalDrawable;
 	
 	SDL_Surface *hudSurface;
+	SDL_Surface *termSurface;
 
 	Sky sky;
 	Camera camera;
@@ -69,6 +71,7 @@ API_AVAILABLE(macos(26.0))
 	PostProcessor *postProcessor;
 	FinalRender *finalRender;
 	LoadingScreen *loadingScreen;
+	Terminal *terminal;
 	
 	id<MTLFence> initialPassFence;
 	id<MTLFence> computePassFence;
@@ -164,6 +167,12 @@ API_AVAILABLE(macos(26.0))
 		return nil;
 	}
 	[pipeline.commandQueue addResidencySet:finalRender.residencySet];
+	
+	terminal = [[Terminal alloc] initWithPipeline:pipeline];
+	terminal.view = _view;
+	if (![terminal compileForPixelFormat:metalLayer.pixelFormat]) {
+		return nil;
+	}
 	
 	loadingScreen = [[LoadingScreen alloc] initWithPipeline:pipeline];
 	loadingScreen.view = _view;
@@ -380,15 +389,7 @@ API_AVAILABLE(macos(26.0))
 
 -(void)setHUDSurface:(SDL_Surface *)surface {
 	hudSurface = surface;
-
-	MTLTextureDescriptor *hudTextureDesc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-																							  width:hudSurface->w
-																							 height:hudSurface->h
-																						  mipmapped:NO];
-
-	id<MTLTexture> hudTexture = [pipeline.device newTextureWithDescriptor:hudTextureDesc];
-
-	[finalRender setHUDTexture:hudTexture];
+	[finalRender setHUDTexture:[self textureFromSurface:surface]];
 }
 
 -(void)blitHUD {
@@ -396,6 +397,30 @@ API_AVAILABLE(macos(26.0))
 							  mipmapLevel:0
 								withBytes:hudSurface->pixels
 							  bytesPerRow:hudSurface->pitch];
+}
+
+-(void)setTerminalSurface:(SDL_Surface *)surface {
+	termSurface = surface;
+	[terminal setTexture:[self textureFromSurface:surface]];
+}
+
+-(void)renderTerminal {
+	[terminal.texture replaceRegion:MTLRegionMake2D(0, 0, termSurface->w, termSurface->h)
+						mipmapLevel:0
+						  withBytes:termSurface->pixels
+						bytesPerRow:termSurface->pitch];
+	
+	metalDrawable = [metalLayer nextDrawable];
+	[terminal renderToDrawable:metalDrawable];
+}
+
+-(id<MTLTexture>)textureFromSurface:(SDL_Surface*)surface {
+	MTLTextureDescriptor *desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+																					width:surface->w
+																				   height:surface->h
+																				mipmapped:NO];
+
+	return [pipeline.device newTextureWithDescriptor:desc];
 }
 
 - (void)presentFrame {
