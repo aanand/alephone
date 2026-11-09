@@ -118,8 +118,6 @@ uint getMask(bool isEnabled, bool isTransparent) {
 	[staticIASManager commitGeometry];
 	[dynamicIASManager commitGeometry];
 
-	[self initializeTopLevelIAS];
-
 	[self buildAccelerationStructureWithChangesTo:@[staticIASManager, dynamicIASManager]
 						  primitiveDataHasChanged:YES
 											label:@"Full IAS build"];
@@ -135,7 +133,6 @@ uint getMask(bool isEnabled, bool isTransparent) {
 -(void)finishUpdatingDynamicGeometry {
 	[self writeDynamicTrianglesToVertexBuffer];
 	[dynamicIASManager commitInstances];
-	[self initializeTopLevelIAS];
 
 	[self buildAccelerationStructureWithChangesTo:@[dynamicIASManager]
 						  primitiveDataHasChanged:NO
