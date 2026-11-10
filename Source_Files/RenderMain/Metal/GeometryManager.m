@@ -348,8 +348,7 @@ uint getMask(bool isEnabled, bool isTransparent) {
 	[_residencySet addAllocation:scratchBuffer];
 	[_residencySet commit];
 	
-	id<MTL4CommandBuffer> commandBuffer = _pipeline.commandBuffer;
-	[commandBuffer beginCommandBufferWithAllocator:_pipeline.commandAllocator];
+	[_pipeline begin];
 
 	id<MTL4ComputeCommandEncoder> encoder = [_pipeline.commandBuffer computeCommandEncoder];
 	encoder.label = label;
@@ -371,12 +370,9 @@ uint getMask(bool isEnabled, bool isTransparent) {
 						  scratchBuffer:MTL4BufferRangeMake(scratchBuffer.gpuAddress, scratchBuffer.length)];
 
 	[encoder endEncoding];
-	[commandBuffer endCommandBuffer];
-	
-	assert([_pipeline commitCommandBufferAndWait]);
-	
-	[_pipeline.commandAllocator reset];
 
+	[_pipeline end];
+	
 	[_residencySet removeAllocation:scratchBuffer];
 	[_residencySet commit];
 	

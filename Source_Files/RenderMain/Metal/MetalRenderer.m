@@ -330,19 +330,13 @@ API_AVAILABLE(macos(26.0))
 	metalDrawable = [metalLayer nextDrawable];
 
 	NSDate *firstPassStart = [NSDate date];
-	id<MTL4CommandBuffer> commandBuffer = pipeline.commandBuffer;
-	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
+
+	[pipeline begin];
 	[initialRender encodeAndUpdateFence:initialPassFence];
 	[rayTracer encodeAndUpdateFence:computePassFence];
-	[commandBuffer endCommandBuffer];
-	
-	// Block until rendering has completed. This is inefficient, but Marathon is locked to 30fps,
-	// so it probably doesn't slow us down and it simplifies things to not have to worry about concurrent
-	// reads/writes to buffers and textures
-	assert([pipeline commitCommandBufferAndWait]);
+	[pipeline end];
 
 	timing.FirstPass = [firstPassStart timeIntervalSinceNow] * -1000.0;
-	[pipeline.commandAllocator reset];
 	
 	NSDate *denoiseStart = [NSDate date];
 	if (POST_PROCESSING_TYPE == TemporalUpscale) {
@@ -356,7 +350,7 @@ API_AVAILABLE(macos(26.0))
 	}
 
 	NSDate *finalPassStart = [NSDate date];
-	[commandBuffer beginCommandBufferWithAllocator:pipeline.commandAllocator];
+	[pipeline begin];
 
 	if (POST_PROCESSING_TYPE == WaveletDenoise) {
 		[postProcessor encodeWaveletDenoiseUpdatingFence:postProcessingPassFence];
@@ -367,15 +361,13 @@ API_AVAILABLE(macos(26.0))
 	}
 
 	[finalRender encodeToOutputTexture:metalDrawable.texture afterFences:@[postProcessingPassFence]];
-	[commandBuffer endCommandBuffer];
+
+	[pipeline end];
+	timing.FinalPass = [finalPassStart timeIntervalSinceNow] * -1000.0;
 
 	[pipeline.commandQueue waitForDrawable:metalDrawable];
-	assert([pipeline commitCommandBufferAndWait]);
 	[pipeline.commandQueue signalDrawable:metalDrawable];
 
-	timing.FinalPass = [finalPassStart timeIntervalSinceNow] * -1000.0;
-	[pipeline.commandAllocator reset];
-	
 //	NSLog(@"-----------------------------");
 //	NSLog(@"AS rebuild : %.2f", timing.ASRebuild);
 //	NSLog(@"First pass : %.2f", timing.FirstPass);

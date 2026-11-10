@@ -10,11 +10,13 @@
 @implementation MetalPipeline
 {
 	uint64_t signalValue;
+	BOOL isRunning;
 }
 
 -(instancetype)init {
 	if (self = [super init]) {
 		signalValue = 0;
+		isRunning = false;
 	}
 	return self;
 }
@@ -60,18 +62,29 @@
 	return state;
 }
 
-- (BOOL)commitCommandBufferAndWait {
+- (void) begin {
+	assert(!isRunning);
+	isRunning = true;
+	[_commandBuffer beginCommandBufferWithAllocator:_commandAllocator];
+}
+
+- (void) end {
 	uint64_t nextSignalValue = signalValue + 1;
-	
+
+	[_commandBuffer endCommandBuffer];
 	[_commandQueue commit:&_commandBuffer count:1];
 	[_commandQueue signalEvent:_sharedEvent value:nextSignalValue];
 
 	BOOL success = [_sharedEvent waitUntilSignaledValue:nextSignalValue timeoutMS:5000];
-	if (success) {
-		signalValue = nextSignalValue;
+	if (!success) {
+		NSLog(@"MetalPipeline timed out waiting for event value %llu", nextSignalValue);
+		abort();
 	}
-	
-	return success;
+
+	[_commandAllocator reset];
+
+	signalValue = nextSignalValue;
+	isRunning = false;
 }
 
 @end

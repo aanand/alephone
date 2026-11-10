@@ -75,8 +75,7 @@
 	configuration.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0, 0, 1.0);
 	configuration.colorAttachments[0].storeAction = MTLStoreActionStore;
 
-	id<MTL4CommandBuffer> commandBuffer = _pipeline.commandBuffer;
-	[commandBuffer beginCommandBufferWithAllocator:_pipeline.commandAllocator];
+	[_pipeline begin];
 	
 	id<MTL4RenderCommandEncoder> encoder = [_pipeline.commandBuffer renderCommandEncoderWithDescriptor:configuration];
 	if (!encoder) {
@@ -94,13 +93,11 @@
 	
 	[encoder endEncoding];
 	
-	[commandBuffer endCommandBuffer];
+	[_pipeline end];
 
 	[_pipeline.commandQueue waitForDrawable:currentDrawable];
-	[_pipeline.commandQueue commit:&commandBuffer count:1];
 	[_pipeline.commandQueue signalDrawable:currentDrawable];
 	[currentDrawable present];
-	[_pipeline.commandAllocator reset];
 }
 
 @end

@@ -25,7 +25,8 @@
 															   label:(NSString*)label
 														 pixelFormat:(MTLPixelFormat)pixelFormat;
 
-- (BOOL) commitCommandBufferAndWait;
+- (void) begin;
+- (void) end;
 
 @end
 
