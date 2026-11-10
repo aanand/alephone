@@ -49,9 +49,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (void) updateLightSourceCount:(NSUInteger)count;
 - (void) updateLightSourceIntensities:(float*)intensities;
 
-- (void) clearGeometryAllocations;
-- (void) addGeometryAllocations;
-
 - (void) encode;
 
 @end

@@ -51,6 +51,11 @@
 	NSAssert(_uniformsBuffer != nil, @"uniformsBuffer is not set");
 	[_residencySet addAllocation:_uniformsBuffer];
 
+	NSAssert(_geometryManager.perInstanceDataBuffer != nil, @"perInstanceDataBuffer is not set");
+	NSAssert(_geometryManager.topLevelIAS != nil, @"topLevelIAS is not set");
+	[_residencySet addAllocation:_geometryManager.perInstanceDataBuffer];
+	[_residencySet addAllocation:_geometryManager.topLevelIAS];
+
 	NSUInteger numPixels = _view.viewportSize.x * _view.viewportSize.y;
 	reservoirBufferA = [_pipeline.device newBufferWithLength:sizeof(Reservoir) * numPixels options:MTLResourceStorageModeShared];
 	reservoirBufferA.label = @"Reservoir buffer A";
@@ -190,16 +195,6 @@
 	for (NSUInteger i = 0; i < lightSourceCount; i++) {
 		target[i].intensity = intensities[i];
 	}
-}
-
--(void)clearGeometryAllocations {
-	if (_geometryManager.perInstanceDataBuffer) [_residencySet removeAllocation:_geometryManager.perInstanceDataBuffer];
-	if (_geometryManager.topLevelIAS) [_residencySet removeAllocation:_geometryManager.topLevelIAS];
-}
-
--(void)addGeometryAllocations {
-	[_residencySet addAllocation:_geometryManager.perInstanceDataBuffer];
-	[_residencySet addAllocation:_geometryManager.topLevelIAS];
 }
 
 - (void) populateTextureArgumentBuffers {

@@ -252,8 +252,6 @@ API_AVAILABLE(macos(26.0))
 }
 
 - (void) startUpdatingAllGeometry {
-	[rayTracer clearGeometryAllocations];
-
 	[geometryManager startUpdatingAllGeometry];
 
 	[textureManager startUpdatingAllGeometry];
@@ -263,13 +261,9 @@ API_AVAILABLE(macos(26.0))
 - (void) finishUpdatingAllGeometry {
 	[geometryManager finishUpdatingAllGeometry];
 	[textureManager finishUpdatingAllGeometry];
-
-	[rayTracer addGeometryAllocations];
 }
 
 - (void) startUpdatingDynamicGeometry {
-	[rayTracer clearGeometryAllocations];
-
 	[geometryManager startUpdatingDynamicGeometry];
 	[textureManager startUpdatingDynamicGeometry];
 }
@@ -279,8 +273,6 @@ API_AVAILABLE(macos(26.0))
 	timing.ASRebuild = geometryManager.lastRebuildTimeMs;
 
 	[textureManager finishUpdatingDynamicGeometry];
-
-	[rayTracer addGeometryAllocations];
 }
 
 -(NSUInteger)indexOfTextureWithID:(NSString *)textureID {
