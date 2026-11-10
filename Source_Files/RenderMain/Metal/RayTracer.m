@@ -51,12 +51,19 @@
 	NSAssert(_uniformsBuffer != nil, @"uniformsBuffer is not set");
 	[_residencySet addAllocation:_uniformsBuffer];
 
-	reservoirBufferA = [_pipeline.device newBufferWithLength:sizeof(Reservoir) * _view.viewportSize.x * _view.viewportSize.y options:MTLResourceStorageModeShared];
+	NSUInteger numPixels = _view.viewportSize.x * _view.viewportSize.y;
+	reservoirBufferA = [_pipeline.device newBufferWithLength:sizeof(Reservoir) * numPixels options:MTLResourceStorageModeShared];
 	reservoirBufferA.label = @"Reservoir buffer A";
-	reservoirBufferB = [_pipeline.device newBufferWithLength:sizeof(Reservoir) * _view.viewportSize.x * _view.viewportSize.y options:MTLResourceStorageModeShared];
+	reservoirBufferB = [_pipeline.device newBufferWithLength:sizeof(Reservoir) * numPixels options:MTLResourceStorageModeShared];
 	reservoirBufferB.label = @"Reservoir buffer B";
 	[_residencySet addAllocation:reservoirBufferA];
 	[_residencySet addAllocation:reservoirBufferB];
+	Reservoir *aContents = (Reservoir*)reservoirBufferA.contents;
+	Reservoir *bContents = (Reservoir*)reservoirBufferB.contents;
+	for (NSUInteger i = 0; i < numPixels; i++) {
+		aContents[i] = (Reservoir){};
+		bContents[i] = (Reservoir){};
+	}
 
 	MTLTextureDescriptor *tDesc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:RayTracingPixelFormat
 																						width:_view.viewportSize.x
