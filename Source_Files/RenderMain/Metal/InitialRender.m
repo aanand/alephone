@@ -111,50 +111,22 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 	initial.pixelFormat = MotionPixelFormat;
 	_motionTexture = [_pipeline.device newTextureWithDescriptor:initial];
 	_motionTexture.label = @"Motion";
+	
+	NSMutableSet<id<MTLTexture>> *tmpTextures = [NSMutableSet setWithArray:@[
+		_diffuseAlbedoTexture,
+		_depthTexture,
+		_motionTexture,
+	]];
 
-	switch (_postProcessingType) {
-		case NoPostProcessing:
-			_textures = [NSSet setWithArray:@[
-				_diffuseAlbedoTexture,
-				_depthTexture,
-				_motionTexture,
-			]];
-			break;
-
-		case WaveletDenoise:
-			_textures = [NSSet setWithArray:@[
-				_diffuseAlbedoTexture,
-				_depthTexture,
-				_normalTexture,
-			]];
-			break;
-			
-		case TAA:
-			_textures = [NSSet setWithArray:@[
-				_diffuseAlbedoTexture,
-				_motionTexture,
-			]];
-			break;
-
-		case TemporalUpscale:
-			_textures = [NSSet setWithArray:@[
-				_diffuseAlbedoTexture,
-				_depthTexture,
-				_motionTexture,
-			]];
-			break;
-
-		case TemporalDenoisedUpscale:
-			_textures = [NSSet setWithArray:@[
-				_diffuseAlbedoTexture,
-				_depthTexture,
-				_normalTexture,
-				_specularAlbedoTexture,
-				_roughnessTexture,
-				_motionTexture,
-			]];
-			break;
+	if (_postProcessingType == TemporalDenoisedUpscale) {
+		[tmpTextures addObjectsFromArray:@[
+			_normalTexture,
+			_specularAlbedoTexture,
+			_roughnessTexture,
+		]];
 	}
+	
+	_textures = [NSSet setWithSet:tmpTextures];
 	
 	for (id<MTLTexture> texture in _textures) {
 		[_residencySet addAllocation:texture];
