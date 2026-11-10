@@ -117,6 +117,10 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 		_depthTexture,
 		_motionTexture,
 	]];
+	
+	if (_postProcessingType == WaveletDenoise) {
+		[tmpTextures addObject:_normalTexture];
+	}
 
 	if (_postProcessingType == TemporalDenoisedUpscale) {
 		[tmpTextures addObjectsFromArray:@[
