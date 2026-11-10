@@ -545,20 +545,20 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 	return result;
 }
 
-kernel void reSTIR(texture2d<float, access::write> outImage [[ texture(RayTracingKernelOutImageIndex) ]],
-				   texture2d<float> depthData [[ texture(RayTracingKernelDepthTextureIndex) ]],
-				   texture2d<float> motionData [[ texture(RayTracingKernelMotionTextureIndex) ]],
-				   instance_acceleration_structure accelerationStructure [[ buffer(RayTracingKernelAccelerationStructureIndex) ]],
+kernel void reSTIR(texture2d<float, access::write>                        outImage                  [[ texture(RayTracingKernelOutImageIndex)                 ]],
+				   texture2d<float>                                       depthData                 [[ texture(RayTracingKernelDepthTextureIndex)             ]],
+				   texture2d<float>                                       motionData                [[ texture(RayTracingKernelMotionTextureIndex)            ]],
+				   instance_acceleration_structure                        accelerationStructure     [[ buffer(RayTracingKernelAccelerationStructureIndex)     ]],
 				   intersection_function_table<triangle_data, instancing> intersectionFunctionTable [[ buffer(RayTracingKernelIntersectionFunctionTableIndex) ]],
-				   constant Uniforms &uniforms [[ buffer(RayTracingKernelUniformsIndex) ]],
-				   constant RayTracingData *perInstanceData [[ buffer(RayTracingKernelPerInstanceDataIndex) ]],
-				   constant TextureArgs &textures [[ buffer(RayTracingKernelAlbedoTexturesIndex) ]],
-				   constant TextureArgs &normalMaps [[ buffer(RayTracingKernelNormalMapsIndex) ]],
-				   constant TextureArgs &emissionMaps [[ buffer(RayTracingKernelEmissionMapsIndex) ]],
-				   constant LightSource &lightSources [[ buffer(RayTracingKernelLightSourcesIndex) ]],
-				   constant Reservoir *previousReservoirs [[ buffer(RayTracingKernelPreviousReservoirIndex) ]],
-				   device Reservoir *currentReservoirs [[ buffer(RayTracingKernelCurrentReservoirIndex) ]],
-				   uint2 tid [[thread_position_in_grid]])
+				   constant Uniforms                                     &uniforms                  [[ buffer(RayTracingKernelUniformsIndex)                  ]],
+				   constant RayTracingData                               *perInstanceData           [[ buffer(RayTracingKernelPerInstanceDataIndex)           ]],
+				   constant TextureArgs                                  &textures                  [[ buffer(RayTracingKernelAlbedoTexturesIndex)            ]],
+				   constant TextureArgs                                  &normalMaps                [[ buffer(RayTracingKernelNormalMapsIndex)                ]],
+				   constant TextureArgs                                  &emissionMaps              [[ buffer(RayTracingKernelEmissionMapsIndex)              ]],
+				   constant LightSource                                  &lightSources              [[ buffer(RayTracingKernelLightSourcesIndex)              ]],
+				   constant Reservoir                                    *previousReservoirs        [[ buffer(RayTracingKernelPreviousReservoirIndex)         ]],
+				   device   Reservoir                                    *currentReservoirs         [[ buffer(RayTracingKernelCurrentReservoirIndex)          ]],
+				            uint2                                         tid                       [[ thread_position_in_grid                                ]])
 {
 	float2 deltaXY = float2(1.0) / float2(uniforms.resolution);
 
