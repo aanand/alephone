@@ -531,7 +531,7 @@ float3 rayTrace(float3 origin, float3 direction, thread RayTracer &rayTracer, co
 	
 	float3 playerLightEmission = samplePlayerLightEmission(xV, nV, rayTracer, uniforms);
 	
-	float3 albedo = getAlbedo(initialRayResult, rayTracer);
+	float3 albedo = uniforms.fullPathTracing ? getAlbedo(initialRayResult, rayTracer) : 1.0;
 	float3 diffuseComponent = diffuseReSTIR(xV, nV, albedo, rayTracer, uniforms, seed);
 
 	float3 result = directEmission + (playerLightEmission * albedo) + mix(diffuseComponent, specular.color, specular.contribution);
