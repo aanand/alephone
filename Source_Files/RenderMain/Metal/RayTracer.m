@@ -225,7 +225,7 @@
 	[_residencySet commit];
 }
 
--(void) encodeAndUpdateFence:(id<MTLFence>)fence
+-(void) encode
 {
 	[self populateTextureArgumentBuffers];
 
@@ -237,7 +237,8 @@
 	encoder.label = @"Ray tracing";
 	
 	[encoder setComputePipelineState:pipelineState];
-	
+	[encoder waitForFence:_fenceToAwait beforeEncoderStages:MTLStageDispatch];
+
 	[argumentTable setResource:_geometryManager.topLevelIAS.gpuResourceID atBufferIndex:RayTracingKernelAccelerationStructureIndex];
 	
 	[intersectionFunctionTable setBuffer:_geometryManager.perInstanceDataBuffer offset:0 atIndex:AlphaTestPerInstanceDataIndex];
@@ -270,7 +271,7 @@
 	MTLSize threadsPerGrid = MTLSizeMake(_outputTexture.width, _outputTexture.height, 1);
 	[encoder dispatchThreads:threadsPerGrid threadsPerThreadgroup:threadsPerThreadgroup];
 	
-	[encoder updateFence:fence afterEncoderStages:MTLStageDispatch];
+	[encoder updateFence:_fenceToUpdate afterEncoderStages:MTLStageDispatch];
 	[encoder endEncoding];
 }
 

@@ -30,6 +30,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) GeometryManager *geometryManager;
 @property (nonatomic) TextureManager *textureManager;
 
+@property (nonatomic) id<MTLFence> fenceToUpdate;
+
 // Owned resources
 
 @property (readonly) id<MTLTexture> diffuseAlbedoTexture;
@@ -46,7 +48,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (instancetype) initWithPipeline:(MetalPipeline*)pipeline;
 - (bool) compile;
-- (void) encodeAndUpdateFence:(id<MTLFence>)fence;
+- (void) encode;
 - (void) shutdown;
 
 @end

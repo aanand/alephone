@@ -272,7 +272,7 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 	return [_pipeline.device newDepthStencilStateWithDescriptor:depthDescriptor];
 }
 
-- (void) encodeAndUpdateFence:(id<MTLFence>)fence
+- (void) encode
 {
 	for (NSUInteger i = 0; i < _textureManager.textureIDs.count; i++) {
 		id<MTLTexture> albedoTexture = _textureManager.albedoTextures[_textureManager.textureIDs[i]];
@@ -354,7 +354,7 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 	[renderPassEncoder setArgumentTable:fragmentArgumentTable atStages:MTLRenderStageFragment];
 	[renderPassEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:(_geometryManager.numRasterizerTriangles * 3)];
 
-	[renderPassEncoder updateFence:fence afterEncoderStages:MTLStageFragment];
+	[renderPassEncoder updateFence:_fenceToUpdate afterEncoderStages:MTLStageFragment];
 	[renderPassEncoder endEncoding];
 }
 

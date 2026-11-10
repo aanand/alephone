@@ -31,6 +31,11 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) id<MTLTexture> depthTexture;
 @property (nonatomic) id<MTLTexture> motionTexture;
 
+// Control flow
+
+@property (nonatomic) id<MTLFence> fenceToAwait;
+@property (nonatomic) id<MTLFence> fenceToUpdate;
+
 // Owned resources
 
 @property (nonatomic, readonly) id<MTLTexture> outputTexture;
@@ -47,7 +52,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void) clearGeometryAllocations;
 - (void) addGeometryAllocations;
 
-- (void) encodeAndUpdateFence:(id<MTLFence>)fence;
+- (void) encode;
 
 @end
 

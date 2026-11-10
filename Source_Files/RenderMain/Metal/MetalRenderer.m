@@ -74,7 +74,7 @@ API_AVAILABLE(macos(26.0))
 	Terminal *terminal;
 	
 	id<MTLFence> initialPassFence;
-	id<MTLFence> computePassFence;
+	id<MTLFence> rayTracingFence;
 	id<MTLFence> postProcessingPassFence;
 	
 	// Constants shared across all pipelines
@@ -103,6 +103,10 @@ API_AVAILABLE(macos(26.0))
 	uniformsBuffer = [pipeline.device newBufferWithLength:sizeof(Uniforms) options:MTLResourceStorageModeShared];
 	uniformsBuffer.label = @"Uniforms";
 
+	initialPassFence = [pipeline.device newFence];
+	rayTracingFence = [pipeline.device newFence];
+	postProcessingPassFence = [pipeline.device newFence];
+	
 	textureManager = [[TextureManager alloc] init];
 	textureManager.pipeline = pipeline;
 	
@@ -121,6 +125,7 @@ API_AVAILABLE(macos(26.0))
 	initialRender.uniformsBuffer = uniformsBuffer;
 	initialRender.geometryManager = geometryManager;
 	initialRender.textureManager = textureManager;
+	initialRender.fenceToUpdate = initialPassFence;
 
 	if (![initialRender compile]) {
 		return nil;
@@ -135,6 +140,8 @@ API_AVAILABLE(macos(26.0))
 	rayTracer.uniformsBuffer = uniformsBuffer;
 	rayTracer.depthTexture = initialRender.depthTexture;
 	rayTracer.motionTexture = initialRender.motionTexture;
+	rayTracer.fenceToAwait = initialPassFence;
+	rayTracer.fenceToUpdate = rayTracingFence;
 	
 	if (![rayTracer compile]) {
 		return nil;
@@ -180,10 +187,6 @@ API_AVAILABLE(macos(26.0))
 	if (![loadingScreen compileForPixelFormat:metalLayer.pixelFormat]) {
 		return nil;
 	}
-	
-	initialPassFence = [pipeline.device newFence];
-	computePassFence = [pipeline.device newFence];
-	postProcessingPassFence = [pipeline.device newFence];
 	
 	return self;
 }
@@ -332,8 +335,8 @@ API_AVAILABLE(macos(26.0))
 	NSDate *firstPassStart = [NSDate date];
 
 	[pipeline begin];
-	[initialRender encodeAndUpdateFence:initialPassFence];
-	[rayTracer encodeAndUpdateFence:computePassFence];
+	[initialRender encode];
+	[rayTracer encode];
 	[pipeline end];
 
 	timing.FirstPass = [firstPassStart timeIntervalSinceNow] * -1000.0;
