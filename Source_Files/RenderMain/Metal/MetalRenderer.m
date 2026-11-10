@@ -339,11 +339,8 @@ API_AVAILABLE(macos(26.0))
 	// Block until rendering has completed. This is inefficient, but Marathon is locked to 30fps,
 	// so it probably doesn't slow us down and it simplifies things to not have to worry about concurrent
 	// reads/writes to buffers and textures
-	uint64_t renderSignalValue = pipeline.sharedEvent.signaledValue + 1;
-	
-	[pipeline.commandQueue commit:&commandBuffer count:1];
-	[pipeline.commandQueue signalEvent:pipeline.sharedEvent value:renderSignalValue];
-	[pipeline.sharedEvent waitUntilSignaledValue:renderSignalValue timeoutMS:5000];
+	assert([pipeline commitCommandBufferAndWait]);
+
 	timing.FirstPass = [firstPassStart timeIntervalSinceNow] * -1000.0;
 	[pipeline.commandAllocator reset];
 	
@@ -372,12 +369,10 @@ API_AVAILABLE(macos(26.0))
 	[finalRender encodeToOutputTexture:metalDrawable.texture afterFences:@[postProcessingPassFence]];
 	[commandBuffer endCommandBuffer];
 
-	renderSignalValue = pipeline.sharedEvent.signaledValue + 1;
 	[pipeline.commandQueue waitForDrawable:metalDrawable];
-	[pipeline.commandQueue commit:&commandBuffer count:1];
+	assert([pipeline commitCommandBufferAndWait]);
 	[pipeline.commandQueue signalDrawable:metalDrawable];
-	[pipeline.commandQueue signalEvent:pipeline.sharedEvent value:renderSignalValue];
-	[pipeline.sharedEvent waitUntilSignaledValue:renderSignalValue timeoutMS:5000];
+
 	timing.FinalPass = [finalPassStart timeIntervalSinceNow] * -1000.0;
 	[pipeline.commandAllocator reset];
 	

@@ -25,6 +25,8 @@
 															   label:(NSString*)label
 														 pixelFormat:(MTLPixelFormat)pixelFormat;
 
+- (BOOL) commitCommandBufferAndWait;
+
 @end
 
 #endif /* MetalPipeline_h */

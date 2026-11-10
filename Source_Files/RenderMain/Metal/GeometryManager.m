@@ -373,14 +373,7 @@ uint getMask(bool isEnabled, bool isTransparent) {
 	[encoder endEncoding];
 	[commandBuffer endCommandBuffer];
 	
-	uint64_t buildSignalValue = _pipeline.sharedEvent.signaledValue + 1;
-	[_pipeline.commandQueue commit:&commandBuffer count:1];
-	[_pipeline.commandQueue signalEvent:_pipeline.sharedEvent value:buildSignalValue];
-	bool didFinish = [_pipeline.sharedEvent waitUntilSignaledValue:buildSignalValue timeoutMS:5000];
-	
-	if (!didFinish) {
-		NSLog(@"Timed out waiting for AS build");
-	}
+	assert([_pipeline commitCommandBufferAndWait]);
 	
 	[_pipeline.commandAllocator reset];
 

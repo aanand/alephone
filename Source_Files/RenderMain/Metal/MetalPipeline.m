@@ -8,6 +8,16 @@
 #import "MetalPipeline.h"
 
 @implementation MetalPipeline
+{
+	uint64_t signalValue;
+}
+
+-(instancetype)init {
+	if (self = [super init]) {
+		signalValue = 0;
+	}
+	return self;
+}
 
 - (id<MTLRenderPipelineState>) renderPipelineStateWithVertexFunction:(NSString*)vertexFunctionName
 													fragmentFunction:(NSString*)fragmentFunctionName
@@ -48,6 +58,20 @@
 	}
 	
 	return state;
+}
+
+- (BOOL)commitCommandBufferAndWait {
+	uint64_t nextSignalValue = signalValue + 1;
+	
+	[_commandQueue commit:&_commandBuffer count:1];
+	[_commandQueue signalEvent:_sharedEvent value:nextSignalValue];
+
+	BOOL success = [_sharedEvent waitUntilSignaledValue:nextSignalValue timeoutMS:5000];
+	if (success) {
+		signalValue = nextSignalValue;
+	}
+	
+	return success;
 }
 
 @end
