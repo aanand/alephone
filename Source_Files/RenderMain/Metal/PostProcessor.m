@@ -88,6 +88,9 @@ NSArray<NSNumber*> *waveletDenoisePasses = @[@8, @4, @2, @1];
 	for (id<MTLTexture> texture in _initialRender.textures) {
 		[_residencySet addAllocation:texture];
 	}
+
+	NSAssert(_rayTracingOutputTexture != nil, @"rayTracingOutputTexture is not set");
+	[_residencySet addAllocation:_rayTracingOutputTexture];
 	
 	[_residencySet commit];
 
