@@ -355,15 +355,19 @@ API_AVAILABLE(macos(26.0))
 	NSDate *finalPassStart = [NSDate date];
 	[pipeline begin];
 
+	NSArray<id<MTLFence>> *finalPassFences = @[];
+	
 	if (POST_PROCESSING_TYPE == WaveletDenoise) {
 		[postProcessor encodeWaveletDenoiseUpdatingFence:postProcessingPassFence];
+		finalPassFences = @[postProcessingPassFence];
 	}
 	
 	if (POST_PROCESSING_TYPE == TAA) {
 		[postProcessor encodeTAAUpdatingFence:postProcessingPassFence];
+		finalPassFences = @[postProcessingPassFence];
 	}
 
-	[finalRender encodeToOutputTexture:metalDrawable.texture afterFences:@[postProcessingPassFence]];
+	[finalRender encodeToOutputTexture:metalDrawable.texture afterFences:finalPassFences];
 
 	[pipeline end];
 	timing.FinalPass = [finalPassStart timeIntervalSinceNow] * -1000.0;
