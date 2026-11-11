@@ -44,8 +44,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (void) addDynamicWall:(MetalWall*)wall enabled:(BOOL)isEnabled;
 - (void) updateSprite:(MetalSprite*)sprite;
 
-- (void) shutdown;
-
 @end
 
 NS_ASSUME_NONNULL_END

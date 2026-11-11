@@ -78,6 +78,12 @@ static const NSUInteger verticesElementSize = sizeof(simd_float3) * 3;
 	return self;
 }
 
+-(void)dealloc {
+	if (pipeline && residencySet) {
+		[pipeline.commandQueue removeResidencySet:residencySet];
+	}
+}
+
 - (NSUInteger) addPrimitive:(id<ASTrianglePrimitive>)primitive {
 	assert(numTriangles + primitive.numTriangles < MAX_TRIANGLES);
 

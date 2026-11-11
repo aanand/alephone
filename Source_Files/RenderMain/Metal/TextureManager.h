@@ -25,7 +25,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (void) finishUpdatingAllGeometry;
 - (void) startUpdatingDynamicGeometry;
 - (void) finishUpdatingDynamicGeometry;
-- (void) shutdown;
 
 - (NSUInteger) indexOfTextureWithID:(NSString*)textureID;
 

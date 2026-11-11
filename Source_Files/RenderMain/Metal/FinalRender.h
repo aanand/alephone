@@ -40,7 +40,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (id<MTLTexture>)HUDTexture;
 - (void) setHUDTexture:(id<MTLTexture>)hudTexture;
 - (void) encodeToOutputTexture:(id<MTLTexture>)outputTexture afterFences:(NSArray<id<MTLFence>>*)fences;
-- (void) shutdown;
 
 @end
 

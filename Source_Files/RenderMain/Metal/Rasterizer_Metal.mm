@@ -75,7 +75,6 @@ bool Metal_InitializeForWindow(SDL_Window* window, int width, int height) {
 
 	if (@available(macOS 26.0, *)) {
 		if (renderer) {
-			[renderer shutdown];
 			renderer = nil;
 		}
 

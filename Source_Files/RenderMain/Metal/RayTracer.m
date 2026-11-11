@@ -29,8 +29,10 @@
 	NSUInteger lightSourceCount;
 }
 
--(void)shutdown {
-	[_residencySet removeAllAllocations];
+-(void)dealloc {
+	if (_pipeline && _residencySet) {
+		[_pipeline.commandQueue removeResidencySet:_residencySet];
+	}
 }
 
 -(bool)compile {
@@ -43,6 +45,7 @@
 		NSLog(@"%@", error);
 		return false;
 	}
+	[_pipeline.commandQueue addResidencySet:_residencySet];
 
 	if (![self compilePipeline]) {
 		return false;

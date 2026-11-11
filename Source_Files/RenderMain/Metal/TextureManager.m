@@ -33,12 +33,6 @@
 -(void)startUpdatingDynamicGeometry {}
 -(void)finishUpdatingDynamicGeometry {}
 
--(void)shutdown {
-	_albedoTextures = nil;
-	_normalMaps = nil;
-	_emissionMaps = nil;
-}
-
 - (NSUInteger) indexOfTextureWithID:(NSString *)textureID {
 	return [_textureIDs indexOfObject:textureID];
 }

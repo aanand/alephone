@@ -26,6 +26,12 @@ NSArray<NSNumber*> *waveletDenoisePasses = @[@8, @4, @2, @1];
 	id<MTLBuffer> denoiseConfigBuffer;
 }
 
+-(void)dealloc {
+	if (_pipeline && _residencySet) {
+		[_pipeline.commandQueue removeResidencySet:_residencySet];
+	}
+}
+
 -(bool)compile {
 	denoisePipeline = [self compileComputePipelineWithFunctionName:@"denoiseKernel"];
 	if (!denoisePipeline) {
@@ -64,6 +70,7 @@ NSArray<NSNumber*> *waveletDenoisePasses = @[@8, @4, @2, @1];
 		NSLog(@"%@", error);
 		return false;
 	}
+	[_pipeline.commandQueue addResidencySet:_residencySet];
 	
 	denoiseConfigBuffer = [_pipeline.device newBufferWithLength:sizeof(DenoiseConfig) * waveletDenoisePasses.count options:MTLResourceStorageModeShared];
 	denoiseConfigBuffer.label = @"Denoise config";

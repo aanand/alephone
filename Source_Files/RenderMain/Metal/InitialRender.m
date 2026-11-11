@@ -39,6 +39,12 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 	return self;
 }
 
+-(void)dealloc {
+	if (_pipeline && _residencySet) {
+		[_pipeline.commandQueue removeResidencySet:_residencySet];
+	}
+}
+
 -(bool)compile {
 	if (![self setupTextures]) {
 		return false;
@@ -63,10 +69,6 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 	return true;
 }
 
--(void)shutdown {
-	[_residencySet removeAllAllocations];
-}
-
 -(bool)setupResidencySet {
 	NSError *error;
 
@@ -78,6 +80,8 @@ const NSString *fragmentFunctionName = @"initialRenderFragmentShader";
 		NSLog(@"%@", error);
 		return false;
 	}
+	
+	[_pipeline.commandQueue addResidencySet:_residencySet];
 
 	return true;
 }

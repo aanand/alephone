@@ -14,6 +14,12 @@
 	id<MTLTexture> hudTexture;
 }
 
+-(void)dealloc {
+	if (_pipeline && _residencySet) {
+		[_pipeline.commandQueue removeResidencySet:_residencySet];
+	}
+}
+
 -(bool)compileForPixelFormat:(MTLPixelFormat)pixelFormat {
 	pipelineState = [_pipeline renderPipelineStateWithVertexFunction:@"finalRenderVertexShader"
 													fragmentFunction:@"finalRenderFragmentShader"
@@ -42,6 +48,7 @@
 		NSLog(@"%@", error);
 		return false;
 	}
+	[_pipeline.commandQueue addResidencySet:_residencySet];
 	
 	NSAssert(_uniformsBuffer != nil, @"uniformsBuffer is not set");
 	[_residencySet addAllocation:_uniformsBuffer];
@@ -54,10 +61,6 @@
 	[_residencySet commit];
 	
 	return true;
-}
-
--(void)shutdown {
-	[_residencySet removeAllAllocations];
 }
 
 -(id<MTLTexture>)HUDTexture {

@@ -117,7 +117,6 @@ API_AVAILABLE(macos(26.0))
 	if (![geometryManager compile]) {
 		return nil;
 	}
-	[pipeline.commandQueue addResidencySet:geometryManager.residencySet];
 
 	initialRender = [[InitialRender alloc] initWithPipeline:pipeline];
 	initialRender.view = _view;
@@ -130,7 +129,6 @@ API_AVAILABLE(macos(26.0))
 	if (![initialRender compile]) {
 		return nil;
 	}
-	[pipeline.commandQueue addResidencySet:initialRender.residencySet];
 
 	rayTracer = [[RayTracer alloc] init];
 	rayTracer.pipeline = pipeline;
@@ -146,7 +144,6 @@ API_AVAILABLE(macos(26.0))
 	if (![rayTracer compile]) {
 		return nil;
 	}
-	[pipeline.commandQueue addResidencySet:rayTracer.residencySet];
 
 	postProcessor = [[PostProcessor alloc] init];
 	postProcessor.pipeline = pipeline;
@@ -158,7 +155,6 @@ API_AVAILABLE(macos(26.0))
 	if (![postProcessor compile]) {
 		return nil;
 	}
-	[pipeline.commandQueue addResidencySet:postProcessor.residencySet];
 	
 	finalRender = [[FinalRender alloc] init];
 	finalRender.pipeline = pipeline;
@@ -173,7 +169,6 @@ API_AVAILABLE(macos(26.0))
 	if (![finalRender compileForPixelFormat:metalLayer.pixelFormat]) {
 		return nil;
 	}
-	[pipeline.commandQueue addResidencySet:finalRender.residencySet];
 	
 	terminal = [[Terminal alloc] initWithPipeline:pipeline];
 	terminal.view = _view;
@@ -191,32 +186,10 @@ API_AVAILABLE(macos(26.0))
 	return self;
 }
 
-- (void) shutdown {
-	[pipeline.commandQueue removeResidencySet:initialRender.residencySet];
-	[initialRender shutdown];
-	initialRender = nil;
-
-	[pipeline.commandQueue removeResidencySet:rayTracer.residencySet];
-	[rayTracer shutdown];
-	rayTracer = nil;
-	
-	[pipeline.commandQueue removeResidencySet:finalRender.residencySet];
-	[finalRender shutdown];
-	finalRender = nil;
-
-	[geometryManager shutdown];
-	[textureManager shutdown];
-
-	pipeline = nil;
-	
-	metalLayer = nil;
-	
+- (void) dealloc {
 	if (renderer) {
 		SDL_DestroyRenderer(renderer);
-		renderer = nil;
 	}
-	
-	window = nil;
 }
 
 - (void) updateSky:(Sky)newSky {

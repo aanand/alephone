@@ -44,7 +44,6 @@ NS_ASSUME_NONNULL_BEGIN
 // Lifecycle
 
 - (bool) compile;
-- (void) shutdown;
 
 - (void) updateLightSourceCount:(NSUInteger)count;
 - (void) updateLightSourceIntensities:(float*)intensities;

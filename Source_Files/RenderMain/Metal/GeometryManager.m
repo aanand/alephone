@@ -56,8 +56,16 @@ uint getMask(bool isEnabled, bool isTransparent) {
 			assert(_residencySet);
 			return nil;
 		}
+		
+		[_pipeline.commandQueue addResidencySet:_residencySet];
 	}
 	return self;
+}
+
+-(void)dealloc {
+	if (_pipeline && _residencySet) {
+		[_pipeline.commandQueue removeResidencySet:_residencySet];
+	}
 }
 
 -(bool)compile {
@@ -377,13 +385,6 @@ uint getMask(bool isEnabled, bool isTransparent) {
 	[_residencySet commit];
 	
 	_lastRebuildTimeMs = [startTime timeIntervalSinceNow] * -1000.0;
-}
-
--(void)shutdown {
-	staticIASManager = nil;
-	dynamicIASManager = nil;
-	
-	[_residencySet removeAllAllocations];
 }
 
 @end

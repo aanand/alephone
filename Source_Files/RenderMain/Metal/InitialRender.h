@@ -49,7 +49,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype) initWithPipeline:(MetalPipeline*)pipeline;
 - (bool) compile;
 - (void) encode;
-- (void) shutdown;
 
 @end
 
